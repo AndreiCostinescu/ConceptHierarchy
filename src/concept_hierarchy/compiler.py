@@ -22,8 +22,6 @@ Pipeline
 3. Codegen : generate target-language source from the validated model
 """
 
-from __future__ import annotations
-
 import json
 import os
 from typing import Optional

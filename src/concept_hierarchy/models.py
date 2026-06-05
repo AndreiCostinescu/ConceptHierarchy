@@ -20,8 +20,6 @@ mappings are needed) so that the validation and codegen stages can safely
 share references without defensive copying.
 """
 
-from __future__ import annotations
-
 from typing import List, Optional, Tuple
 
 from frozendict import frozendict

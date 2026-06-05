@@ -22,8 +22,6 @@ JSON structure into typed Python objects and raises
 (missing required keys, wrong value types, etc.).
 """
 
-from __future__ import annotations
-
 from typing import Any, Dict
 
 from frozendict import frozendict

@@ -20,8 +20,6 @@ isolation (naming conventions, required fields, etc.) — i.e. anything
 that does *not* require cross-concept lookups.
 """
 
-from __future__ import annotations
-
 import re
 
 from concept_hierarchy.errors import SyntaxError as CHSyntaxError

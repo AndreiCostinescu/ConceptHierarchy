@@ -16,8 +16,6 @@
 errors.py — Custom exception hierarchy for the ConceptHierarchy compiler.
 """
 
-from __future__ import annotations
-
 
 class ConceptHierarchyError(Exception):
     """Base class for all ConceptHierarchy compiler errors."""

@@ -21,8 +21,6 @@ semantics.py — Semantic validation of a parsed ConceptHierarchyModel.
   - No duplicate concept names.
 """
 
-from __future__ import annotations
-
 from typing import Dict, List, Optional, Set
 
 from concept_hierarchy.errors import SemanticError

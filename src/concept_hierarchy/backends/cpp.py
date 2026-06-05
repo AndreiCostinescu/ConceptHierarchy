@@ -21,8 +21,6 @@ inheritance follows the parent → child relationships; attributes become
 public data members.
 """
 
-from __future__ import annotations
-
 from typing import Dict, List, Optional
 
 from concept_hierarchy.backends.base import BaseBackend

@@ -16,8 +16,6 @@
 generator.py — Dispatch code generation to the appropriate backend.
 """
 
-from __future__ import annotations
-
 from concept_hierarchy.errors import CodegenError
 from concept_hierarchy.models import ConceptHierarchyModel
 

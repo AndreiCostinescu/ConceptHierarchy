@@ -16,8 +16,6 @@
 base.py — Abstract base class that every code-generation backend must implement.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 
 from concept_hierarchy.models import ConceptHierarchyModel
