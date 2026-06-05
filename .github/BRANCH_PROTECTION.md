@@ -22,6 +22,8 @@ Also enable:
 - ✅ **Require signed commits** ← enforces GPG/SSH signing at the Git level
 - ✅ **Do not allow bypassing the above settings** (even for admins, recommended)
 
+Then go to repository settings, in the Commits section, and enable **"Require contributors to sign off on web-based commits"**
+
 ---
 
 ## Signed commits vs DCO — what is each?
