@@ -9,9 +9,9 @@ description = "Compiler for the ConceptHierarchy programming language: validates
 readme = "README.md"
 license = { file = "LICENSE" }   # Apache-2.0
 authors = [
-    { name = "Your Name", email = "you@example.com" }
+    { name = "Andrei Costinescu", email = "andrei.costinescu@yahoo.com" }
 ]
-keywords = ["compiler", "concept hierarchy", "code generation", "C++", "DSL"]
+keywords = ["AI", "compiler", "concept hierarchy", "code generation", "JSON"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -42,9 +42,9 @@ dev = [
 concept-hierarchy = "concept_hierarchy.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/you/ConceptHierarchy"
-Repository = "https://github.com/you/ConceptHierarchy"
-"Bug Tracker" = "https://github.com/you/ConceptHierarchy/issues"
+Homepage = "https://github.com/AndreiCostinescu/ConceptHierarchy"
+Repository = "https://github.com/AndreiCostinescu/ConceptHierarchy"
+"Bug Tracker" = "https://github.com/AndreiCostinescu/ConceptHierarchy/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
