@@ -4,7 +4,6 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from copy import deepcopy
-from typing import Optional, Tuple
 
 tab = "    "
 
@@ -159,7 +158,7 @@ def get_file_timestamp(file_path, overwrite_timestamp, current_timestamp_string=
     return current_timestamp_string
 
 
-def write_json_data(file_path, json_data, json_indent: Optional[int] = 4):
+def write_json_data(file_path, json_data, json_indent: int | None = 4):
     write_file(file_path, json.dumps(json_data, indent=json_indent), False)
 
 
