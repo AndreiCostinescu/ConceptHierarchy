@@ -3,9 +3,12 @@ name: DCO Check
 # Enforces the Developer Certificate of Origin (DCO):
 # every commit in a PR must contain a "Signed-off-by:" trailer,
 # added automatically with `git commit -s`.
+#
+# Runs on PRs targeting either main or develop, since both branches
+# are protected and require DCO compliance.
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["main", "develop"]
 
 jobs:
   dco:
