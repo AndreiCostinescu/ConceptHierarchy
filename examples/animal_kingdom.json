@@ -1,0 +1,34 @@
+{
+  "name": "AnimalKingdom",
+  "metadata": {
+    "version": "1.0",
+    "author": "Your Name"
+  },
+  "concepts": [
+    {
+      "name": "Animal",
+      "parent": null,
+      "description": "Base concept for all animals.",
+      "attributes": {
+        "name": "string",
+        "age": "int"
+      }
+    },
+    {
+      "name": "Mammal",
+      "parent": "Animal",
+      "description": "Warm-blooded vertebrate.",
+      "attributes": {
+        "fur_color": "string"
+      }
+    },
+    {
+      "name": "Dog",
+      "parent": "Mammal",
+      "description": "Domestic dog.",
+      "attributes": {
+        "breed": "string"
+      }
+    }
+  ]
+}
