@@ -2,41 +2,25 @@
 
 This file documents the recommended GitHub branch protection settings for the
 `main` branch.  These cannot be committed to the repo — you must apply them
-manually in **Settings → Branches → Add branch protection rule** (or via the
-GitHub CLI commands below).
+manually in **Settings → Branches → Add branch protection rule**.
 
 ---
 
 ## Required status checks for `main`
 
+*Note: Checks must run at least once before they appear in the UI list.*
+
 Enable **"Require status checks to pass before merging"** and add:
 
-| Check name | Provided by |
-|---|---|
-| `test (3.7)` … `test (3.12)` | `ci.yml` |
-| `DCO` | `dco.yml` |
+| Check name                    | Provided by |
+|-------------------------------|---|
+| `test (3.10)` … `test (3.13)` | `ci.yml` |
+| `DCO`                         | `dco.yml` |
 
 Also enable:
 - ✅ **Require branches to be up to date before merging**
 - ✅ **Require signed commits** ← enforces GPG/SSH signing at the Git level
 - ✅ **Do not allow bypassing the above settings** (even for admins, recommended)
-
----
-
-## Apply via GitHub CLI
-
-```bash
-gh api repos/{owner}/ConceptHierarchy/branches/main/protection \
-  --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["test (3.7)","test (3.8)","test (3.9)","test (3.10)","test (3.11)","test (3.12)","DCO"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true}' \
-  --field restrictions=null \
-  --field required_linear_history=true \
-  --field required_signatures=true
-```
-
-Replace `{owner}` with your GitHub username or organisation name.
 
 ---
 

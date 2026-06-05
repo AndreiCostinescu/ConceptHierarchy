@@ -14,20 +14,18 @@ authors = [
 keywords = ["compiler", "concept hierarchy", "code generation", "C++", "DSL"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Topic :: Software Development :: Compilers",
     "Intended Audience :: Developers",
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 dependencies = [
-    "frozendict>=2.3",
+    "frozendict>=2.4.7",
 ]
 
 [project.optional-dependencies]
@@ -55,6 +53,6 @@ where = ["src"]
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.7"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
