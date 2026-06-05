@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ConceptHierarchy"
+version = "0.1.0"
+description = "Compiler for the ConceptHierarchy programming language: validates and compiles JSON-defined concept hierarchies into target languages (currently C++)."
+readme = "README.md"
+license = { file = "LICENSE" }   # Apache-2.0
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+keywords = ["compiler", "concept hierarchy", "code generation", "C++", "DSL"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Compilers",
+    "Intended Audience :: Developers",
+]
+requires-python = ">=3.7"
+dependencies = [
+    "frozendict>=2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "tox",
+    "build",
+    "twine",
+    "mypy",
+]
+
+[project.scripts]
+concept-hierarchy = "concept_hierarchy.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/you/ConceptHierarchy"
+Repository = "https://github.com/you/ConceptHierarchy"
+"Bug Tracker" = "https://github.com/you/ConceptHierarchy/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.7"
+warn_return_any = true
+warn_unused_configs = true
