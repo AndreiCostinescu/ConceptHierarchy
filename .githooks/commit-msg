@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+# .githooks/commit-msg
+#
+# Local Git hook: rejects commits that lack a "Signed-off-by:" trailer.
+#
+# Install for this repo:
+#   git config core.hooksPath .githooks
+#
+# Or copy to .git/hooks/commit-msg and make executable:
+#   cp .githooks/commit-msg .git/hooks/commit-msg
+#   chmod +x .git/hooks/commit-msg
+
+COMMIT_MSG_FILE="$1"
+
+if ! grep -qE "^Signed-off-by: .+ <.+@.+>" "$COMMIT_MSG_FILE"; then
+    echo ""
+    echo "ERROR: Commit rejected — missing 'Signed-off-by' trailer."
+    echo ""
+    echo "Every commit must include a DCO sign-off.  Use:"
+    echo ""
+    echo "    git commit -s -m \"your message\""
+    echo ""
+    echo "This adds the following line to your commit message automatically:"
+    echo ""
+    echo "    Signed-off-by: Your Name <you@example.com>"
+    echo ""
+    echo "Make sure your git user.name and user.email are configured:"
+    echo ""
+    echo "    git config --global user.name  \"Your Name\""
+    echo "    git config --global user.email \"you@example.com\""
+    echo ""
+    exit 1
+fi
