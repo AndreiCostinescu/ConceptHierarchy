@@ -1,0 +1,11 @@
+ConceptHierarchy
+Copyright 2026 ConceptHierarchy Authors
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Third-party dependencies
+------------------------
+frozendict — MIT License — https://github.com/Marco-Sulla/python-frozendict
