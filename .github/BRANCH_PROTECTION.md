@@ -12,15 +12,17 @@ manually in **Settings → Branches → Add branch protection rule**.
 
 Enable **"Require status checks to pass before merging"** and add:
 
-| Check name                    | Provided by |
-|-------------------------------|---|
-| `test (3.10)` … `test (3.13)` | `ci.yml` |
-| `DCO`                         | `dco.yml` |
+| Check name                    | Provided by                               |
+|-------------------------------|-------------------------------------------|
+| `test (3.10)` … `test (3.13)` | `ci.yml`                                  |
+| `DCO`                         | [GitHub App](https://github.com/apps/dco) |
 
 Also enable:
 - ✅ **Require branches to be up to date before merging**
 - ✅ **Require signed commits** ← enforces GPG/SSH signing at the Git level
 - ✅ **Do not allow bypassing the above settings** (even for admins, recommended)
+
+Then go to repository settings, in the Commits section, and enable **"Require contributors to sign off on web-based commits"**
 
 ---
 
