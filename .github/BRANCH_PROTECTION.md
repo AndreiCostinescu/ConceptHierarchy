@@ -12,10 +12,10 @@ manually in **Settings → Branches → Add branch protection rule**.
 
 Enable **"Require status checks to pass before merging"** and add:
 
-| Check name                    | Provided by |
-|-------------------------------|---|
-| `test (3.10)` … `test (3.13)` | `ci.yml` |
-| `DCO`                         | `dco.yml` |
+| Check name                    | Provided by                               |
+|-------------------------------|-------------------------------------------|
+| `test (3.10)` … `test (3.13)` | `ci.yml`                                  |
+| `DCO`                         | [GitHub App](https://github.com/apps/dco) |
 
 Also enable:
 - ✅ **Require branches to be up to date before merging**
