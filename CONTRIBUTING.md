@@ -85,7 +85,7 @@ SSH signing is also accepted; see the
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/ConceptHierarchy.git
+git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
 
 # Install the project with dev dependencies

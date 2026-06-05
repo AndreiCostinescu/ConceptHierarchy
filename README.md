@@ -100,7 +100,7 @@ All commands below should be run from the **repository root** (the directory tha
 1. Clone the repo and install the package in editable mode with dev dependencies:
 
 ```bash
-git clone https://github.com/you/ConceptHierarchy.git
+git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
 pip install -e ".[dev]"
 ```
