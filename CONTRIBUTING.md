@@ -118,20 +118,18 @@ git push origin feat/my-feature
 ```
 
 PRs require:
-- All CI tests passing (Python 3.7–3.12).
+- All CI tests passing (Python 3.10–3.13).
 - DCO check passing (every commit signed off).
-- CLA signed (once per contributor).
-- At least one approving review.
+- The code to be formatted to ruff standard
 
 ---
 
 ## 5. Coding standards
 
-- **Style:** follow PEP 8.  `black` and `isort` are recommended but not
-  enforced by CI yet.
+- **Style:** follow PEP 8.  `ruff` and `pre-commit` handle code formatting, 
+  so make sure you run `make setup` once after cloning the repository.
 - **Type hints:** use them on all public functions.  Stay compatible with
-  Python 3.7 (`from __future__ import annotations` is already imported
-  everywhere).
+  Python 3.10.
 - **License headers:** every new `.py` file must begin with the Apache 2.0
   header (copy from any existing file).
 - **New backends:** add a module under `src/concept_hierarchy/backends/`,
@@ -140,7 +138,51 @@ PRs require:
 
 ---
 
-## 6. Running tests
+## 6. Starting development
+
+All commands below should be run from the **repository root** (the directory that contains `pyproject.toml`).
+
+1. Clone the repo and install the package in editable mode with dev dependencies:
+
+```bash
+git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
+cd ConceptHierarchy
+pip install -e ".[dev]"
+```
+
+2. Run the test suite:
+
+```bash
+pytest
+```
+
+3. Run with coverage:
+
+```bash
+pytest --cov=concept_hierarchy --cov-report=term-missing
+```
+
+4. Run type checks:
+
+```bash
+mypy src/
+```
+
+5. Test across all supported Python versions (requires the interpreters to be installed):
+
+```bash
+tox
+```
+
+6. Build a distribution:
+
+```bash
+python -m build
+```
+
+---
+
+## 7. Running tests
 
 ```bash
 # Single Python version

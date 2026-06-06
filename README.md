@@ -95,6 +95,8 @@ src/concept_hierarchy/
 
 ## Development
 
+Please read the [contribution guide](CONTRIBUTING.md): 
+
 All commands below should be run from the **repository root** (the directory that contains `pyproject.toml`).
 
 1. Clone the repo and install the package in editable mode with dev dependencies:
