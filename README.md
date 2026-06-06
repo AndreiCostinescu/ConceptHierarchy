@@ -1,5 +1,7 @@
 # ConceptHierarchy
 
+[![Lint](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/lint.yml/badge.svg)](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/lint.yml)
+
 **ConceptHierarchy** is a compiler for the ConceptHierarchy programming language.
 
 It takes a JSON definition of a concept hierarchy, validates its syntax and
@@ -93,48 +95,27 @@ src/concept_hierarchy/
 |--------|------------|---------------------|
 | C++    | `--target cpp` | Header file (`.hpp`) |
 
-## Development
+## Contributing
 
-Please read the [contribution guide](CONTRIBUTING.md): 
+Please read the [contribution guide](CONTRIBUTING.md) for full details on DCO
+sign-off, GPG commit signing, coding standards, and the PR checklist.
 
-All commands below should be run from the **repository root** (the directory that contains `pyproject.toml`).
-
-1. Clone the repo and install the package in editable mode with dev dependencies:
+**Quickstart:**
 
 ```bash
 git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
-pip install -e ".[dev]"
+make setup
 ```
 
-2. Run the test suite:
+`make setup` installs dev dependencies (including ruff and pre-commit) and
+registers the git hooks so formatting and linting run automatically on every
+commit.
 
 ```bash
-pytest
-```
-
-3. Run with coverage:
-
-```bash
-pytest --cov=concept_hierarchy --cov-report=term-missing
-```
-
-4. Run type checks:
-
-```bash
-mypy src/
-```
-
-5. Test across all supported Python versions (requires the interpreters to be installed):
-
-```bash
-tox
-```
-
-6. Build a distribution:
-
-```bash
-python -m build
+make lint      # check formatting + linting
+make format    # auto-fix formatting and safe lint issues
+pytest         # run the test suite
 ```
 
 ## License
