@@ -1,34 +1,67 @@
 {
-  "name": "AnimalKingdom",
-  "metadata": {
-    "version": "1.0",
-    "author": "Your Name"
-  },
-  "concepts": [
-    {
-      "name": "Animal",
-      "parent": null,
-      "description": "Base concept for all animals.",
-      "attributes": {
-        "name": "string",
-        "age": "int"
-      }
+    "name": "AnimalKingdom",
+    "metadata": {
+        "version": "1.0",
+        "author": "Your Name"
     },
-    {
-      "name": "Mammal",
-      "parent": "Animal",
-      "description": "Warm-blooded vertebrate.",
-      "attributes": {
-        "fur_color": "string"
-      }
+    "concepts": {
+        "Concept": {
+            "data": null
+        },
+        "Animal": {
+            "directParents": ["Concept"],
+            "data": {
+                "properties": {
+                    "age": "Integer",
+                    "name": "String",
+                    "0name": "String",
+                    "int_name": 0,
+                    "type": {
+                        "String": "String",
+                        "valueDomain": "String"
+                    },
+                    "description": {
+                        "description": "Test property"
+                    }
+                }
+            }
+        },
+        "Dog": {
+            "directParents": ["Animal"],
+            "data": {
+                "properties": {
+                    "breed": "String"
+                }
+            }
+        },
+        "ValueDomain": {
+            "directParents": ["Concept"],
+            "data": {
+                "abstract": true
+            }
+        },
+        "Integer": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "fromJsonLiteral": "integer"
+            }
+        },
+        "String": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "fromJsonLiteral": "string"
+            }
+        }
     },
-    {
-      "name": "Dog",
-      "parent": "Mammal",
-      "description": "Domestic dog.",
-      "attributes": {
-        "breed": "string"
-      }
+    "instances": {
+        "MyAnimal": {
+            "InstanceBase": {
+                "instanceName": "MyAnimal",
+                "concepts": ["Animal"],
+                "properties": {
+                    "age": 2
+                }
+            }
+        }
     }
-  ]
 }
