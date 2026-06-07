@@ -28,4 +28,4 @@ Typical usage
 from concept_hierarchy.compiler import compile_hierarchy  # noqa: F401
 
 __version__ = "0.1.0"
-__all__ = ["compile_hierarchy"]
+__all__ = ["compile_hierarchy", "__version__"]
