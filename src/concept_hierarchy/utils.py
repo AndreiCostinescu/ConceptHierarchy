@@ -15,9 +15,9 @@
 import json
 import os
 from collections import defaultdict
+from copy import deepcopy
 from datetime import date
 from pathlib import Path
-from copy import deepcopy
 
 tab = "    "
 
@@ -26,8 +26,8 @@ def capitalize(s: str) -> str:
     return s[0].upper() + s[1:]
 
 
-def join_path(*paths) -> str:
-    return str(os.path.join(*paths).replace(os.sep, "/"))
+def join_path(first: str | os.PathLike[str], *rest: str | os.PathLike[str]) -> str:
+    return str(os.path.join(first, *rest).replace(os.sep, "/"))
 
 
 def sanitize_relative_path(path: str) -> str:
@@ -91,43 +91,27 @@ def read_json_file(file_name: str):
     return res
 
 
-def read_external_data_content(concept_name, concept_def, concept_hierarchy_file, path_to_root_dir):
+def read_external_data_content(concept_name, external_file, concept_hierarchy_file, path_to_root_dir) -> object:
     # try to read external file
-    external_file = concept_def["data"]
     # first try file relative to the root directory
-    if os.path.exists(join_path(path_to_root_dir, external_file)):
-        concept_def["data"] = read_json_file(join_path(path_to_root_dir, external_file))
-        return
-    print("Found external data file:", external_file, "at concept", concept_name, "with wrong format!")
+    file_path = join_path(path_to_root_dir, external_file)
+    if os.path.isfile(file_path):
+        return read_json_file(file_path)
+    print(f"Found external data file: {external_file!r} at concept {concept_name} with wrong format!")
     # then try external files relative to the main file
     external_file_path = join_path("/".join(concept_hierarchy_file.split("/")[:-1]), external_file)
     if os.path.isfile(external_file_path):
-        concept_def["data"] = read_json_file(external_file_path)
-    elif os.path.isfile(external_file):  # then try external files relative to the script
-        concept_def["data"] = read_json_file(external_file)
+        return read_json_file(external_file_path)
+    elif os.path.isfile(external_file):  # then try external files relative to the python script
+        return read_json_file(external_file)
     else:
-        raise RuntimeError("Could not find external data file \"" + external_file + "\" relative to " +
-                           "the main file and neither relative to the script for concept {}...".format(concept_name))
+        raise RuntimeError(
+            f"Could not find external data file {external_file!r} relative to the main file and neither relative to the"
+            f" script at concept {concept_name}..."
+        )
 
 
-def read_concept_hierarchy(concept_hierarchy_file: str, path_to_root_dir: str):
-    def create_json(file_name: str) -> json:
-        res = read_json_file(file_name)
-        if "external" in res:
-            assert isinstance(res["external"], list)
-            for sub_file_name in res["external"]:
-                if os.path.isabs(sub_file_name):
-                    res.update(create_json(sub_file_name))
-                else:
-                    rel_sub_file_name = sanitize_relative_path(join_path(path_to_root_dir, sub_file_name))
-                    res.update(create_json(rel_sub_file_name))
-            res.pop("external")
-        return res
-
-    return create_json(concept_hierarchy_file)
-
-
-def write_file(file_path, file_content, overwrite_if_same):
+def write_file(file_path, file_content, overwrite_if_same, just_testing: bool = False):
     if isinstance(file_content, str):
         full_content = file_content
     else:
@@ -145,10 +129,11 @@ def write_file(file_path, file_content, overwrite_if_same):
         print(existing_content)
         print("vs")
         """
-        same_content = (full_content == existing_content)
+        same_content = full_content == existing_content
     if not same_content or overwrite_if_same:
         print("DEBUG DEBUG DEBUG DEBUG!!!!", ("Creating" if not os.path.exists(file_path) else "Writing"), file_path)
-        return
+        if just_testing:
+            return
         file_path_directory = "" if "/" not in file_path else "/".join(file_path.split("/")[:-1])
         if file_path_directory:
             Path(file_path_directory).mkdir(parents=True, exist_ok=True)  # creates the path if it doesn't exist
@@ -217,7 +202,7 @@ class Graph:
         # Print contents of stack
         return stack
 
-    def clone(self) -> 'Graph':
+    def clone(self) -> "Graph":
         res = Graph()
         res.graph = deepcopy(self.graph)
         res.nodes = deepcopy(self.nodes)
@@ -235,32 +220,34 @@ def replace_template_chars(x: str) -> str:
     return x.replace("<", "__").replace(">", "").replace(", ", "_").replace("!", "not")
 
 
-def check_ch_name(ch_name: str, name_type: str, must_start_uppercase: bool = False,
-                  must_start_lowercase: bool = False, return_bool_instead_of_error: bool = False):
-    if ch_name == "":
-        if return_bool_instead_of_error:
-            return False
-        raise SyntaxError("The name of a \"{}\" cannot be empty!".format(name_type))
-    illegal_characters_found = []
-    for char in ch_name:
-        if not (char.isalnum() or char == "_"):
-            illegal_characters_found.append(char)
-    if ch_name[0].isnumeric():
-        if return_bool_instead_of_error:
-            return False
-        raise SyntaxError("\"{}\" names may not start with a digit! Found in \"{}\"".format(name_type, ch_name))
-    if illegal_characters_found:
-        if return_bool_instead_of_error:
-            return False
-        raise SyntaxError("\"{}\" names can not contain the characters ".format(name_type) +
-                          ", ".join("'" + c + "'" for c in illegal_characters_found) +
-                          ". Found in \"" + ch_name + "\". Delete or replace character by '_'")
-    if must_start_lowercase and not ch_name[0].islower():
-        if return_bool_instead_of_error:
-            return False
-        raise SyntaxError("\"{}\" name \"{}\" must start with a lowercase letter!".format(name_type, ch_name))
-    if must_start_uppercase and not ch_name[0].isupper():
-        if return_bool_instead_of_error:
-            return False
-        raise SyntaxError("\"{}\" name \"{}\" must start with an uppercase letter!".format(name_type, ch_name))
-    return True
+# Topological sort (Kahn's algorithm)
+def topological_sort(parents: dict[str, list[str]]) -> tuple[list[str], list[str]]:
+    from collections import deque
+
+    # children[parent] = list of child names
+    children: dict[str, list[str]] = {name: [] for name in parents}
+    in_degree: dict[str, int] = {name: 0 for name in parents}
+
+    for c, c_parents in parents.items():
+        for parent in c_parents:
+            children[parent].append(c)
+            in_degree[c] += 1
+
+    roots: list[str] = [name for name, degree in in_degree.items() if degree == 0]
+    queue: deque[str] = deque(roots)
+    result: list[str] = []
+
+    while queue:
+        name = queue.popleft()
+        result.append(name)
+        for child in children[name]:
+            in_degree[child] -= 1
+            if in_degree[child] == 0:
+                queue.append(child)
+
+    if len(result) != len(parents):
+        nodes_in_cycles = set(parents) - set(result)
+        raise RuntimeError(
+            f"Non-hierarchy structure detected! The following items form one or more cycles: {nodes_in_cycles!r}"
+        )
+    return result, roots
