@@ -16,9 +16,8 @@
 
 import pytest
 
-from concept_hierarchy.errors import SyntaxError as CHSyntaxError
+from concept_hierarchy.errors import CHSyntaxError
 from concept_hierarchy.parser.parser import parse
-
 
 MINIMAL = {
     "name": "TestHierarchy",
@@ -71,6 +70,7 @@ class TestParseFull:
 
     def test_attributes_immutable(self):
         from frozendict import frozendict
+
         model = parse(FULL)
         assert isinstance(model.concepts[0].attributes, frozendict)
 

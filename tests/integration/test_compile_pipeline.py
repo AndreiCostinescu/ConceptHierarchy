@@ -15,12 +15,10 @@
 """Integration tests: full compile pipeline → C++ output."""
 
 import json
-import textwrap
 
 import pytest
 
 from concept_hierarchy.compiler import compile_hierarchy
-
 
 ANIMAL_KINGDOM = json.dumps(
     {

@@ -48,12 +48,11 @@ def generate(model: ConceptHierarchyModel, target: str = "cpp") -> str:
     """
     if target not in _BACKENDS:
         supported = ", ".join(sorted(_BACKENDS))
-        raise ValueError(
-            f"Unsupported target {target!r}. Supported backends: {supported}."
-        )
+        raise ValueError(f"Unsupported target {target!r}. Supported backends: {supported}.")
 
     module_path, class_name = _BACKENDS[target].rsplit(":", 1)
     import importlib
+
     module = importlib.import_module(module_path)
     backend_cls = getattr(module, class_name)
     backend = backend_cls()
