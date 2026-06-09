@@ -68,9 +68,9 @@ concept-hierarchy compile animal_kingdom.json --target cpp --output animal_kingd
 Or use the Python API:
 
 ```python
-from concept_hierarchy import compile_hierarchy
+from concept_hierarchy import ch_compile
 
-code = compile_hierarchy("animal_kingdom.json", target="cpp")
+code = ch_compile("animal_kingdom.json", target="cpp")
 print(code)
 ```
 

@@ -25,7 +25,7 @@ import argparse
 import sys
 
 from concept_hierarchy import __version__
-from concept_hierarchy.compiler import compile_hierarchy
+from concept_hierarchy.compiler import ch_check, ch_compile
 from concept_hierarchy.errors import ConceptHierarchyError
 
 
@@ -34,16 +34,12 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="concept-hierarchy",
         description="Compiler for the ConceptHierarchy programming language.",
     )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     sub = parser.add_subparsers(dest="command")
 
     # ---- compile ----------------------------------------------------------
-    compile_p = sub.add_parser(
-        "compile", help="Compile a ConceptHierarchy JSON definition."
-    )
+    compile_p = sub.add_parser("compile", help="Compile a ConceptHierarchy JSON definition.")
     compile_p.add_argument(
         "source",
         help="Path to the ConceptHierarchy JSON file.",
@@ -62,6 +58,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write generated code to FILE (default: stdout).",
     )
 
+    # ---- check ------------------------------------------------------------
+    check_p = sub.add_parser("check", help="Check a ConceptHierarchy JSON definition.")
+    check_p.add_argument(
+        "source",
+        help="Path to the ConceptHierarchy JSON file.",
+    )
+
     return parser
 
 
@@ -73,21 +76,24 @@ def main(argv=None):
         parser.print_help()
         sys.exit(0)
 
-    if args.command == "compile":
-        try:
-            code = compile_hierarchy(
-                args.source,
-                target=args.target,
-                output_path=args.output,
-            )
-            if args.output is None:
-                print(code)
-        except ConceptHierarchyError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            sys.exit(1)
-        except (FileNotFoundError, ValueError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            sys.exit(1)
+    match args.command:
+        case "compile":
+            try:
+                code = ch_compile(
+                    args.source,
+                    target=args.target,
+                    output_path=args.output,
+                )
+                if args.output is None:
+                    print(code)
+            except ConceptHierarchyError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
+        case "check":
+            ch_check(args.source)
 
 
 if __name__ == "__main__":
