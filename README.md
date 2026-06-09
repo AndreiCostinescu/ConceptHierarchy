@@ -47,13 +47,13 @@ pip install ConceptHierarchy
     "Integer": {
         "directParents": ["ValueDomain"],
         "data": {
-            "fromJsonLiteral": "integer"
+            "instantiation": "integer"
         }
     },
     "String": {
         "directParents": ["ValueDomain"],
         "data": {
-            "fromJsonLiteral": "string"
+            "instantiation": "string"
         }
     }
 }
@@ -91,8 +91,8 @@ src/concept_hierarchy/
 
 ## Supported backends
 
-| Target | Flag       | Output              |
-|--------|------------|---------------------|
+| Target | Flag           | Output               |
+|--------|----------------|----------------------|
 | C++    | `--target cpp` | Header file (`.hpp`) |
 
 ## Contributing
