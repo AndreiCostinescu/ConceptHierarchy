@@ -8,12 +8,13 @@ development workflow.
 
 ## Table of contents
 
-1. [Developer Certificate of Origin (DCO)](#2-developer-certificate-of-origin-dco)
-2. [GPG / SSH commit signing](#3-gpg--ssh-commit-signing)
-3. [One-time local setup](#4-one-time-local-setup)
-4. [Development workflow](#5-development-workflow)
-5. [Coding standards](#6-coding-standards)
-6. [Running tests](#7-running-tests)
+1. [Developer Certificate of Origin (DCO)](#1-developer-certificate-of-origin-dco)
+2. [GPG / SSH commit signing](#2-gpg--ssh-commit-signing)
+3. [Development setup](#3-development-setup)
+4. [Development workflow](#4-development-workflow)
+5. [Coding standards](#5-coding-standards)
+6. [Starting development](#6-starting-development)
+7. [Running tests](#7-running-tests)
 
 ---
 
@@ -81,26 +82,45 @@ SSH signing is also accepted; see the
 
 ---
 
-## 3. One-time local setup
+## 3. Development setup
 
 ```bash
 # Clone the repo
 git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
 
-# Install the project with dev dependencies
-pip install -e ".[dev]"
-
-# Install the local commit-msg hook (enforces DCO before push)
-git config core.hooksPath .githooks
+# Install dev dependencies and register all git hooks
+make setup
 
 # Verify your identity is configured
 git config user.name   # should be "Your Name"
 git config user.email  # should be "you@example.com"
 ```
 
-The `commit-msg` hook rejects commits locally before they even reach GitHub,
-saving you a failed CI run.
+`make setup` does the following:
+
+1. Unsets `core.hooksPath` if previously configured (pre-commit requires this).
+2. `pip install -e ".[dev]"` — installs the package in editable mode with all
+   dev dependencies.
+3. `pre-commit install` — registers the pre-commit framework for both hook 
+   stages in `.git/hooks/`.
+
+After setup, every `git commit` automatically runs:
+
+- **ruff format** — enforces consistent formatting.
+- **ruff check --fix** — auto-fixes import order and style issues; fails the
+  commit if any unfixable violations remain.
+- **License header check** — rejects staged Python files missing the Apache
+  2.0 header.
+- **DCO check** — rejects commits missing a `Signed-off-by:` trailer, saving
+  you a failed CI run.
+
+You can also run linting and formatting checks manually at any time:
+
+```bash
+make lint      # check formatting and linting without modifying files
+make format    # auto-fix formatting and safe lint issues
+```
 
 ---
 
@@ -118,20 +138,18 @@ git push origin feat/my-feature
 ```
 
 PRs require:
-- All CI tests passing (Python 3.7–3.12).
+- All CI tests passing (Python 3.10–3.13).
 - DCO check passing (every commit signed off).
-- CLA signed (once per contributor).
-- At least one approving review.
+- Lint CI passing (ruff formatting and linting checks).
 
 ---
 
 ## 5. Coding standards
 
-- **Style:** follow PEP 8.  `black` and `isort` are recommended but not
-  enforced by CI yet.
+- **Style:** follow PEP 8.  `ruff` and `pre-commit` handle code formatting, 
+  so make sure you run `make setup` once after cloning the repository.
 - **Type hints:** use them on all public functions.  Stay compatible with
-  Python 3.7 (`from __future__ import annotations` is already imported
-  everywhere).
+  Python 3.10.
 - **License headers:** every new `.py` file must begin with the Apache 2.0
   header (copy from any existing file).
 - **New backends:** add a module under `src/concept_hierarchy/backends/`,
@@ -140,7 +158,51 @@ PRs require:
 
 ---
 
-## 6. Running tests
+## 6. Starting development
+
+All commands below should be run from the **repository root** (the directory that contains `pyproject.toml`).
+
+1. Clone the repo and run the one-time setup:
+
+```bash
+git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
+cd ConceptHierarchy
+make setup
+```
+
+2. Run the test suite:
+
+```bash
+pytest
+```
+
+3. Run with coverage:
+
+```bash
+pytest --cov=concept_hierarchy --cov-report=term-missing
+```
+
+4. Run type checks:
+
+```bash
+mypy src/
+```
+
+5. Test across all supported Python versions (requires the interpreters to be installed):
+
+```bash
+tox
+```
+
+6. Build a distribution:
+
+```bash
+python -m build
+```
+
+---
+
+## 7. Running tests
 
 ```bash
 # Single Python version

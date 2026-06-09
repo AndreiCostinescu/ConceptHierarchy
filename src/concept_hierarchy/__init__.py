@@ -20,12 +20,12 @@ semantics, and generates an implementation in a target language (currently C++).
 
 Typical usage
 -------------
-    from concept_hierarchy import compile_hierarchy
+    from concept_hierarchy import ch_compile
 
-    result = compile_hierarchy("my_hierarchy.json", target="cpp")
+    result = ch_compile("my_hierarchy.json", target="cpp")
 """
 
-from concept_hierarchy.compiler import compile_hierarchy  # noqa: F401
+from concept_hierarchy.compiler import ch_check, ch_check_from_json, ch_compile, ch_compile_from_json  # noqa: F401
 
 __version__ = "0.1.0"
-__all__ = ["compile_hierarchy"]
+__all__ = ["ch_check", "ch_check_from_json", "ch_compile", "ch_compile_from_json", "__version__"]

@@ -1,6 +1,10 @@
+![Logo](Logo.png) 
 # ConceptHierarchy
 
-**ConceptHierarchy** is a compiler for the ConceptHierarchy programming language.
+[![CI](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/ci.yml)
+[![Lint](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/lint.yml/badge.svg)](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/lint.yml)
+
+**ConceptHierarchy** is the compiler for the Concept Hierarchy knowledge programming language.
 
 It takes a JSON definition of a concept hierarchy, validates its syntax and
 semantics, and generates an implementation in a target programming language
@@ -45,13 +49,13 @@ pip install ConceptHierarchy
     "Integer": {
         "directParents": ["ValueDomain"],
         "data": {
-            "fromJsonLiteral": "integer"
+            "instantiation": "integer"
         }
     },
     "String": {
         "directParents": ["ValueDomain"],
         "data": {
-            "fromJsonLiteral": "string"
+            "instantiation": "string"
         }
     }
 }
@@ -66,9 +70,9 @@ concept-hierarchy compile animal_kingdom.json --target cpp --output animal_kingd
 Or use the Python API:
 
 ```python
-from concept_hierarchy import compile_hierarchy
+from concept_hierarchy import ch_compile
 
-code = compile_hierarchy("animal_kingdom.json", target="cpp")
+code = ch_compile("animal_kingdom.json", target="cpp")
 print(code)
 ```
 
@@ -76,63 +80,61 @@ print(code)
 
 ```
 src/concept_hierarchy/
-├── __init__.py          # Public API
-├── compiler.py          # Pipeline orchestrator
-├── cli.py               # Command-line interface
-├── models.py            # Internal AST / data model
-├── errors.py            # Exception hierarchy
-├── parser/              # JSON → model
-├── validator/           # Syntax & semantic checks
-├── codegen/             # Dispatcher
-└── backends/            # Language backends (cpp, …)
+├── __init__.py                                     # Public API: exports ch_compile and version
+├── cli.py                                          # CLI entry point (compile / validate subcommands)
+├── compiler.py                                     # Pipeline orchestrator: parse → validate → codegen
+├── errors.py                                       # CHSyntaxError / CHSemanticError with location tracking
+├── models.py                                       # ConceptHierarchyModel: root data structure from parsing
+├── utils.py                                        # Path helpers, string utilities, tab constant
+│
+├── definitions/                                    # Parsed and validated definition objects
+│   ├── definition.py                               # Abstract base: name validation and location tracking
+│   ├── concept_definition.py                       # ConceptDefinition: parents, description, raw data
+│   ├── concept_definition_hidden_implementation.py # HiddenImplementationDefinition: template args, abstract flag, impl path
+│   ├── concept_definition_value_domain.py          # ValueDomainDefinition: instantiation and serialization config
+│   ├── concept_definition_functions.py             # FunctionDefinition: interface, procedure, inversion, variations, scopes
+│   ├── concept_definition_domain_concept.py        # DomainConceptDefinition + PropertyDefinition: properties and functions
+│   ├── global_variable_definition.py               # GlobalVariableDefinition: global instance variables
+│   └── utils.py                                    # check_ch_name: identifier naming rules
+│
+├── validator/                                      # Semantic validation
+│   └── checker.py                                  # check_model: full syntax and semantic checks on the model
+│
+├── codegen/                                        # Code generation dispatch
+│   └── generator.py                                # generate(model, target): routes to the appropriate backend
+│
+└── backends/                                       # Language-specific code generators
+    ├── base.py                                     # BaseBackend: abstract interface (generate(model) → str)
+    └── cpp.py                                      # C++ backend: emits .hpp header with class hierarchies
 ```
 
 ## Supported backends
 
-| Target | Flag       | Output              |
-|--------|------------|---------------------|
+| Target | Flag           | Output               |
+|--------|----------------|----------------------|
 | C++    | `--target cpp` | Header file (`.hpp`) |
 
-## Development
+## Contributing
 
-All commands below should be run from the **repository root** (the directory that contains `pyproject.toml`).
+Please read the [contribution guide](CONTRIBUTING.md) for full details on DCO
+sign-off, GPG commit signing, coding standards, and the PR checklist.
 
-1. Clone the repo and install the package in editable mode with dev dependencies:
+**Quickstart:**
 
 ```bash
 git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
-pip install -e ".[dev]"
+make setup
 ```
 
-2. Run the test suite:
+`make setup` installs dev dependencies (including ruff and pre-commit) and
+registers the git hooks so formatting and linting run automatically on every
+commit.
 
 ```bash
-pytest
-```
-
-3. Run with coverage:
-
-```bash
-pytest --cov=concept_hierarchy --cov-report=term-missing
-```
-
-4. Run type checks:
-
-```bash
-mypy src/
-```
-
-5. Test across all supported Python versions (requires the interpreters to be installed):
-
-```bash
-tox
-```
-
-6. Build a distribution:
-
-```bash
-python -m build
+make lint      # check formatting + linting
+make format    # auto-fix formatting and safe lint issues
+pytest         # run the test suite
 ```
 
 ## License
