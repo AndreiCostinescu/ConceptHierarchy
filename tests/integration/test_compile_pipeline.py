@@ -14,59 +14,55 @@
 
 """Integration tests: full compile pipeline → C++ output."""
 
-import json
-
 import pytest
 
-from concept_hierarchy.compiler import compile_hierarchy
+from concept_hierarchy.compiler import ch_compile_from_json
 
-ANIMAL_KINGDOM = json.dumps(
-    {
-        "name": "AnimalKingdom",
-        "concepts": [
-            {
-                "name": "Animal",
-                "attributes": {"age": "int", "name": "string"},
-                "description": "Base animal.",
-            },
-            {
-                "name": "Dog",
-                "parent": "Animal",
-                "attributes": {"breed": "string"},
-            },
-        ],
-    }
-)
+ANIMAL_KINGDOM = {
+    "name": "AnimalKingdom",
+    "concepts": {
+        "Concept": {},
+        "Animal": {
+            "directParents": ["Concept"],
+            "description": "Base animal",
+            "data": {"properties": {"age": "Integer", "name": "String"}},
+        },
+        "Dog": {"directParents": ["Animal"], "data": {"properties": {"breed": "String"}}},
+        "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
+        "Integer": {"directParents": ["ValueDomain"], "data": {"instantiation": "integer"}},
+        "String": {"directParents": ["ValueDomain"], "data": {"instantiation": "string"}},
+    },
+}
 
 
 class TestCompileHierarchy:
     def test_returns_string(self):
-        code = compile_hierarchy(ANIMAL_KINGDOM, target="cpp")
+        code = ch_compile_from_json(ANIMAL_KINGDOM, target="cpp")
         assert isinstance(code, str)
 
     def test_contains_animal_struct(self):
-        code = compile_hierarchy(ANIMAL_KINGDOM, target="cpp")
+        code = ch_compile_from_json(ANIMAL_KINGDOM, target="cpp")
         assert "struct Animal" in code
 
     def test_inheritance_present(self):
-        code = compile_hierarchy(ANIMAL_KINGDOM, target="cpp")
+        code = ch_compile_from_json(ANIMAL_KINGDOM, target="cpp")
         assert "struct Dog" in code
         assert "Animal" in code  # Dog inherits from Animal
 
     def test_attribute_present(self):
-        code = compile_hierarchy(ANIMAL_KINGDOM, target="cpp")
+        code = ch_compile_from_json(ANIMAL_KINGDOM, target="cpp")
         assert "breed" in code
 
     def test_pragma_once(self):
-        code = compile_hierarchy(ANIMAL_KINGDOM, target="cpp")
+        code = ch_compile_from_json(ANIMAL_KINGDOM, target="cpp")
         assert "#pragma once" in code
 
     def test_unsupported_target_raises(self):
         with pytest.raises(ValueError, match="java"):
-            compile_hierarchy(ANIMAL_KINGDOM, target="java")
+            ch_compile_from_json(ANIMAL_KINGDOM, target="java")
 
     def test_write_to_file(self, tmp_path):
         out = tmp_path / "out.hpp"
-        compile_hierarchy(ANIMAL_KINGDOM, target="cpp", output_path=str(out))
+        ch_compile_from_json(ANIMAL_KINGDOM, target="cpp", output_path=str(out))
         assert out.exists()
         assert "struct Animal" in out.read_text()

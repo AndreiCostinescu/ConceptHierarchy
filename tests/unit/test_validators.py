@@ -12,69 +12,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for concept_hierarchy validators."""
+"""Unit tests for concept_hierarchy.validator.checker.check_model."""
 
 import pytest
 
-from concept_hierarchy.errors import SemanticError, SyntaxError as CHSyntaxError
-from concept_hierarchy.parser.parser import parse
-from concept_hierarchy.validator.semantics import check_semantics
-from concept_hierarchy.validator.syntax import check_syntax
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
+from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.validator.checker import check_model
 
 
 def _model(concepts, name="MyHierarchy"):
-    return parse({"name": name, "concepts": concepts})
+    return ConceptHierarchyModel.create_from_data({"name": name, "concepts": concepts})
 
 
 class TestSyntaxValidator:
     def test_valid_passes(self):
-        model = _model([{"name": "Foo", "attributes": {"x": "int"}}])
-        check_syntax(model)  # should not raise
+        model = _model({"Foo": {"data": {"properties": {"x": "Integer"}}}})
+        check_model(model)  # should not raise
 
     def test_invalid_concept_name(self):
-        model = _model([{"name": "123invalid"}])
+        model = _model({"123invalid": {"data": {"properties": {"x": "Integer"}}}})
         with pytest.raises(CHSyntaxError):
-            check_syntax(model)
+            check_model(model)
 
-    def test_invalid_attribute_name(self):
-        model = _model([{"name": "Foo", "attributes": {"1bad": "int"}}])
+    def test_invalid_property_name(self):
+        model = _model({"Foo": {"data": {"properties": {"1bad": "Integer"}}}})
         with pytest.raises(CHSyntaxError):
-            check_syntax(model)
+            check_model(model)
 
     def test_invalid_hierarchy_name(self):
-        model = _model([], name="bad-name!")
+        model = _model({}, name="bad-name!")
         with pytest.raises(CHSyntaxError):
-            check_syntax(model)
+            check_model(model)
 
 
 class TestSemanticValidator:
     def test_valid_hierarchy_passes(self):
+        with pytest.raises(CHSemanticError):
+            check_model(_model({"Base": {}, "Child": {"directParents": ["Base"]}}))
+        with pytest.raises(CHSemanticError):
+            check_model(_model({"Base": {"data": {}}, "Child": {"directParents": ["Base"]}}))
+        with pytest.raises(CHSemanticError):
+            check_model(_model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"]}}))
+        with pytest.raises(CHSemanticError):
+            check_model(
+                _model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {}}})
+            )
         model = _model(
-            [
-                {"name": "Base"},
-                {"name": "Child", "parent": "Base"},
-            ]
+            {"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {"properties": {}}}}
         )
-        check_semantics(model)  # should not raise
+        check_model(model)  # should not raise
 
     def test_undefined_parent(self):
-        model = _model([{"name": "Child", "parent": "Ghost"}])
-        with pytest.raises(SemanticError, match="Ghost"):
-            check_semantics(model)
-
-    def test_duplicate_names(self):
-        model = _model([{"name": "Foo"}, {"name": "Foo"}])
-        with pytest.raises(SemanticError, match="Duplicate"):
-            check_semantics(model)
+        model = _model({"Child": {"directParents": ["Ghost"]}})
+        with pytest.raises(CHSemanticError, match="Ghost"):
+            check_model(model)
 
     def test_cycle_detected(self):
-        # Manually build a cyclic model (parser won't produce this, but
-        # the validator must catch it).
-        from frozendict import frozendict
-        from concept_hierarchy.models import Concept, ConceptHierarchyModel
+        model = _model({"A": {"directParents": ["B"]}, "B": {"directParents": ["A"]}})
+        with pytest.raises(CHSemanticError, match="[Cc]ycle(s?)"):
+            check_model(model)
 
-        a = Concept("A", parent="B", attributes=frozendict())
-        b = Concept("B", parent="A", attributes=frozendict())
-        model = ConceptHierarchyModel("Cyclic", (a, b), frozendict())
-        with pytest.raises(SemanticError, match="[Cc]ircular"):
-            check_semantics(model)
+    def test_reference_cycle_detected(self):
+        model = _model({"Concept": {}, "A": "A"})
+        with pytest.raises(CHSemanticError, match="There is a cycle in .* references"):
+            check_model(model)
