@@ -209,7 +209,7 @@ class ConceptHierarchyChecker:
         try:
             self.ch.concept_topo_sort, roots = topological_sort(concept_parent_mapping)
             if self.ch.root_concept_name in roots and len(roots) != 1:
-                raise CHSemanticError(f"Concept hierarchy has multiple roots: {roots!r}", location_id=["concepts"])
+                raise CHSemanticError(f"Concept Hierarchy has multiple roots: {roots!r}", location_id=["concepts"])
             elif self.ch.root_concept_name not in roots:
                 for root in roots:
                     defined_concepts[root].parents.append(self.ch.root_concept_name)
