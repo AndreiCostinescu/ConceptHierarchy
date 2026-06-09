@@ -61,6 +61,17 @@ class ConceptHierarchyChecker:
         references: dict[str, ConceptHierarchyDefinition], definitions: dict, data_type: str
     ) -> dict[str, str | None]:
         mapped_references: dict[str, str | None] = {x: None for x in definitions}
+        for reference, ref_data in references.items():
+            assert isinstance(reference, str)
+            assert reference not in mapped_references
+            assert ref_data.is_reference()
+            referenced_concept = ref_data.is_reference_to
+            if referenced_concept not in mapped_references and referenced_concept not in definitions:
+                raise CHSemanticError(
+                    f"The referenced concept {referenced_concept!r} of {reference} does not exist in the "
+                    f"Concept Hierarchy!",
+                    location_id=[data_type, reference],
+                )
         total_length = len(definitions) + len(references)
         prev_length = len(mapped_references)
         while True:
