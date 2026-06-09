@@ -197,6 +197,11 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                 f"{var_t_arg!r} is not a template argument of {self.name}!",
                                 self.location_id("templateArguments", "variadicGroupIdentifiers", var_t_arg),
                             )
+                        elif var_t_arg not in self.variadic_template_arguments:
+                            raise CHSemanticError(
+                                f"{var_t_arg!r} is not a variadic template argument of {self.name}!",
+                                self.location_id("templateArguments", "variadicGroupIdentifiers", var_t_arg),
+                            )
                         if any(char not in self.variadic_group_identifier_characters for char in var_t_g_id):
                             variadic_group_identifier_character_enumeration = ", ".join(
                                 "'" + x + "'" for x in self.variadic_group_identifier_characters
