@@ -77,8 +77,12 @@ class ConceptHierarchyChecker:
         while True:
             for concept_name, concept_def in references.items():
                 if concept_name not in mapped_references:
-                    if concept_def.is_reference_to in mapped_references:
-                        mapped_references[concept_name] = mapped_references[concept_def.is_reference_to]
+                    referenced_concept = concept_def.is_reference_to
+                    if referenced_concept in mapped_references:
+                        if referenced_concept in definitions:
+                            mapped_references[concept_name] = referenced_concept
+                        else:
+                            mapped_references[concept_name] = mapped_references[referenced_concept]
             current_length = len(mapped_references)
             assert current_length <= total_length
             if current_length == total_length:

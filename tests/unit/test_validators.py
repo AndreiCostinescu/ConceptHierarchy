@@ -80,6 +80,35 @@ class TestSemanticValidator:
         ):
             check_model(model)
 
+    def test_single_parent_string(self):
+        model = _model({"Concept": {}, "ValueDomain": {"directParents": "Concept"}})
+        with pytest.raises(
+            CHSyntaxError,
+            match="Direct parents of the concept ValueDomain must be a JSON array of strings, not 'Concept'!",
+        ):
+            check_model(model)
+
+    def test_value_domain_reference(self):
+        model = _model(
+            {"Concept": {}, "ValueDomain": {"directParents": ["Concept"], "data": {}}, "Type": "ValueDomain"}
+        )
+        with pytest.raises(CHSemanticError, match="Found a domain concept with no data defined Type"):
+            check_model(model)
+
+    def test_reference_chain(self):
+        model = _model({"Concept": {}, "A": {"directParents": ["Concept"], "data": {"properties": {}}}, "B": "A"})
+        check_model(model)
+
+    def test_root_reference_chain(self):
+        model = _model({"Concept": {}, "A": "Concept"})
+        with pytest.raises(CHSemanticError, match=r"Concept Hierarchy has multiple roots: \['Concept', 'A'\]"):
+            check_model(model)
+
+    def test_long_root_reference_chain(self):
+        model = _model({"Concept": {}, "A": "Concept", "B": "A"})
+        with pytest.raises(CHSemanticError, match=r"Concept Hierarchy has multiple roots: \['Concept', 'A', 'B'\]"):
+            check_model(model)
+
     def test_self_reference(self):
         model = _model({"Concept": {}, "A": "A"})
         with pytest.raises(CHSemanticError, match="There is a cycle in .* references"):
