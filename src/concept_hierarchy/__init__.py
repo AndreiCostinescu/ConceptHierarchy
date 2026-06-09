@@ -25,7 +25,7 @@ Typical usage
     result = ch_compile("my_hierarchy.json", target="cpp")
 """
 
-from concept_hierarchy.compiler import ch_compile  # noqa: F401
+from concept_hierarchy.compiler import ch_check, ch_check_from_json, ch_compile, ch_compile_from_json  # noqa: F401
 
 __version__ = "0.1.0"
-__all__ = ["ch_compile", "__version__"]
+__all__ = ["ch_check", "ch_check_from_json", "ch_compile", "ch_compile_from_json", "__version__"]
