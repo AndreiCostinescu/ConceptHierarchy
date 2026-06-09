@@ -80,7 +80,7 @@ print(code)
 
 ```
 src/concept_hierarchy/
-├── __init__.py                                     # Public API: exports ch_compile and version
+├── __init__.py                                     # Public API: exports version and the ch_check and ch_compile functions
 ├── cli.py                                          # CLI entry point (compile / validate subcommands)
 ├── compiler.py                                     # Pipeline orchestrator: parse → validate → codegen
 ├── errors.py                                       # CHSyntaxError / CHSemanticError with location tracking
