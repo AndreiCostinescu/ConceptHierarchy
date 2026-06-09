@@ -153,4 +153,8 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         super().concept_data_check()
 
         self.check_instantiation()
+        # missing checks:
+        #  - template constraints of "instantiation" specializations
+        #  - json-schema specification formulae (including correctly template-instantiated types in its specification)
         self.check_default_serialization()
+        # missing checks: defaultSerialization value specifications are unique across all concepts!

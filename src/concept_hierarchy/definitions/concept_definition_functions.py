@@ -297,7 +297,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
                     specialization_id = tuple(inversion_def.get(x, None) for x in self.template_argument_order)
                     curated_inversion_definition[specialization_id] = inversion_def["procedure"]
                 self.inversion = curated_inversion_definition
-        # missing checks: inversions are valid FunctionComposition expressions
+        # missing checks:
+        #  - inversions are valid FunctionComposition expressions
+        #  - template constraints of inversions
 
         # check "variations"
         self.variations = self.data.get("variations", None)
