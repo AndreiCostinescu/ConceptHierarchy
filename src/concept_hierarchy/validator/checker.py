@@ -66,7 +66,7 @@ class ConceptHierarchyChecker:
             assert reference not in mapped_references
             assert ref_data.is_reference()
             referenced_concept = ref_data.is_reference_to
-            if referenced_concept not in mapped_references and referenced_concept not in definitions:
+            if referenced_concept not in references and referenced_concept not in definitions:
                 raise CHSemanticError(
                     f"The referenced concept {referenced_concept!r} of {reference} does not exist in the "
                     f"Concept Hierarchy!",
@@ -289,7 +289,7 @@ class ConceptHierarchyChecker:
                             location_id=["concepts", c_name, "data", "templateArguments"],
                         )
             if isinstance(c, ValueDomainDefinition):
-                if c.default_serialization in self.ch.default_serializations:
+                if c.default_serialization is not None and c.default_serialization in self.ch.default_serializations:
                     raise CHSemanticError(
                         f"The default serialization value of ValueDomains must be unique across all concepts!"
                         f'\nFound (non-inclusive) duplicate "defaultSerialization" specifications in {c_name} and '

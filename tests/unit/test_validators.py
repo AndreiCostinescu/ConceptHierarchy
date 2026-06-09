@@ -73,7 +73,19 @@ class TestSemanticValidator:
         with pytest.raises(CHSemanticError, match="[Cc]ycle(s?)"):
             check_model(model)
 
-    def test_reference_cycle_detected(self):
+    def test_undefined_reference(self):
+        model = _model({"Concept": {}, "A": "B"})
+        with pytest.raises(
+            CHSemanticError, match="The referenced concept 'B' of A does not exist in the Concept Hierarchy!"
+        ):
+            check_model(model)
+
+    def test_self_reference(self):
         model = _model({"Concept": {}, "A": "A"})
+        with pytest.raises(CHSemanticError, match="There is a cycle in .* references"):
+            check_model(model)
+
+    def test_reference_cycle_detected(self):
+        model = _model({"Concept": {}, "A": "B", "B": "A"})
         with pytest.raises(CHSemanticError, match="There is a cycle in .* references"):
             check_model(model)
