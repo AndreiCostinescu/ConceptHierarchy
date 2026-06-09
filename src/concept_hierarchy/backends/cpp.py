@@ -21,16 +21,17 @@ inheritance follows the parent → child relationships; attributes become
 public data members.
 """
 
-from typing import Dict, List, Optional
-
 from concept_hierarchy.backends.base import BaseBackend
-from concept_hierarchy.models import Concept, ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_definition import ConceptDefinition
+from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
+from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.utils import topological_sort
 
 # ---------------------------------------------------------------------------
 # Simple type mapping: ConceptHierarchy type strings → C++ type strings.
 # Extend this dict as the type system grows.
 # ---------------------------------------------------------------------------
-_TYPE_MAP: Dict[str, str] = {
+_TYPE_MAP: dict[str, str] = {
     "int": "int",
     "float": "float",
     "double": "double",
@@ -52,13 +53,13 @@ class CppBackend(BaseBackend):
     """Generate a C++ header from a :class:`ConceptHierarchyModel`."""
 
     def generate(self, model: ConceptHierarchyModel) -> str:
-        lines: List[str] = [_HEADER]
+        lines: list[str] = [_HEADER]
 
         # Topologically sorted so base classes always appear before derived ones.
-        ordered = _topological_sort(model)
+        ordered, _roots = topological_sort({c: c_data.parents for c, c_data in model.concepts.items()})
 
-        for concept in ordered:
-            lines.append(self._render_concept(concept))
+        for concept_name in ordered:
+            lines.append(CppBackend.render_concept(model.concepts[concept_name]))
 
         return "\n".join(lines)
 
@@ -66,53 +67,26 @@ class CppBackend(BaseBackend):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _render_concept(self, concept: Concept) -> str:
-        parts: List[str] = []
+    @staticmethod
+    def render_concept(concept: ConceptDefinition) -> str:
+        parts: list[str] = []
 
         if concept.description:
             parts.append(f"// {concept.description}")
 
-        if concept.parent:
-            parts.append(f"struct {concept.name} : public {concept.parent} {{")
+        if concept.parents:
+            bases = ", ".join(f"public {p}" for p in concept.parents)
+            parts.append(f"struct {concept.name} : {bases} {{")
         else:
             parts.append(f"struct {concept.name} {{")
 
-        for attr_name, attr_type in concept.attributes.items():
-            cpp_type = _TYPE_MAP.get(attr_type, attr_type)
-            parts.append(f"    {cpp_type} {attr_name};")
+        if isinstance(concept, DomainConceptDefinition):
+            for prop_name, prop_type in concept.properties.items():
+                assert isinstance(prop_type, dict)
+                cpp_type = _TYPE_MAP.get(
+                    prop_type[PropertyDefinition.VALUE_DOMAIN], prop_type[PropertyDefinition.VALUE_DOMAIN]
+                )
+                parts.append(f"    {cpp_type} {prop_name};")
 
         parts.append("};\n")
         return "\n".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Topological sort (Kahn's algorithm)
-# ---------------------------------------------------------------------------
-
-def _topological_sort(model: ConceptHierarchyModel) -> List[Concept]:
-    from collections import deque
-
-    concepts: Dict[str, Concept] = {c.name: c for c in model.concepts}
-    # children[parent] = list of child names
-    children: Dict[str, List[str]] = {name: [] for name in concepts}
-    in_degree: Dict[str, int] = {name: 0 for name in concepts}
-
-    for concept in model.concepts:
-        if concept.parent is not None:
-            children[concept.parent].append(concept.name)
-            in_degree[concept.name] += 1
-
-    queue: deque[str] = deque(
-        name for name, degree in in_degree.items() if degree == 0
-    )
-    result: List[Concept] = []
-
-    while queue:
-        name = queue.popleft()
-        result.append(concepts[name])
-        for child in children[name]:
-            in_degree[child] -= 1
-            if in_degree[child] == 0:
-                queue.append(child)
-
-    return result
