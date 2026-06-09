@@ -87,6 +87,8 @@ class ConceptHierarchyModel:
         self.all_domain_concept_properties: dict[str, str] = {}  # prop_name -> defining concept
         self.all_domain_concept_functions: dict[str, str] = {}  # func_name -> defining concept
 
+        self.default_serializations: dict[str, str] = {}
+
         self.external_concept_data_resolver = None
 
     def assert_structure(self):

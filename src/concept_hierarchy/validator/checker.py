@@ -288,6 +288,15 @@ class ConceptHierarchyChecker:
                             f"\nPlease rename the template argument!",
                             location_id=["concepts", c_name, "data", "templateArguments"],
                         )
+            if isinstance(c, ValueDomainDefinition):
+                if c.default_serialization in self.ch.default_serializations:
+                    raise CHSemanticError(
+                        f"The default serialization value of ValueDomains must be unique across all concepts!"
+                        f'\nFound (non-inclusive) duplicate "defaultSerialization" specifications in {c_name} and '
+                        f"{self.ch.default_serializations[c.default_serialization]}!",
+                        ["concepts", c_name, "data", "defaultSerialization"],
+                    )
+                self.ch.default_serializations[c.default_serialization] = c_name
             if isinstance(c, FunctionDefinition):
                 for eval_arg_name in c.evaluation_interface:
                     if eval_arg_name in self.ch.instances:
