@@ -118,6 +118,8 @@ class ConceptHierarchyChecker:
         if not (ch_keys <= {"name", "metadata", "concepts", "instances"}):
             # interpret this as a definition of concepts
             concept_hierarchy = {"concepts": concept_hierarchy}
+        elif len(ch_keys) == 0:
+            concept_hierarchy = {"concepts": {}}
 
         # -- hierarchy name --------------------------------------------------
 

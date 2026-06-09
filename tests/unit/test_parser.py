@@ -45,6 +45,17 @@ FULL = ConceptHierarchyModel.create_from_data(
 )
 
 
+class TestParseEmpty:
+    def test_empty_still_defines_concept(self):
+        model = ConceptHierarchyModel.create_from_data({})
+        check_model(model)
+        assert model.name == "ConceptHierarchy"
+        assert dict(model.metadata) == {}
+        assert len(model.concepts) == 1
+        assert "Concept" in model.concepts
+        assert len(model.instances) == 0
+
+
 class TestParseMinimal:
     model = MINIMAL
 
