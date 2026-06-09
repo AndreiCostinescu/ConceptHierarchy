@@ -14,14 +14,15 @@
                 "properties": {
                     "age": "Integer",
                     "name": "String",
-                    "0name": "String",
-                    "int_name": 0,
                     "type": {
-                        "String": "String",
                         "valueDomain": "String"
                     },
                     "description": {
-                        "description": "Test property"
+                        "valueDomain": "String",
+                        "description": "Test property",
+                        "hooks": {},
+                        "confidenceHalfDecayTime": [2, "d"],
+                        "nameDefaultInstanceValuesWithThisInstanceName": true
                     }
                 }
             }
@@ -43,13 +44,13 @@
         "Integer": {
             "directParents": ["ValueDomain"],
             "data": {
-                "fromJsonLiteral": "integer"
+                "instantiation": "integer"
             }
         },
         "String": {
             "directParents": ["ValueDomain"],
             "data": {
-                "fromJsonLiteral": "string"
+                "instantiation": "string"
             }
         }
     },
