@@ -1,8 +1,10 @@
+![Logo](Logo.png) 
 # ConceptHierarchy
 
+[![CI](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/ci.yml/badge.svg)](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/ci.yml)
 [![Lint](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/lint.yml/badge.svg)](https://github.com/AndreiCostinescu/ConceptHierarchy/actions/workflows/lint.yml)
 
-**ConceptHierarchy** is a compiler for the ConceptHierarchy programming language.
+**ConceptHierarchy** is the compiler for the Concept Hierarchy knowledge programming language.
 
 It takes a JSON definition of a concept hierarchy, validates its syntax and
 semantics, and generates an implementation in a target programming language
