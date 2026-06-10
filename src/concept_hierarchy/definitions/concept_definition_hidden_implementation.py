@@ -34,6 +34,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         self.abstract: bool | None = None
         self.template_arguments: tuple[str, ...] | dict | None = None
 
+        # if template_argument_order is (), then there are no template arguments
         self.template_argument_order: tuple[str, ...] = ()
         # unparsed template constraint formulae, must be strings
         self.template_argument_constraints: dict[str, str] = {}
@@ -248,3 +249,6 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         self.check_implementation()
         self.check_abstract()
         self.check_template_arguments()
+
+    def is_templatable(self):
+        return self.template_argument_order != ()
