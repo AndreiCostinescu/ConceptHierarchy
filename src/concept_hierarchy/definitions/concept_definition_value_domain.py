@@ -164,6 +164,14 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         self.check_instantiation()
         # missing checks:
         #  - template constraints of "instantiation" specializations
+        #    TYPE CHECK
+        #       (check valid constraint def. + warn if definition intersected with t-arg-constraint is empty)
         #  - json-schema specification formulae (including correctly template-instantiated types in its specification)
+        #    REQUIRES: type parsing
+        #    EXPRESSION CHECK
         self.check_default_serialization()
-        # missing checks: defaultSerialization value specifications are unique across all concepts!
+        # missing checks:
+        #  - defaultSerialization value specifications are unique across all concepts!
+        #    REQUIRES: all concept data initialized
+        #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts

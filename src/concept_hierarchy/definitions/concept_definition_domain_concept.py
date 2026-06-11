@@ -686,19 +686,35 @@ class DomainConceptDefinition(ConceptDefinition):
                     )
         # missing checks:
         #  - property names should be unique among all concepts (incl. defining a function with same name as a property)
+        #    REQUIRES: all concept data to be initialized
+        #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
         #  - property types (correctly template-instantiated type)
+        #    TYPE CHECK
         #  - property constraints (correctly defined either subtype of property type of Variation-instantiation of
         #      property type)
+        #    EXPRESSION CHECK
         #  - property constraints subtype of property types
+        #    REQUIRES: constraint expression to be processed
+        #    TYPE CHECK
         #  - hooks: correctly template-instantiated Function name, correct argument name
         #      (and type of this property must be a subtype of the argument's type)
         #      and the FunctionComposition hook expression
+        #    STRUCTURE and TYPE CHECK
         #  - computations: valid FunctionComposition expression
+        #    EXPRESSION CHECK
         #  - confidenceHalfDecayTime: valid Duration expression
+        #    EXPRESSION CHECK
         #  - default: valid expression of property type
+        #    EXPRESSION CHECK
         #  - assumptions: valid expression of type Variation of property type
+        #    EXPRESSION CHECK
         #  - specialization keyword (structure and content; can't specialize ValueDomain, description or static-ness)!
+        #    REQUIRES: all parent concepts to be processed (because they are the ones from which data is inherited)
+        #    PROCESS AFTER: all concept data represented, all types parsed, all expressions processed
+        #    STRUCTURE CHECK
         #  - whether DEFAULT_INSTANCE_NAME can be true (check that the property type contains instances in its type!)
+        #    TYPE CHECK
 
         if not isinstance(self.functions, dict):
             raise CHSyntaxError(
@@ -774,8 +790,14 @@ class DomainConceptDefinition(ConceptDefinition):
                 assert isinstance(func_data[FunctionDefinition.DEFAULT], dict)
         # missing checks:
         #  - function names should be unique among all concepts (incl. defining a property with same name as a function)
+        #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
         #  - CustomFunction expression (incl. types of argument and procedure expression)
+        #    EXPRESSION CHECK
         #  - specialization keyword (structure and content; can't specialize ValueDomain, description or static-ness)!
+        #    REQUIRES: all parent concepts to be processed (because they are the ones from which data is inherited)
+        #    PROCESS AFTER: all concept data represented, all types parsed, all expressions processed
+        #    STRUCTURE CHECK
 
         if not isinstance(self.management, dict):
             raise CHSyntaxError(
@@ -800,4 +822,6 @@ class DomainConceptDefinition(ConceptDefinition):
                 )
         # missing checks:
         #  - "initialization" is a valid FunctionComposition expression (with variable context "instance")
+        #    EXPRESSION CHECK
         #  - "consolidation" is a valid FunctionComposition expression (with variable context "instance")
+        #    EXPRESSION CHECK

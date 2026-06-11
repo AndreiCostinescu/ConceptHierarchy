@@ -262,9 +262,13 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 #  because there can be default arguments on parent Function arguments, which are not defined here
         # missing checks:
         # - function evaluation argument types
+        #   TYPE CHECK
         # - function evaluation default arguments
+        #   EXPRESSION CHECK
         # - whether default argument values are truly defined arguments
         #   (can't check here because this Function can define default values for arguments of the parent Function)
+        #   REQUIRES: all concepts initialized (arguments can be inherited from parent functions)
+        #   STRUCTURE CHECK
 
         # check "procedure"
         self.procedure = self.data.get(FunctionDefinition.function_procedure, None)
@@ -274,7 +278,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
                     f"The procedure of a {self.definition_type} must be a JSON object, not {self.procedure!r}",
                     self.location_id(FunctionDefinition.function_procedure),
                 )
-        # missing checks: procedure is valid FunctionComposition expression
+        # missing checks:
+        # - procedure is valid FunctionComposition expression
+        #   EXPRESSION CHECK
 
         # check "inversion"
         self.inversion = self.data.get(FunctionDefinition.function_inversion, None)
@@ -348,7 +354,10 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 self.inversion = curated_inversion_definition
         # missing checks:
         #  - inversions are valid FunctionComposition expressions
+        #    EXPRESSION CHECK
         #  - template constraints of inversions
+        #    TYPE CHECK
+        #       (valid template constraint def. + warn if definition intersected with t-arg-constraint is empty)
 
         # check "variations"
         self.variations = self.data.get(FunctionDefinition.function_variations, None)
@@ -434,7 +443,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
                         var_def = var_entry[1]
                     curated_variations_definition[arg_tuple_id] = var_def
                 self.variations = curated_variations_definition
-        # missing checks: variation data is a valid Function! instantiation
+        # missing checks:
+        #  - variation data is a valid Function! instantiation
+        #    EXPRESSION CHECK
 
         # check "addNewVariablesInExistingScope"
         self.add_new_variables_in_existing_scope = self.data.get(
@@ -451,7 +462,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
             None,
             lambda x: self.location_id(FunctionDefinition.function_add_new_variables_in_existing_scope),
         )
-        # missing checks: types of new variables are valid
+        # missing checks:
+        #  - types of new variables are valid
+        #    TYPE CHECK
 
         # check "subScopes"
         self.sub_scopes = self.data.get(FunctionDefinition.function_sub_scopes, {})
@@ -479,4 +492,6 @@ class FunctionDefinition(HiddenImplementationDefinition):
             self.check_new_var_dict_def(
                 new_var_def_data, arg_name, lambda x: self.location_id(FunctionDefinition.function_sub_scopes, arg_name)
             )
-        # missing checks: types of new variables are valid
+        # missing checks:
+        #  - types of new variables are valid
+        #    TYPE CHECK

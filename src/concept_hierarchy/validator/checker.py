@@ -211,7 +211,9 @@ class ConceptHierarchyChecker:
             defined_instances[referenced_instance_name] = GlobalVariableDefinition(
                 referencing_instance, referenced_instance.definition_data, ConceptHierarchyModel.model_instances
             )
-        # missing checks: valid expressions for all global variables
+        # missing checks:
+        #  - valid expressions for all global variables
+        #    EXPRESSION CHECK
 
         # perform topological sort of concepts and instances
         concept_parent_mapping = {c_name: c.parents for c_name, c in defined_concepts.items()}
