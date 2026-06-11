@@ -31,7 +31,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
         "addNewVariablesInExistingScope",
         "subScopes",
     }
-    evaluation_interface_keywords: set[str] = {"_defaultArgumentValues"}
+    evaluation_interface_keywords: set[str] = {"res", "_defaultArgumentValues"}
     argument_reference_types: set[str] = {"Reference", "NoRef", "EmptyReference"}
     argument_modifier_types: set[str] = {"Get", "Modify", "GetModify"}
 
@@ -57,6 +57,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
         self.evaluation_argument_reference_types: dict[str, str] = {}
         self.evaluation_argument_modifier_types: dict[str, str] = {}
         self.evaluation_argument_default_values: dict[str, object] = {}
+        self.result_type: str | None = None
+        self.result_reference_type: str | None = None
+        self.result_modifier_type: str | None = None
 
     @classmethod
     def from_node(cls, concept_definition: ConceptDefinition):
@@ -73,6 +76,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
         domain_concept.evaluation_argument_reference_types = {}
         domain_concept.evaluation_argument_modifier_types = {}
         domain_concept.evaluation_argument_default_values = {}
+        domain_concept.result_type = None
+        domain_concept.result_reference_type = None
+        domain_concept.result_modifier_type = None
 
         return domain_concept
 
@@ -154,6 +160,47 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 else:
                     new_var_dict_def[new_var_name] = (new_var_def[0], False)
 
+    def process_type_reference_and_modifier_of_argument(self, arg_name, arg_type_def) -> tuple[str, str, str]:
+        if not isinstance(arg_type_def, (str, list)) or (
+            isinstance(arg_type_def, list)
+            and (not (1 <= len(arg_type_def) <= 3) or any(not isinstance(x, str) for x in arg_type_def))
+        ):
+            raise CHSyntaxError(
+                f"{self.definition_type} argument type definitions must be either a JSON string "
+                f"(defining the argument's type) or an array of at least 1 and at most 3 string items "
+                f"(defining the argument's type, its modifier type, and its reference type)!\n\t"
+                f"Got {arg_type_def!r}",
+                self.location_id("interface", arg_name),
+            )
+        elif isinstance(arg_type_def, str):
+            arg_type = arg_type_def
+            arg_ref_type = "NoRef"
+            arg_mod_type = "Get"
+        else:
+            arg_type = arg_type_def[0]
+            if len(arg_type_def) > 1:
+                arg_ref_type = arg_type_def[1]
+                if len(arg_type_def) > 2:
+                    arg_mod_type = arg_type_def[2]
+                else:
+                    arg_mod_type = "Get"
+            else:
+                arg_ref_type = "NoRef"
+                arg_mod_type = "Get"
+        if arg_ref_type not in self.argument_reference_types:
+            raise CHSyntaxError(
+                f"{self.definition_type} argument reference definitions must be "
+                f"{self.argument_reference_types!r}, not {arg_ref_type}",
+                self.location_id("interface", arg_name),
+            )
+        if arg_mod_type not in self.argument_modifier_types:
+            raise CHSyntaxError(
+                f"{self.definition_type} argument modifier definitions must be "
+                f"{self.argument_modifier_types!r}, not {arg_mod_type}",
+                self.location_id("interface", arg_name),
+            )
+        return arg_type, arg_ref_type, arg_mod_type
+
     def concept_data_check(self):
         super().concept_data_check()
 
@@ -178,48 +225,17 @@ class FunctionDefinition(HiddenImplementationDefinition):
                     continue
                 # assertion, not check because this is a key of a JSON object
                 assert isinstance(arg_name, str)
-                if not isinstance(arg_type_def, (str, list)) or (
-                    isinstance(arg_type_def, list)
-                    and (not (1 <= len(arg_type_def) <= 3) or any(not isinstance(x, str) for x in arg_type_def))
-                ):
-                    raise CHSyntaxError(
-                        f"{self.definition_type} argument type definitions must be either a JSON string "
-                        f"(defining the argument's type) or an array of at least 1 and at most 3 string items "
-                        f"(defining the argument's type, its modifier type, and its reference type)!\n\t"
-                        f"Got {arg_type_def!r}",
-                        self.location_id("interface", arg_name),
-                    )
-                elif isinstance(arg_type_def, str):
-                    self.evaluation_argument_types[arg_name] = arg_type_def
-                    arg_ref_type = "NoRef"
-                    arg_mod_type = "Get"
-                else:
-                    self.evaluation_argument_types[arg_name] = arg_type_def[0]
-                    if len(arg_type_def) > 1:
-                        arg_ref_type = arg_type_def[1]
-                        if len(arg_type_def) > 2:
-                            arg_mod_type = arg_type_def[2]
-                        else:
-                            arg_mod_type = "Get"
-                    else:
-                        arg_ref_type = "NoRef"
-                        arg_mod_type = "Get"
-                if arg_ref_type not in self.argument_reference_types:
-                    raise CHSyntaxError(
-                        f"{self.definition_type} argument reference definitions must be "
-                        f"{self.argument_reference_types!r}, not {arg_ref_type}",
-                        self.location_id("interface", arg_name),
-                    )
-                if arg_mod_type not in self.argument_modifier_types:
-                    raise CHSyntaxError(
-                        f"{self.definition_type} argument modifier definitions must be "
-                        f"{self.argument_modifier_types!r}, not {arg_mod_type}",
-                        self.location_id("interface", arg_name),
-                    )
-                self.evaluation_argument_reference_types[arg_name] = arg_ref_type
-                self.evaluation_argument_modifier_types[arg_name] = arg_mod_type
-            if "_defaultArgumentValues" in interface_extra_data:
-                self.evaluation_argument_default_values = interface_extra_data["_defaultArgumentValues"]
+                type_def_res = self.process_type_reference_and_modifier_of_argument(arg_name, arg_type_def)
+                self.evaluation_argument_types[arg_name] = type_def_res[0]
+                self.evaluation_argument_reference_types[arg_name] = type_def_res[1]
+                self.evaluation_argument_modifier_types[arg_name] = type_def_res[2]
+            if "res" in self.interface:
+                type_def_res = self.process_type_reference_and_modifier_of_argument("res", self.interface["res"])
+                self.result_type = type_def_res[0]
+                self.result_reference_type = type_def_res[1]
+                self.result_modifier_type = type_def_res[2]
+            if "_defaultArgumentValues" in self.interface:
+                self.evaluation_argument_default_values = self.interface["_defaultArgumentValues"]
                 if not isinstance(self.evaluation_argument_default_values, dict):
                     raise CHSyntaxError(
                         f"The default argument values of a {self.definition_type} must be a JSON object, not "
