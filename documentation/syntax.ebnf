@@ -1,0 +1,571 @@
+////// Concept Hierarchy Syntax
+// Rule is: add whitespace-consuming-token (ws) only before and after characters
+//   or production rules that aren't upper case
+// Uppercase production rules handle themselves whitespaces; thus, when they're used,
+//   it is not necessary to also surround them with whitespace-consuming-tokens
+
+//// Syntax for Concepts
+ConceptHierarchyConcepts
+        ::= ws '{' ConceptDefinitionEntry (',' ConceptDefinitionEntry)* '}' ws
+ConceptDefinitionEntry
+        ::= ConceptDefinition | ExternalFileEnumeration
+ExternalFileEnumeration
+        ::= ws '"external"' ws ':' ws '[' (ws | (PathToExternalFile (',' PathToExternalFile)*)) ']'
+ConceptDefinition
+        ::= ConceptReference ':' ConceptContentDefinition
+ConceptContentDefinition
+        ::= ConceptReference | InstantiatedValueDomain | (ws '{' ConceptDefMember (',' ConceptDefMember)* '}' ws)
+ConceptDefMember
+        ::= Description | ConceptParents | ConceptData
+Description
+        ::= ws '"description"' ws ':' ws string ws
+ConceptParents
+        ::= ws '"directParents"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws
+ConceptData
+        ::= ws '"data"' ws ':' (
+            (ws '{' (DomainConceptData | ValueDomainConceptData | FunctionConceptData) '}' ws)
+            | PathToExternalFile)
+PathToExternalFile
+        ::= ws string ws
+
+//// Domain Concept Data
+DomainConceptData
+        ::= DomainConceptDefinitionItem ("," DomainConceptDefinitionItem)*
+DomainConceptDefinitionItem
+        ::= ConceptPropertyContainerDefinition
+          | ConceptFunctionContainerDefinition
+          | ConceptManagementDefinition
+
+// Domain Properties
+ConceptPropertyContainerDefinition
+        ::= ws '"properties"' ws ':' ws '{'
+                (ws | (PropertyContentDefinition (',' PropertyContentDefinition)*))
+            '}' ws
+PropertyContentDefinition
+        ::= PropertyDefinition | PropertySpecializationDefinitionContainer
+
+PropertyDefinition
+        ::= PropertyReference ':' PropertyDomainDefinition
+PropertyDomainDefinition
+        ::= InstantiatedValueDomain
+          | (ws '{' PropertyDomainDefinitionElement (',' PropertyDomainDefinitionElement)* '}' ws)
+PropertyDomainDefinitionElement
+        ::= Description
+          | (ws '"valueDomain"' ws ':' (InstantiatedValueDomain | ValueDomainCreation))
+          | (ws '"static"' ws ':' ws boolean ws)
+          | (ws '"constraint"' ws ':' (InstantiatedValueDomain | ValueDomainCreation))
+          | (ws '"default"' ws ':' ValueDomainSerialization)
+          | (ws '"assumptions"' ws ':' ValueDomainSerialization)
+          | (ws '"hooks"' ws ':' ws '{' DefinitionOfHookForProperty (',' DefinitionOfHookForProperty)* '}' ws)
+          | (ws '"computations"' ws ':' FunctionComposition)
+          | (ws '"confidenceHalfDecayTime"' ws ':' DurationSerialization)
+          | (ws '"nameDefaultInstanceValuesWithThisInstanceName"' ws ':' ws boolean ws)
+DefinitionOfHookForProperty
+        ::= InstantiatedFunctionReference ':' ws '{'
+                DefinitionOfHookForPropertyGivenFunction (',' DefinitionOfHookForPropertyGivenFunction)*
+            '}' ws
+DefinitionOfHookForPropertyGivenFunction
+        ::= FunctionArgumentReference ':' ws '{'
+                ((PreHookDefinition (',' PostHookDefinition)?) |
+                 (PostHookDefinition (',' PreHookDefinition)?))
+            '}' ws
+PreHookDefinition
+        ::= ws '"pre"' ws ':' FunctionComposition
+PostHookDefinition
+        ::= ws '"post"' ws ':' FunctionComposition
+
+PropertySpecializationDefinitionContainer
+        ::= ws '"_specializations"' ws ':' ws '{'
+                (ws | (PropertySpecializationDefinition (',' PropertySpecializationDefinition)*))
+            '}' ws
+PropertySpecializationDefinition
+        ::= PropertyReference ':' ws '{'
+                (ws | (PropertySpecializationItem (',' PropertySpecializationItem)*))
+            '}' ws
+PropertySpecializationItem
+        ::= SpecializablePropertyDefinitionElement
+          | (ws '"justForThis"' ws ':' PropertySpecializationContainer)
+          | (ws '"justForSubconcepts"' ws ':' PropertySpecializationContainer)
+PropertySpecializationContainer
+        ::= ws '{'
+                (ws | (SpecializablePropertyDefinitionElement (',' SpecializablePropertyDefinitionElement)*))
+            '}' ws
+SpecializablePropertyDefinitionElement
+        ::= (ws '"constraint"' ws ':' (InstantiatedValueDomain | ValueDomainCreation |
+                                       InheritedValueDisambiguation)))
+          | (ws '"default"' ws ':' (ValueDomainSerialization | InheritedValueDisambiguation))
+          | (ws '"assumptions"' ws ':' (ValueDomainSerialization | InheritedValueDisambiguation))
+          | (ws '"hooks"' ws ':' ((ws '{' DefinitionOfHookForProperty (',' DefinitionOfHookForProperty)* '}' ws) |
+                                  InheritedValueDisambiguation))
+          | (ws '"computations"' ws ':' (FunctionComposition | InheritedValueDisambiguation))
+          | (ws '"confidenceHalfDecayTime"' ws ':' (DurationSerialization | InheritedValueDisambiguation))
+          | (ws '"nameDefaultInstanceValuesWithThisInstanceName"' ws ':' ((ws boolean ws) |
+                                                                          InheritedValueDisambiguation))
+
+// Domain Functions
+ConceptFunctionContainerDefinition
+        ::= ws "functions" ws ':' ws '{'
+                (ws | (DomainFunctionDefinitionContent (',' DomainFunctionDefinitionContent)*))
+            '}' ws
+DomainFunctionDefinitionContent
+        ::= DomainFunctionDefinition | DomainFunctionSpecialization
+DomainFunctionDefinition
+        ::= ConceptFunctionReference ':'
+            (DomainFunctionCustomProcedure |
+             (ws '{'
+                  (ws | (DomainFunctionDefinitionElement (',' DomainFunctionDefinitionElement)*))
+              '}' ws))
+DomainFunctionCustomProcedure
+        ::= FunctionComposition | CustomFunctionDefinition
+CustomFunctionDefinition
+        ::= ws '{'
+                ((DomainFunctionInterfaceDefinition ',' FunctionProcedure) |
+                 (FunctionProcedure ',' DomainFunctionInterfaceDefinition))
+            '}' ws
+DomainFunctionInterfaceDefinition
+        ::= ws '"interface"' ws ':' ws '{'
+                (ws | (SimpleFunctionEvaluationInterfaceArgumentDefinition
+                       (',' SimpleFunctionEvaluationInterfaceArgumentDefinition)*))
+            '}' ws
+DomainFunctionDefinitionElement
+        ::= Description
+          | (ws '"static"' ws ':' ws boolean ws)
+          | (ws '"default"' ws ':' DomainFunctionCustomProcedure)
+DomainFunctionSpecialization
+        ::= ws '"_specializations"' ws ':' ws '{'
+                (ws | (DomainFunctionSpecializationElement (',' DomainFunctionSpecializationElement)*))
+            '}' ws
+DomainFunctionSpecializationElement
+        ::= ConceptFunctionReference ':' (DomainFunctionCustomProcedure | InheritedValueDisambiguation | (ws '{'
+                (ws | (DomainFunctionSpecializationItem (',' DomainFunctionSpecializationItem)*))
+            '}' ws))
+DomainFunctionSpecializationItem
+        ::= FunctionSpecializationValueDefinition
+          | (ws '"justForThis"' ws ':' FunctionSpecializationKindContent)
+          | (ws '"justForSubconcepts"' ws ':' FunctionSpecializationKindContent)
+FunctionSpecializationKindContent
+        ::= DomainFunctionCustomProcedure | InheritedValueDisambiguation | (ws '{'
+                (ws | (FunctionSpecializationValueDefinition (',' FunctionSpecializationValueDefinition)*))
+            '}' ws)
+FunctionSpecializationValueDefinition
+        ::= (ws '"default"' ws ':' (DomainFunctionCustomProcedure | InheritedValueDisambiguation))
+
+// Concept Management Data
+ConceptManagementDefinition
+        ::= ws '"management"' ws ':' ws '{'
+                (ws | (ConceptManagementItemDefinition (',' ConceptManagementItemDefinition)*))
+            '}' ws
+ConceptManagementItemDefinition
+        ::= ConceptInitializationDefinition
+          | ConceptConsolidationDefinition
+ConceptInitializationDefinition
+        ::= ws '"initialization"' ws ':' FunctionComposition
+ConceptConsolidationDefinition
+        ::= ws '"consolidation"' ws ':' FunctionComposition
+
+
+//// ValueDomain Concept Data
+ValueDomainConceptData
+        ::= ValueDomainDataEntry (',' ValueDomainDataEntry)*
+ValueDomainDataEntry
+        ::= ValueDomainImplementation
+          | ValueDomainAbstract
+          | ValueDomainDefaultSerialization
+          | ValueDomainFromJsonLiteral
+          | ValueDomainInterface
+          | TemplateArgumentDefinitionBlock
+ValueDomainImplementation
+        ::= ws '"implementation"' ws ':' ws string ws
+ValueDomainAbstract
+        ::= ws '"abstract"' ws ':' ws boolean ws
+ValueDomainDefaultSerialization
+        ::= ws '"defaultSerialization"' ws ':' ws
+            ('null' | '"null"' | '"boolean"' | '"integer"' | '"number"' | '"string"') ws
+ValueDomainFromJsonLiteral
+        ::= ws '"fromJsonLiteral"' ws ':' FromJsonLiteralFormula
+ValueDomainInterface
+        ::= ws '"creation"' ws ':' ws '{'
+                (ws | (ValueDomainCreationInterfaceArgumentDefinition
+                           (',' ValueDomainCreationInterfaceArgumentDefinition)*))
+            '}' ws
+TemplateArgumentDefinitionBlock
+        ::= ws '"templateArguments"' ws ':'
+            (TemplateOrderContent | ExplicitTemplateArgumentDefinitionBlock)
+TemplateOrderContent
+        ::= ws '[' (ws | (TemplateArgumentReference '...'? (',' TemplateArgumentReference '...'?)*)) ']' ws
+ExplicitTemplateArgumentDefinitionBlock
+        ::= ws '{'
+                (ws | (InterfaceTemplateArgumentDefinition (',' InterfaceTemplateArgumentDefinition)*))
+            '}' ws
+InterfaceTemplateArgumentDefinition
+        ::= TemplateOrderDefinition
+          | TemplateArgumentDefinition
+          | TemplateSubstitutionDefinition
+          | TemplateVariadicGroupsDefinition
+TemplateOrderDefinition
+        ::= ws '"order"' ws ':' TemplateOrderContent
+TemplateArgumentDefinition
+        ::= TemplateArgumentReference ':' TemplateArgumentConstraintFormula
+TemplateSubstitutionDefinition
+        ::= ws '"substitution"' ws ':' ws '{'
+                (ws | (TemplateArgumentSubstitutionDefinition
+                           (',' TemplateArgumentSubstitutionDefinition)*))
+            '}' ws
+TemplateArgumentSubstitutionDefinition
+        ::= (ParentTemplateArgumentReference | (ws '"' upperCaseName ':' upperCaseName '"' ws)) ':'
+            TemplateArgumentValueForSubstitution
+TemplateArgumentValueForSubstitution
+        ::= LiteralValue | InstantiatedValueDomain |
+            (ws '[' (ws | (VariadicGroupValue (',' VariadicGroupValue)*)) ']' ws)
+VariadicGroupValue
+        ::= LiteralValue | InstantiatedValueDomain | (ws upperCaseName '...' ws)
+LiteralValue
+        ::= ws (boolean | number | ('"\\"' character* '\\""')) ws
+TemplateVariadicGroupsDefinition
+        ::= ws '"variadicGroupIdentifiers"' ws ':' ws '{'
+                (ws | (TemplateVariadicGroupIdentifier (',' TemplateVariadicGroupIdentifier)*))
+            '}' ws
+TemplateVariadicGroupIdentifier
+        ::= TemplateArgumentReference ':' ws '"' ('!' | '$')* '"' ws
+
+//// Function Concept Data
+FunctionConceptData
+        ::= FunctionDataEntry (',' FunctionDataEntry)*
+FunctionDataEntry
+        ::= ValueDomainImplementation
+          | ValueDomainAbstract
+          | TemplateArgumentDefinitionBlock
+          | FunctionInterface
+          | FunctionInversion
+          | FunctionProcedure
+          | FunctionVariations
+          | FunctionUpdateVariableScope
+          | FunctionNewVariableScope
+FunctionInterface
+        ::= ws '"interface"' ws ':' ws '{'
+                (ws | (FunctionEvaluationInterfaceArgumentDefinition
+                          (',' FunctionEvaluationInterfaceArgumentDefinition)*))
+            '}' ws
+FunctionInversion
+        ::= ws '"inversion"' ws ':' (FunctionInversionSpecificationNoTemplateRestriction |
+                                     FunctionInversionSpecificationWithTemplateRestriction)
+FunctionInversionSpecificationNoTemplateRestriction
+        ::= ws '{'
+                (ws | (FunctionInversionForArgument (',' FunctionInversionForArgument)*))
+            '}' ws
+FunctionInversionSpecificationWithTemplateRestriction
+        ::= ws '['
+                (ws | (FunctionInversionSpecificationBlock (',' FunctionInversionSpecificationBlock)*))
+            ']' ws
+FunctionInversionSpecificationBlock
+        ::= ws '{'
+                (ws | (FunctionInversionBlockItem (',' FunctionInversionBlockItem)*))
+            '}' ws
+FunctionInversionBlockItem
+        ::= (FunctionInversionBlockTemplateInstantiation | FunctionInversionBlockProcedure)
+FunctionInversionBlockTemplateInstantiation
+        ::= TemplateArgumentReference ':' TemplateArgumentConstraintFormula | (ws 'null' ws)
+FunctionInversionBlockProcedure
+        ::= ws '"procedure"' ws ':' FunctionInversionSpecificationNoTemplateRestriction
+FunctionInversionForArgument
+        ::= FunctionArgumentReference ':' FunctionComposition
+FunctionProcedure
+        ::= ws '"procedure"' ws ':' FunctionComposition
+FunctionVariations
+        ::= ws '"variations"' ws ':' (FunctionVariationArray | FunctionVariationObject)
+FunctionVariationArray
+        ::= ws '[' (ws | (FunctionVariationForArgumentArray (',' FunctionVariationForArgumentArray)*)) ']' ws
+FunctionVariationForArgumentArray
+        ::= ws '['
+                (FunctionArgumentReference |
+                 (ws '[' FunctionArgumentReference (',' FunctionArgumentReference)* ']' ws))
+                ',' FunctionVariationRelationDefinition
+            ']' ws
+FunctionVariationRelationDefinition
+        ::= InstantiatedFunctionReference | FunctionComposition
+FunctionVariationObject
+        ::= ws '{' (ws | (FunctionVariationForArgumentObject (',' FunctionVariationForArgumentObject)*)) '}' ws
+FunctionVariationForArgumentObject
+        ::= FunctionArgumentReference ':' FunctionVariationRelationDefinition
+FunctionUpdateVariableScope
+        ::= ws '"addNewVariablesInExistingScope"' ws ':' ws '{'
+                (ws | (FunctionNewVariableScopeForArgumentNewVariableDefinition
+                           (',' FunctionNewVariableScopeForArgumentNewVariableDefinition)*))
+            '}' ws
+FunctionNewVariableScopeForArgumentNewVariableDefinition
+        ::= NewFunctionVariableReference ':' (InstantiatedValueDomain |
+                                              (ws '[' InstantiatedValueDomain ',' ws boolean ws ']' ws))
+FunctionNewVariableScope
+        ::= ws '"subScopes"' ws ':' ws '{'
+                (ws | (FunctionNewVariableScopeForArgument (',' FunctionNewVariableScopeForArgument)*))
+            '}' ws
+FunctionNewVariableScopeForArgument
+        ::= FunctionArgumentReference ':' ws '{'
+                (ws | (FunctionNewVariableScopeForArgumentNewVariableDefinition
+                           (',' FunctionNewVariableScopeForArgumentNewVariableDefinition)*))
+            '}' ws
+
+//// Syntax for Global Variables
+ConceptHierarchyGlobalVariables
+        ::= ws '{' (ws | (GlobalVariableDefinitionEntry (',' GlobalVariableDefinitionEntry)*)) '}' ws
+GlobalVariableDefinitionEntry
+        ::= VariableNameReference ':' ConceptHierarchyValue
+
+//// Function Interface Definition Syntax
+ValueDomainCreationInterfaceArgumentDefinition
+        ::= DefinitionOfArguments
+          | ValueDomainCreationArgumentDefinition
+          | DefinitionOfDefaultArgumentValues
+FunctionEvaluationInterfaceArgumentDefinition
+        ::= FunctionEvaluationArgumentDefinition
+          | FunctionEvaluationResultDefinition
+          | DefinitionOfDefaultArgumentValues
+SimpleFunctionEvaluationInterfaceArgumentDefinition
+        ::= FunctionEvaluationArgumentDefinition
+          | FunctionEvaluationResultDefinition
+ValueDomainCreationArgumentDefinition
+        ::= ArgumentReference ':' (
+                InstantiatedValueDomain |
+                (ws '[' InstantiatedValueDomain (',' BaseReferenceTypes)? ']' ws)
+            )
+FunctionEvaluationArgumentDefinition
+        ::= ArgumentReference ':' (
+                InstantiatedValueDomain |
+                (ws '[' InstantiatedValueDomain (',' AllModifiers (',' AllReferenceTypes)?)? ']' ws)
+            )
+FunctionEvaluationResultDefinition
+        ::= ws '"res"' ws ':' (
+                InstantiatedValueDomain |
+                (ws '[' InstantiatedValueDomain (',' BaseModifiers (',' BaseReferenceTypes)?)? ']' ws)
+            )
+AllModifiers
+        ::= ws ('"Get"' | '"Modify"' | '"GetModify"') ws
+BaseModifiers
+        ::= ws ('"Get"' | '"Modify"') ws
+AllReferenceTypes
+        ::= ws ('"NoRef"' | '"Reference"' | '"EmptyReference"') ws
+BaseReferenceTypes
+        ::= ws ('"NoRef"' | '"Reference"') ws
+DefinitionOfArguments
+        ::= ws '"_arguments"' ws ':' (ArgumentList | (ws '[' (ArgumentList (',' ArgumentList)*) ']' ws))
+ArgumentList
+        ::= ws '[' (ws | (ArgumentReference (',' ArgumentReference)*)) ']' ws
+DefinitionOfDefaultArgumentValues
+        ::= ws '"_defaultArgumentValues"' ws ':' ws
+            '{' (ws | (DefaultArgumentValue (',' DefaultArgumentValue)*)) '}' ws
+DefaultArgumentValue
+        ::= ArgumentReference ':' ConceptHierarchyValue
+
+//// ConceptHierarchy Utils for Data Values
+ConceptHierarchyValue
+        ::= ValueDomainSerialization | ValueDomainCreation | FunctionComposition
+OptionalValueDomainSerialization
+        ::= ValueDomainSerialization | (ws 'null' ws)
+ValueDomainSerialization
+        ::= Json
+InheritedValueDisambiguation
+        ::= ws '"inheritFrom:' upperCaseName '"' ws
+ValueDomainCreation
+        ::= ws '{' InstantiatedValueDomain ':' ws '{'
+                (ws | (ValueDomainMemberCreation (',' ValueDomainMemberCreation)*))
+            '}' ws '}' ws
+ValueDomainMemberCreation
+        ::= ValueDomainMemberReference ':' ConceptHierarchyValue
+FunctionComposition
+        ::= ws '{' InstantiatedFunctionReference ':' ws '{'
+                (ws | (FunctionArgumentCall (',' FunctionArgumentCall)*))
+            '}' (ws ',' ws '"isFunctionEvaluation"' ws ':' ws boolean)? ws '}' ws
+FunctionArgumentCall
+        ::= FunctionArgumentReference ':' ConceptHierarchyValue
+DurationSerialization
+        ::= ws (number |
+                ('[' ws number ws ',' ws
+                     ('"ns"' | '"us"' | '"ms"' | '"s"' | '"min"' | '"h"' | '"d"' | '"w"' | '"m"' | '"y"')
+                     ws ']')) ws
+
+//// ValueDomain fromJsonLiteral Formula
+FromJsonLiteralFormula
+        ::= ws ('null' | ('"' literalDeserialization '"')) ws
+literalDeserialization
+        ::= literal (' | ' literal)*
+typeAndLiteralDeserialization
+        ::= literalDeserialization | namedType | '(' namedType ', ' ('NoRef' | 'Reference') ')'
+varTypeAndLiteralDeserialization
+        ::= literalDeserialization | (upperCaseName (templateInstantiation | '...')?) |
+            '(' (upperCaseName (templateInstantiation | '...')?) ', ' ('NoRef' | 'Reference') ')'
+literal
+        ::= 'null' | 'boolean' | 'integer' | 'number' | 'string' | arrayLiteral | objectLiteral
+arrayLiteral
+        ::= 'array' (('<' typeAndLiteralDeserialization '>' ('{' arraySizeConstraint '}')?) |
+                     ('[' (varTypeAndLiteralDeserialization (', ' varTypeAndLiteralDeserialization)*)? ']'))?
+arraySizeConstraint
+        ::= (('<' natural) | ('<=' natural) | (natural '<') | (natural '<=') | natural | (natural ', ' natural))
+objectLiteral
+        ::= 'object' ('{' (explicitObjectLiteral | generalObjectLiteral | conceptObjectLiteral)? '}')?
+explicitObjectLiteral
+        ::= string ': ' typeAndLiteralDeserialization (', ' string ': ' typeAndLiteralDeserialization)*
+generalObjectLiteral
+        ::= ('keys' ('='|'<') '{' (string (', ' string)*)? '}, ')? 'values=' typeAndLiteralDeserialization
+conceptObjectLiteral
+        ::= ('keys' ('='|'<') conceptObjectKeysOptions ', ')? 'values=' (namedType | 'x')
+conceptObjectKeysOptions
+        ::= 'props' | ('props(' nonEmptyConceptList ')') | ('props+(' nonEmptyConceptList ')') |
+            'funcs' | ('funcs(' nonEmptyConceptList ')') | ('funcs+(' nonEmptyConceptList ')')
+nonEmptyConceptList
+        ::= upperCaseName (', ' uppercaseName)*
+
+//// Template Argument Constraint Formula
+// No variadic group constraint: all template values of the variadic group must satisfy the same constraint!
+TemplateArgumentConstraintFormula
+        ::= (ws '"' (literalTemplateConstraint | templateArgumentConstraint) '"' ws) | LiteralValue
+literalTemplateConstraint
+        ::= ('Literal:' ('boolean' | 'int' | 'number' | 'string'))
+templateArgumentConstraint
+        ::= templateArgumentConstraintLiteral | templateArgumentConstraintOperatorCall
+templateArgumentConstraintOperatorCall
+        ::= ((('And' | 'Or') '(' templateArgumentConstraint (', ' templateArgumentConstraint)* ')') |
+             ('Not(' templateArgumentConstraint ')'))
+templateArgumentConstraintLiteral
+        ::= ((templateArgumentConstraintLiteralName '*'?)
+          | ('^' templateArgumentConstraintLiteralName '*'?)
+          | (templateArgumentConstraintLiteralName '.'))
+templateArgumentConstraintLiteralName
+        ::= upperCaseName ('<' (ws | (templateConstraintFormula (', ' templateConstraintFormula)*)) '>')?
+templateConstraintFormula
+        ::= literalTemplateConstraint | literalValue | templateArgumentConstraint
+
+//// Template-Instantiated Types
+// ── Entry point ─────────────────────────────────────────────────────────────
+// Important to have the ', ' (with the space) as separator everywhere in the instantiation!
+//     hooks are defined using this convention and they rely on exact string matching!
+// So if spacing is off, then hooks will not match and thus not be executed!
+InstantiatedValueDomain ::= ws '"' namedType '"' ws
+
+// ── Top-level named type ─────────────────────────────────────────────────────
+// Literals, variadicId, and '...' are all forbidden at this level.
+// Allow lowercase names here and let the semantic checks accept valid template arguments!
+namedType               ::= name typeExtra
+name                    ::= nameStartingWithLetter
+typeExtra               ::= templateInstantiation? ('(' funcArgList? ')')?
+templateInstantiation   ::= '<' (templateArgListWithGrp | templateArgListWithVar)? '>'
+
+// ── Template argument lists (two mutually exclusive modes) ───────────────────
+// A given '<…>' uses one mode or the other; mixing is a semantic error.
+
+// Mode 1 — group mode: variadic groups allowed, variadicId forbidden
+templateArgListWithGrp  ::= templateArgWithGrp (', ' templateArgWithGrp)*
+templateArgWithGrp      ::= variadicGroup | literal | namedType
+
+// Mode 2 — variadicId mode: variadicId allowed, variadic groups forbidden
+templateArgListWithVar  ::= templateArgWithVar (', ' templateArgWithVar)*
+templateArgWithVar      ::= literal | (variadicId? namedType)
+variadicId              ::= [!$]+
+
+// ── Variadic group ───────────────────────────────────────────────────────────
+// Only usable as a template argument in group mode.
+// Elements may be literals or expandable names; variadicId is forbidden here.
+variadicGroup           ::= '[' groupElementList? ']'
+groupElementList        ::= groupElement (', ' groupElement)*
+groupElement            ::= literalValue | expandableName
+
+// ── Function arguments ───────────────────────────────────────────────────────
+// Literals, variadicId, and bracket groups are all forbidden here.
+// '...' is allowed only as a semantic matter — see note below.
+funcArgList             ::= funcArg (', ' funcArg)*
+funcArg                 ::= expandableName
+// Note: Only names that refer to a variadic template parameter (i.e. those not constrained as "Literal:…"
+//       in the concept hierarchy) may be expanded for function arguments. This cannot be enforced syntactically.
+
+// ── Expandable name ──────────────────────────────────────────────────────────
+// Shared by group elements and function arguments.
+// Either expands with '...' (no template/func args) or carries typeExtra (no '...').
+// '...' is tested before typeExtra to avoid typeExtra matching empty and shadowing it.
+expandableName          ::= name ('...' | typeExtra)
+
+// ── Literals ─────────────────────────────────────────────────────────────────
+// Allowed only as template argument values and variadic group elements.
+// May not be prefixed with variadicId and may not be followed by '...'.
+literalValue            ::= boolean | number | '\\"' character* '\\"'
+
+templateArgumentValue   ::= literalValue | namedType | variadicGroup
+
+//// Naming
+ConceptReference
+        ::= ws '"' upperCaseName '"' ws
+PropertyReference
+        ::= ws '"' lowerCaseName '"' ws
+ConceptFunctionReference
+        ::= ws '"' lowerCaseName '"' ws
+ArgumentReference
+        ::= ws '"' lowerCaseName '"' ws
+
+ValueDomainMemberReference
+        ::= ws '"' lowerCaseName '"' ws
+
+ParentTemplateArgumentReference
+        ::= ws '"' upperCaseName '"'
+TemplateArgumentReference
+        ::= ws '"' upperCaseName '"' ws
+
+InstantiatedFunctionReference
+        ::= ws '"' namedType '"' ws
+
+FunctionArgumentReference
+        ::= ws '"' lowerCaseName '"' ws
+
+NewFunctionVariableReference
+        ::= ws '"' lowerCaseName '"' ws
+
+VariableNameReference
+        ::= ws '"' nameStartingWithLetter '"' ws
+
+nameStartingWithLetter
+        ::= ([a-z] | [A-Z]) ([A-Z] | [a-z] | digit | '_')*
+upperCaseName
+        ::= [A-Z] ([A-Z] | [a-z] | digit | '_')*
+lowerCaseName
+        ::= [a-z] ([A-Z] | [a-z] | digit | '_')*
+
+//// JSON Grammar
+Json ::= Element  // with capital letter because it processes whitespaces correctly
+
+value ::= object | array | string | number | boolean | "null"
+
+boolean ::= 'true' | 'false'
+
+object ::= '{' (ws | (member (',' member)*)) '}'
+
+member ::= ws string ws ':' element
+
+array ::= '[' (ws  | (element (',' element)*)) ']'
+
+Element ::= ws value ws
+
+string ::= '"' character* '"'
+
+character ::= [#x0020-#x10FFFF] // excludes control chars, handled separately
+            | '\\' escape
+
+escape ::= '"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | ('u' hex hex hex hex)
+
+hex ::= digit | [A-F] | [a-f]
+
+number ::= integer fraction exponent
+
+integer ::= natural | ('-' natural)
+
+natural ::= digit | (onenine digits)
+
+digits ::= digit+
+
+digit ::= '0' | onenine
+
+onenine ::= [1-9]
+
+fraction ::= ('.' digits)?
+
+exponent ::= ([Ee] sign digits)?
+
+sign ::= [+\-]?
+
+ws ::= [#x0020#x000A#x000D#x0009]*
