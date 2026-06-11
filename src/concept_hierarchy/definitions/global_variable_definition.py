@@ -14,29 +14,36 @@
 
 from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
+from concept_hierarchy.errors import CHSyntaxError
 
 
 class GlobalVariableDefinition(ConceptHierarchyDefinition):
-    def __init__(self, name: str, definition_data: object):
+    global_variable_name: str = "Global Variable"
+
+    def __init__(self, name: str, definition_data: object, definition_location_str: str):
         self.orig_data = None
         self.value = None
         self.value_type = None
         self.deserialize_with_value = False
         self.is_literal = False
         self.is_instance = False
-        super().__init__(name, definition_data)
+        super().__init__(name, definition_data, definition_location_str)
 
     def check(self):
         super().check()
-        check_ch_name(self.name, "instance", allow_starting_with_underscore=True)
+        if not check_ch_name(self.name, allow_starting_with_underscore=True):
+            raise CHSyntaxError(
+                f"Names of global variables must be valid non-digit-starting string names, not {self.name}",
+                location_id=self.location_id(),
+            )
 
     @property
     def definition_type(self) -> str:
-        return "Global Variable"
+        return GlobalVariableDefinition.global_variable_name
 
     @property
     def definition_location(self) -> list[str]:
-        return ["instances", self.name]
+        return super().definition_location + [self.name]
 
     def check_syntax(self):
         self.value = self.orig_data

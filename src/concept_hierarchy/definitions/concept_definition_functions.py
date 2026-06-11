@@ -23,17 +23,26 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 
 
 class FunctionDefinition(HiddenImplementationDefinition):
+    function_name: str = "Function"
+    function_interface: str = "interface"
+    function_procedure: str = "procedure"
+    function_inversion: str = "inversion"
+    function_variations: str = "variations"
+    function_add_new_variables_in_existing_scope: str = "addNewVariablesInExistingScope"
+    function_sub_scopes: str = "subScopes"
+    function_result: str = "res"
+    function_default_argument_values: str = "_defaultArgumentValues"
     implementation_related_keys: set[str] = HiddenImplementationDefinition.implementation_related_keys | {
-        "interface",
-        "procedure",
-        "inversion",
-        "variations",
-        "addNewVariablesInExistingScope",
-        "subScopes",
+        function_interface,
+        function_procedure,
+        function_inversion,
+        function_variations,
+        function_add_new_variables_in_existing_scope,
+        function_sub_scopes,
     }
-    evaluation_interface_keywords: set[str] = {"res", "_defaultArgumentValues"}
-    argument_reference_types: set[str] = {"Reference", "NoRef", "EmptyReference"}
-    argument_modifier_types: set[str] = {"Get", "Modify", "GetModify"}
+    evaluation_interface_keywords: set[str] = {function_result, function_default_argument_values}
+    argument_reference_types: list[str] = ["NoRef", "Reference", "EmptyReference"]
+    argument_modifier_types: list[str] = ["Get", "Modify", "GetModify"]
 
     def __init__(self, name: str, definition_data: object):
         super().__init__(name, definition_data)
@@ -84,7 +93,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
 
     @property
     def definition_type(self) -> str:
-        return "Function"
+        return FunctionDefinition.function_name
 
     def check_inversion_arguments(
         self, arg_inversion_mapping: dict[str, dict], location_id_functor: Callable[[str], LocationId]
@@ -170,12 +179,12 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 f"(defining the argument's type) or an array of at least 1 and at most 3 string items "
                 f"(defining the argument's type, its modifier type, and its reference type)!\n\t"
                 f"Got {arg_type_def!r}",
-                self.location_id("interface", arg_name),
+                self.location_id(FunctionDefinition.function_interface, arg_name),
             )
         elif isinstance(arg_type_def, str):
             arg_type = arg_type_def
-            arg_ref_type = "NoRef"
-            arg_mod_type = "Get"
+            arg_ref_type = self.argument_reference_types[0]
+            arg_mod_type = self.argument_modifier_types[0]
         else:
             arg_type = arg_type_def[0]
             if len(arg_type_def) > 1:
@@ -183,21 +192,21 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 if len(arg_type_def) > 2:
                     arg_mod_type = arg_type_def[2]
                 else:
-                    arg_mod_type = "Get"
+                    arg_mod_type = self.argument_modifier_types[0]
             else:
-                arg_ref_type = "NoRef"
-                arg_mod_type = "Get"
+                arg_ref_type = self.argument_reference_types[0]
+                arg_mod_type = self.argument_modifier_types[0]
         if arg_ref_type not in self.argument_reference_types:
             raise CHSyntaxError(
                 f"{self.definition_type} argument reference definitions must be "
                 f"{self.argument_reference_types!r}, not {arg_ref_type}",
-                self.location_id("interface", arg_name),
+                self.location_id(FunctionDefinition.function_interface, arg_name),
             )
         if arg_mod_type not in self.argument_modifier_types:
             raise CHSyntaxError(
                 f"{self.definition_type} argument modifier definitions must be "
                 f"{self.argument_modifier_types!r}, not {arg_mod_type}",
-                self.location_id("interface", arg_name),
+                self.location_id(FunctionDefinition.function_interface, arg_name),
             )
         return arg_type, arg_ref_type, arg_mod_type
 
@@ -205,18 +214,19 @@ class FunctionDefinition(HiddenImplementationDefinition):
         super().concept_data_check()
 
         # check "interface"
-        if "interface" not in self.data:
+        if FunctionDefinition.function_interface not in self.data:
             raise CHSyntaxError(
-                f'A {self.definition_type} must define its evaluation interface as a JSON object in the "interface" key'
-                f" of its definition data. {self.definition_type} {self.name} does not!",
+                f"A {self.definition_type} must define its evaluation interface as a JSON object in the "
+                f'"{FunctionDefinition.function_interface}" key of its definition data. {self.definition_type} '
+                f"{self.name} does not!",
                 self.location_id(),
             )
-        self.interface = self.data["interface"]
+        self.interface = self.data[FunctionDefinition.function_interface]
         if not isinstance(self.interface, dict):
             raise CHSyntaxError(
                 f"The evaluation interface of a {self.definition_type} must be defined as a JSON object, not "
                 f"{self.interface!r}!",
-                self.location_id("interface"),
+                self.location_id(FunctionDefinition.function_interface),
             )
         else:
             interface_extra_data = {k: v for k, v in self.interface.items() if k in self.evaluation_interface_keywords}
@@ -229,18 +239,24 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 self.evaluation_argument_types[arg_name] = type_def_res[0]
                 self.evaluation_argument_reference_types[arg_name] = type_def_res[1]
                 self.evaluation_argument_modifier_types[arg_name] = type_def_res[2]
-            if "res" in self.interface:
-                type_def_res = self.process_type_reference_and_modifier_of_argument("res", self.interface["res"])
+            if FunctionDefinition.function_result in self.interface:
+                type_def_res = self.process_type_reference_and_modifier_of_argument(
+                    FunctionDefinition.function_result, self.interface[FunctionDefinition.function_result]
+                )
                 self.result_type = type_def_res[0]
                 self.result_reference_type = type_def_res[1]
                 self.result_modifier_type = type_def_res[2]
-            if "_defaultArgumentValues" in self.interface:
-                self.evaluation_argument_default_values = self.interface["_defaultArgumentValues"]
+            if FunctionDefinition.function_default_argument_values in self.interface:
+                self.evaluation_argument_default_values = self.interface[
+                    FunctionDefinition.function_default_argument_values
+                ]
                 if not isinstance(self.evaluation_argument_default_values, dict):
                     raise CHSyntaxError(
                         f"The default argument values of a {self.definition_type} must be a JSON object, not "
                         f"{self.evaluation_argument_default_values!r}",
-                        self.location_id("interface", "_defaultArgumentValues"),
+                        self.location_id(
+                            FunctionDefinition.function_interface, FunctionDefinition.function_default_argument_values
+                        ),
                     )
                 # check whether the default argument is an argument later, after all concept data has been initialized
                 #  because there can be default arguments on parent Function arguments, which are not defined here
@@ -251,37 +267,43 @@ class FunctionDefinition(HiddenImplementationDefinition):
         #   (can't check here because this Function can define default values for arguments of the parent Function)
 
         # check "procedure"
-        self.procedure = self.data.get("procedure", None)
+        self.procedure = self.data.get(FunctionDefinition.function_procedure, None)
         if self.procedure is not None:
             if not isinstance(self.procedure, dict):
                 raise CHSyntaxError(
                     f"The procedure of a {self.definition_type} must be a JSON object, not {self.procedure!r}",
-                    self.location_id("procedure"),
+                    self.location_id(FunctionDefinition.function_procedure),
                 )
         # missing checks: procedure is valid FunctionComposition expression
 
         # check "inversion"
-        self.inversion = self.data.get("inversion", None)
+        self.inversion = self.data.get(FunctionDefinition.function_inversion, None)
         if self.inversion is not None:
             if not isinstance(self.inversion, (dict, list)):
                 raise CHSyntaxError(
                     f"The inversion of a {self.definition_type} must be a JSON object, not {self.inversion!r}",
-                    self.location_id("inversion"),
+                    self.location_id(FunctionDefinition.function_inversion),
                 )
             if isinstance(self.inversion, dict):
-                self.check_inversion_arguments(self.inversion, lambda x: self.location_id("inversion", x))
+                self.check_inversion_arguments(
+                    self.inversion, lambda x: self.location_id(FunctionDefinition.function_inversion, x)
+                )
                 self.inversion = {tuple(None for _ in self.template_argument_order): self.inversion}
             else:
                 curated_inversion_definition = {}
                 for inversion_index, inversion_def in enumerate(self.inversion):
-                    if not isinstance(inversion_def, dict) or "procedure" not in inversion_def:
+                    if (
+                        not isinstance(inversion_def, dict)
+                        or FunctionDefinition.function_procedure not in inversion_def
+                    ):
                         raise CHSyntaxError(
                             f"The template specialization syntax for {self.definition_type} inversion definition should"
                             f" be a JSON array of JSON objects containing:"
                             f"\n\tfor each {self.definition_type} template argument a template constraint formula, and"
-                            f'\n\tthe inversion Function composition procedure (at the "procedure" key of the object)'
-                            f" for that template specialization!\nGot {inversion_def!r}",
-                            self.location_id("inversion", inversion_index),
+                            f"\n\tthe inversion Function composition procedure (at the "
+                            f'"{FunctionDefinition.function_procedure}" key of the object) for that template '
+                            f"specialization!\nGot {inversion_def!r}",
+                            self.location_id(FunctionDefinition.function_inversion, inversion_index),
                         )
                     for t_arg, t_arg_constraint in inversion_def.items():
                         # assertion, not check because this is a key of a JSON object
@@ -290,41 +312,52 @@ class FunctionDefinition(HiddenImplementationDefinition):
                             raise CHSemanticError(
                                 f"{t_arg} is not a template argument of the {self.definition_type} {self.name}! "
                                 f"Can't define an inversion for this specialization!",
-                                self.location_id("inversion", inversion_index, t_arg),
+                                self.location_id(FunctionDefinition.function_inversion, inversion_index, t_arg),
                             )
                         if not isinstance(t_arg_constraint, (str, NoneType)):
                             raise CHSyntaxError(
                                 f"Specialization of template constraint formulae for {self.definition_type} inversion "
                                 f"procedure must be a JSON string or null (if that template argument is not to be "
                                 f"specialized).\n\tGot {t_arg_constraint!r}",
-                                self.location_id("inversion", inversion_index, t_arg),
+                                self.location_id(FunctionDefinition.function_inversion, inversion_index, t_arg),
                             )
-                    procedure_def = inversion_def["procedure"]
+                    procedure_def = inversion_def[FunctionDefinition.function_procedure]
                     if not isinstance(procedure_def, dict):
                         raise CHSyntaxError(
                             f"The {self.definition_type} inversion procedure definition in the template-specialization "
                             f"syntax of a  must be a JSON object, not {procedure_def!r}",
-                            self.location_id("inversion", inversion_index, "procedure"),
+                            self.location_id(
+                                FunctionDefinition.function_inversion,
+                                inversion_index,
+                                FunctionDefinition.function_procedure,
+                            ),
                         )
                     self.check_inversion_arguments(
-                        inversion_def["procedure"],
-                        lambda x: self.location_id("inversion", inversion_index, "procedure", x),
+                        inversion_def[FunctionDefinition.function_procedure],
+                        lambda x: self.location_id(
+                            FunctionDefinition.function_inversion,
+                            inversion_index,
+                            FunctionDefinition.function_procedure,
+                            x,
+                        ),
                     )
                     specialization_id = tuple(inversion_def.get(x, None) for x in self.template_argument_order)
-                    curated_inversion_definition[specialization_id] = inversion_def["procedure"]
+                    curated_inversion_definition[specialization_id] = inversion_def[
+                        FunctionDefinition.function_procedure
+                    ]
                 self.inversion = curated_inversion_definition
         # missing checks:
         #  - inversions are valid FunctionComposition expressions
         #  - template constraints of inversions
 
         # check "variations"
-        self.variations = self.data.get("variations", None)
+        self.variations = self.data.get(FunctionDefinition.function_variations, None)
         if self.variations is not None:
             if not isinstance(self.variations, (dict, list)):
                 raise CHSyntaxError(
                     f"The definition of {self.definition_type} variation relations must be a JSON array or object, not "
                     f"{self.variations!r}",
-                    self.location_id("variations"),
+                    self.location_id(FunctionDefinition.function_variations),
                 )
             if isinstance(self.variations, dict):
                 for arg_name, var_def in self.variations.items():
@@ -334,14 +367,14 @@ class FunctionDefinition(HiddenImplementationDefinition):
                         raise CHSemanticError(
                             f"{arg_name} is not a {self.definition_type} argument of {self.name}! "
                             f"Can't define a {self.definition_type} variation relation for it",
-                            self.location_id("variations", arg_name),
+                            self.location_id(FunctionDefinition.function_variations, arg_name),
                         )
                     if not isinstance(var_def, (dict, str)):
                         raise CHSyntaxError(
                             f"The definition of a {self.definition_type} variation relation must be a JSON string "
                             f"(template-instantiated Function name) or object (Function evaluation mapping in which its"
                             f" arguments are set to this {self.definition_type}'s arguments!).\n\tGot {var_def!r}",
-                            self.location_id("variations", arg_name),
+                            self.location_id(FunctionDefinition.function_variations, arg_name),
                         )
 
                     if isinstance(var_def, str):
@@ -359,7 +392,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
                             f"array of string argument names must be given.\n\tOn the second position, the variation "
                             f"relation definition (as a JSON string or object value) must be specified.\n"
                             f"Got {var_entry!r}",
-                            self.location_id("variations", var_index),
+                            self.location_id(FunctionDefinition.function_variations, var_index),
                         )
                     if not isinstance(var_entry[0], (str, list)):
                         raise CHSyntaxError(
@@ -368,7 +401,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
                             f"array of string argument names must be given.\n\tOn the second position, the variation "
                             f"relation definition (as a JSON string or object value) must be specified.\n"
                             f"Got {var_entry!r}",
-                            self.location_id("variations", var_index),
+                            self.location_id(FunctionDefinition.function_variations, var_index),
                         )
                     elif isinstance(var_entry[0], str):
                         arg_name = var_entry[0]
@@ -376,7 +409,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
                             raise CHSemanticError(
                                 f"{arg_name} is not a {self.definition_type} argument of {self.name}! "
                                 f"Can't define a {self.definition_type} variation relation for it",
-                                self.location_id("variations", var_index, 0),
+                                self.location_id(FunctionDefinition.function_variations, var_index, 0),
                             )
                         arg_tuple_id = (arg_name,)
                     else:
@@ -386,14 +419,14 @@ class FunctionDefinition(HiddenImplementationDefinition):
                                 raise CHSemanticError(
                                     f"{arg_name} is not a {self.definition_type} argument of {self.name}! "
                                     f"Can't define a {self.definition_type} variation relation for it",
-                                    self.location_id("variations", var_index, 0, arg_index),
+                                    self.location_id(FunctionDefinition.function_variations, var_index, 0, arg_index),
                                 )
                     if not isinstance(var_entry[1], (str, dict)):
                         raise CHSyntaxError(
                             f"The definition of a {self.definition_type} variation relation must be a JSON string "
                             f"(template-instantiated Function name) or object (Function evaluation mapping in which its"
                             f" arguments are set to this {self.definition_type}'s arguments!).\n\tGot {var_entry[1]!r}",
-                            self.location_id("variations", var_index, 1),
+                            self.location_id(FunctionDefinition.function_variations, var_index, 1),
                         )
                     elif isinstance(var_entry[1], str):
                         var_def = {var_entry[1]: {x: x for x in self.evaluation_argument_types}}
@@ -404,25 +437,29 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # missing checks: variation data is a valid Function! instantiation
 
         # check "addNewVariablesInExistingScope"
-        self.add_new_variables_in_existing_scope = self.data.get("addNewVariablesInExistingScope", {})
+        self.add_new_variables_in_existing_scope = self.data.get(
+            FunctionDefinition.function_add_new_variables_in_existing_scope, {}
+        )
         if not isinstance(self.add_new_variables_in_existing_scope, dict):
             raise CHSyntaxError(
                 f"The definition of new variables to be added to the scope in which the {self.definition_type} was "
                 f"called must be a JSON object, not {self.add_new_variables_in_existing_scope!r}.",
-                self.location_id("addNewVariablesInExistingScope"),
+                self.location_id(FunctionDefinition.function_add_new_variables_in_existing_scope),
             )
         self.check_new_var_dict_def(
-            self.add_new_variables_in_existing_scope, None, lambda x: self.location_id("addNewVariablesInExistingScope")
+            self.add_new_variables_in_existing_scope,
+            None,
+            lambda x: self.location_id(FunctionDefinition.function_add_new_variables_in_existing_scope),
         )
         # missing checks: types of new variables are valid
 
         # check "subScopes"
-        self.sub_scopes = self.data.get("subScopes", {})
+        self.sub_scopes = self.data.get(FunctionDefinition.function_sub_scopes, {})
         if not isinstance(self.sub_scopes, dict):
             raise CHSyntaxError(
                 f"The definition of new variables to be added in the scope of {self.definition_type} arguments must be "
                 f"a JSON object, not {self.sub_scopes!r}",
-                self.location_id("subScopes"),
+                self.location_id(FunctionDefinition.function_sub_scopes),
             )
         for arg_name, new_var_def_data in self.sub_scopes.items():
             # assert, not check
@@ -431,13 +468,15 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 raise CHSemanticError(
                     f"{arg_name} is not an evaluation argument of {self.name}! Can't define new variables in the "
                     f"argument's subscope!",
-                    self.location_id("subScopes", arg_name),
+                    self.location_id(FunctionDefinition.function_sub_scopes, arg_name),
                 )
             if not isinstance(new_var_def_data, dict):
                 raise CHSyntaxError(
                     f"The definition of new variables to be added to the scope of a {self.definition_type} argument "
                     f"must be a JSON object.\n\tGot {new_var_def_data!r}",
-                    self.location_id("subScopes", arg_name),
+                    self.location_id(FunctionDefinition.function_sub_scopes, arg_name),
                 )
-            self.check_new_var_dict_def(new_var_def_data, arg_name, lambda x: self.location_id("subScopes", arg_name))
+            self.check_new_var_dict_def(
+                new_var_def_data, arg_name, lambda x: self.location_id(FunctionDefinition.function_sub_scopes, arg_name)
+            )
         # missing checks: types of new variables are valid

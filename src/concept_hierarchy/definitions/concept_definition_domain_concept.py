@@ -487,7 +487,18 @@ class FunctionDefinition(DomainDataDefinition):
 
 
 class DomainConceptDefinition(ConceptDefinition):
-    domain_concept_data_keys: set[str] = {"properties", "functions", "management"}
+    domain_concept_name: str = "Domain Concept"
+    domain_concept_properties: str = "properties"
+    domain_concept_functions: str = "functions"
+    domain_concept_management: str = "management"
+    domain_concept_management_initialization: str = "initialization"
+    domain_concept_management_consolidation: str = "consolidation"
+    data_specialization_keyword: str = "_specializations"
+    domain_concept_data_keys: set[str] = {
+        domain_concept_properties,
+        domain_concept_functions,
+        domain_concept_management,
+    }
     property_data_keys: set[str] = {
         PropertyDefinition.VALUE_DOMAIN,
         PropertyDefinition.CONSTRAINT,
@@ -506,8 +517,7 @@ class DomainConceptDefinition(ConceptDefinition):
         FunctionDefinition.STATIC,
         FunctionDefinition.DEFAULT,
     }
-    management_data_keys: set[str] = {"initialization", "consolidation"}
-    data_specialization_keyword: str = "specializations"
+    management_data_keys: set[str] = {domain_concept_management_initialization, domain_concept_management_consolidation}
     default_value_domain_type_of_domain_concept_functions: str = "CustomFunction"
 
     def __init__(self, name: str, definition_data: object):
@@ -538,7 +548,7 @@ class DomainConceptDefinition(ConceptDefinition):
 
     @property
     def definition_type(self) -> str:
-        return "Domain Concept"
+        return DomainConceptDefinition.domain_concept_name
 
     @property
     def definition_location(self) -> list[str]:
@@ -546,27 +556,27 @@ class DomainConceptDefinition(ConceptDefinition):
 
     def concept_data_check(self):
         data_keys: set[str] = set(self.data.keys())
-        if not (data_keys <= self.domain_concept_data_keys):
-            extra_keys = data_keys - self.domain_concept_data_keys
+        if not (data_keys <= DomainConceptDefinition.domain_concept_data_keys):
+            extra_keys = data_keys - DomainConceptDefinition.domain_concept_data_keys
             raise CHSyntaxError(
                 f"Found extra keys {extra_keys!r} in the domain concept data definition of {self.name}",
                 self.location_id(),
             )
 
-        has_properties = "properties" in self.data
-        has_functions = "functions" in self.data
-        has_management = "management" in self.data
+        has_properties = DomainConceptDefinition.domain_concept_properties in self.data
+        has_functions = DomainConceptDefinition.domain_concept_functions in self.data
+        has_management = DomainConceptDefinition.domain_concept_management in self.data
         if not self.is_root and not has_properties and not has_functions and not has_management:
             raise CHSemanticError(f"Found a domain concept with no data defined {self.name}", self.location_id())
 
-        self.properties = self.data.get("properties", {})
-        self.functions = self.data.get("functions", {})
-        self.management = self.data.get("management", {})
+        self.properties = self.data.get(DomainConceptDefinition.domain_concept_properties, {})
+        self.functions = self.data.get(DomainConceptDefinition.domain_concept_functions, {})
+        self.management = self.data.get(DomainConceptDefinition.domain_concept_management, {})
         if not isinstance(self.properties, dict):
             raise CHSyntaxError(
                 f"The definition of domain concept properties must be a JSON object, not {self.properties!r} for the "
                 f"domain concept {self.name}",
-                self.location_id("properties"),
+                self.location_id(DomainConceptDefinition.domain_concept_properties),
             )
         self.property_specializations = self.properties.pop(DomainConceptDefinition.data_specialization_keyword, {})
         for prop_name, prop_data in self.properties.items():
@@ -577,23 +587,23 @@ class DomainConceptDefinition(ConceptDefinition):
             if not check_ch_name(prop_name, must_start_lowercase=True):
                 raise CHSyntaxError(
                     f"Property names of domain concepts must be a lowercase-starting string, not {prop_name!r}",
-                    self.location_id("properties", prop_name),
+                    self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                 )
             if not isinstance(prop_data, (dict, str)):
                 raise CHSyntaxError(
                     f"The definition of domain concept properties must be a JSON object or string "
                     f"(that defines its ValueDomain), not {prop_data!r} for {prop_name} of domain concept {self.name}!",
-                    self.location_id("properties", prop_name),
+                    self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                 )
             if isinstance(prop_data, dict):
                 prop_def_data_keys = set(prop_data.keys())
-                if not (prop_def_data_keys <= self.property_data_keys):
-                    if not prop_def_data_keys.isdisjoint(self.property_data_keys):
-                        extra_keys = prop_def_data_keys - self.property_data_keys
+                if not (prop_def_data_keys <= DomainConceptDefinition.property_data_keys):
+                    if not prop_def_data_keys.isdisjoint(DomainConceptDefinition.property_data_keys):
+                        extra_keys = prop_def_data_keys - DomainConceptDefinition.property_data_keys
                         raise CHSyntaxError(
                             f"Found extra keys {extra_keys!r} in the domain concept data definition of property "
                             f"{prop_name} for {self.name}",
-                            self.location_id("properties", prop_name),
+                            self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                         )
                     # if prop_def does not contain any property-definition-keys, interpret as the definition of an
                     #  expression that defines the constraint & type of the property
@@ -608,7 +618,7 @@ class DomainConceptDefinition(ConceptDefinition):
                 raise CHSyntaxError(
                     f"The property definition of a domain concept property must define either its ValueDomain or "
                     f"its constraint.\n\tGot {prop_data!r} as the definition of {prop_name} of {self.name}",
-                    self.location_id("properties", prop_name),
+                    self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                 )
             # check the type of each property definition keyword value!
             if PropertyDefinition.VALUE_DOMAIN in prop_data:
@@ -616,14 +626,20 @@ class DomainConceptDefinition(ConceptDefinition):
                 if not isinstance(prop_def_val, str):
                     raise CHSyntaxError(
                         f"The ValueDomain definition of properties must be a JSON string value, not {prop_def_val!r}",
-                        self.location_id("properties", prop_name, PropertyDefinition.VALUE_DOMAIN),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_properties,
+                            prop_name,
+                            PropertyDefinition.VALUE_DOMAIN,
+                        ),
                     )
             if PropertyDefinition.DESCRIPTION in prop_data:
                 prop_def_val = prop_data[PropertyDefinition.DESCRIPTION]
                 if not isinstance(prop_def_val, str):
                     raise CHSyntaxError(
                         f"The definition of a property description must be a JSON string value, not {prop_def_val!r}",
-                        self.location_id("properties", prop_name, PropertyDefinition.DESCRIPTION),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.DESCRIPTION
+                        ),
                     )
             # Don't check constraints, default, assumed, and confidence values because they are the serialization of
             #  ValueDomains  (i.e. any JSON value).
@@ -632,21 +648,29 @@ class DomainConceptDefinition(ConceptDefinition):
                 if not isinstance(prop_def_val, bool):
                     raise CHSyntaxError(
                         f"The marker of static properties must be a JSON boolean, not {prop_def_val!r}",
-                        self.location_id("properties", prop_name, PropertyDefinition.STATIC),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.STATIC
+                        ),
                     )
             if PropertyDefinition.HOOKS in prop_data:
                 prop_def_val = prop_data[PropertyDefinition.HOOKS]
                 if not isinstance(prop_def_val, dict):
                     raise CHSyntaxError(
                         f"The definition of property hooks must be a JSON object, not {prop_def_val!r}",
-                        self.location_id("properties", prop_name, PropertyDefinition.HOOKS),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.HOOKS
+                        ),
                     )
             if PropertyDefinition.COMPUTATIONS in prop_data:
                 prop_def_val = prop_data[PropertyDefinition.COMPUTATIONS]
                 if not isinstance(prop_def_val, dict):
                     raise CHSyntaxError(
                         f"The definition of property hooks must be a JSON object, not {prop_def_val!r}",
-                        self.location_id("properties", prop_name, PropertyDefinition.COMPUTATIONS),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_properties,
+                            prop_name,
+                            PropertyDefinition.COMPUTATIONS,
+                        ),
                     )
             if PropertyDefinition.DEFAULT_INSTANCE_NAMING in prop_data:
                 prop_def_val = prop_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING]
@@ -654,7 +678,11 @@ class DomainConceptDefinition(ConceptDefinition):
                     raise CHSyntaxError(
                         f"The definition of whether to name instances created as part of default values of this "
                         f"property with this instance's name must be a JSON boolean value, not {prop_def_val!r}",
-                        self.location_id("properties", prop_name, PropertyDefinition.DEFAULT_INSTANCE_NAMING),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_properties,
+                            prop_name,
+                            PropertyDefinition.DEFAULT_INSTANCE_NAMING,
+                        ),
                     )
         # missing checks:
         #  - property names should be unique among all concepts (incl. defining a function with same name as a property)
@@ -676,7 +704,7 @@ class DomainConceptDefinition(ConceptDefinition):
             raise CHSyntaxError(
                 f"The definition of domain concept functions must be a JSON object, not {self.functions!r} for the "
                 f"domain concept {self.name}",
-                self.location_id("functions"),
+                self.location_id(DomainConceptDefinition.domain_concept_functions),
             )
         self.function_specializations = self.functions.pop(DomainConceptDefinition.data_specialization_keyword, {})
         for func_name, func_data in self.functions.items():
@@ -687,29 +715,29 @@ class DomainConceptDefinition(ConceptDefinition):
             if not check_ch_name(func_name, must_start_lowercase=True):
                 raise CHSyntaxError(
                     f"Function names of domain concepts must be a lowercase-starting string, not {func_name!r}",
-                    self.location_id("functions", func_name),
+                    self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                 )
             if not isinstance(func_data, dict):
                 raise CHSyntaxError(
                     f"The definition of domain concept functions must be a FunctionComposition value "
                     f"(serialized as a JSON object), not {func_data!r} for {func_name} of domain concept {self.name}!",
-                    self.location_id("functions", func_name),
+                    self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                 )
             else:
                 func_def_data_keys = set(func_data.keys())
-                if not (func_def_data_keys <= self.function_data_keys):
-                    if not func_def_data_keys.isdisjoint(self.function_data_keys):
-                        extra_keys = func_def_data_keys - self.function_data_keys
+                if not (func_def_data_keys <= DomainConceptDefinition.function_data_keys):
+                    if not func_def_data_keys.isdisjoint(DomainConceptDefinition.function_data_keys):
+                        extra_keys = func_def_data_keys - DomainConceptDefinition.function_data_keys
                         raise CHSyntaxError(
                             f"Found extra keys {extra_keys!r} in the domain concept data definition of function "
                             f"{func_name} for {self.name}",
-                            self.location_id("functions", func_name),
+                            self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                         )
                     # interpret as default value of the static property
                     self.functions[func_name] = {FunctionDefinition.STATIC: True, FunctionDefinition.DEFAULT: func_data}
         for func_name, func_data in self.functions.items():
             for func_data_def_key, func_data_def_val in func_data.items():
-                assert func_data_def_key in self.function_data_keys
+                assert func_data_def_key in DomainConceptDefinition.function_data_keys
             if FunctionDefinition.VALUE_DOMAIN not in func_data:
                 func_data[FunctionDefinition.VALUE_DOMAIN] = (
                     DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions
@@ -720,21 +748,27 @@ class DomainConceptDefinition(ConceptDefinition):
                 if not isinstance(func_def_val, str):
                     raise CHSyntaxError(
                         f"The ValueDomain definition of functions must be a JSON string value, not {func_def_val!r}",
-                        self.location_id("functions", func_name, FunctionDefinition.VALUE_DOMAIN),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_functions, func_name, FunctionDefinition.VALUE_DOMAIN
+                        ),
                     )
             if FunctionDefinition.DESCRIPTION in func_data:
                 func_def_val = func_data[FunctionDefinition.DESCRIPTION]
                 if not isinstance(func_def_val, str):
                     raise CHSyntaxError(
                         f"The definition of a property description must be a JSON string value, not {func_def_val!r}",
-                        self.location_id("functions", func_name, FunctionDefinition.DESCRIPTION),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_functions, func_name, FunctionDefinition.DESCRIPTION
+                        ),
                     )
             if FunctionDefinition.STATIC in func_data:
                 func_def_val = func_data[FunctionDefinition.STATIC]
                 if not isinstance(func_def_val, bool):
                     raise CHSyntaxError(
                         f"The marker of static functions must be a JSON boolean, not {func_def_val!r}",
-                        self.location_id("functions", func_name, FunctionDefinition.STATIC),
+                        self.location_id(
+                            DomainConceptDefinition.domain_concept_functions, func_name, FunctionDefinition.STATIC
+                        ),
                     )
             if FunctionDefinition.DEFAULT in func_data:
                 assert isinstance(func_data[FunctionDefinition.DEFAULT], dict)
@@ -747,14 +781,14 @@ class DomainConceptDefinition(ConceptDefinition):
             raise CHSyntaxError(
                 f"The definition of domain concept management data must be a JSON object, not {self.management!r} for "
                 f"domain concept {self.name}!",
-                self.location_id("management"),
+                self.location_id(DomainConceptDefinition.domain_concept_management),
             )
         management_keys = set(self.management.keys())
-        if not (management_keys <= self.management_data_keys):
-            extra_keys = management_keys - self.management_data_keys
+        if not (management_keys <= DomainConceptDefinition.management_data_keys):
+            extra_keys = management_keys - DomainConceptDefinition.management_data_keys
             raise CHSyntaxError(
                 f"Found extra keys {extra_keys!r} in the domain concept management data definition of {self.name}",
-                self.location_id("management"),
+                self.location_id(DomainConceptDefinition.domain_concept_management),
             )
         for management_key, management_data in self.management.items():
             assert isinstance(management_key, str)
@@ -762,7 +796,7 @@ class DomainConceptDefinition(ConceptDefinition):
                 raise CHSyntaxError(
                     f"The definition of {management_key!r} domain concept management data must be a JSON object, not "
                     f"{management_data!r} for domain concept {self.name}!",
-                    self.location_id("management", management_key),
+                    self.location_id(DomainConceptDefinition.domain_concept_management, management_key),
                 )
         # missing checks:
         #  - "initialization" is a valid FunctionComposition expression (with variable context "instance")

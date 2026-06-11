@@ -27,6 +27,16 @@ from concept_hierarchy.definitions.global_variable_definition import GlobalVaria
 class ConceptHierarchyModel:
     """Root model filled by the model checker and consumed by validation / codegen."""
 
+    model_name: str = "name"
+    model_metadata: str = "metadata"
+    model_concepts: str = "concepts"
+    model_instances: str = "instances"
+    model_concepts_external: str = "external"
+    model_keywords: set[str] = {model_name, model_metadata, model_concepts, model_instances}
+    default_root_concept_name: str = "Concept"
+    default_value_domain_name: str = "ValueDomain"
+    default_function_name: str = "Function"
+
     @staticmethod
     def create_by_parser(concept_hierarchy_file: str, parse_options: dict[str, object] = None) -> ConceptHierarchyModel:
         """Parse a JSON-decoded dict into a :class:`ConceptHierarchyModel`.
@@ -67,7 +77,7 @@ class ConceptHierarchyModel:
         self.path_to_root_dir: str = path_to_root_dir
         self.definition_data = None
 
-        self.root_concept_name: str = "Concept"
+        self.root_concept_name: str = ConceptHierarchyModel.default_root_concept_name
 
         self.checked_structure = False
         self.checked = False
@@ -91,6 +101,14 @@ class ConceptHierarchyModel:
 
         self.external_concept_data_resolver = None
 
+    def __repr__(self) -> str:
+        return (
+            f"ConceptHierarchyModel({ConceptHierarchyModel.model_name}={self.name!r}, "
+            f"{ConceptHierarchyModel.model_concepts}={self.concept_names()!r}, "
+            f"{ConceptHierarchyModel.model_instances}={self.instance_names()!r}, "
+            f"{ConceptHierarchyModel.model_metadata}={self.metadata!r})"
+        )
+
     def assert_structure(self):
         if not self.checked_structure:
             raise RuntimeError("Can't verify Concept Hierarchy relations before it has been processed!")
@@ -103,13 +121,17 @@ class ConceptHierarchyModel:
         return not self.is_value_domain(c)
 
     def is_value_domain(self, c: str) -> bool:
-        return self.is_concept("ValueDomain") and self.is_a_subconcept_of_b(c, "ValueDomain", include_self=True)
+        return self.is_concept(ConceptHierarchyModel.default_value_domain_name) and self.is_a_subconcept_of_b(
+            c, ConceptHierarchyModel.default_value_domain_name, include_self=True
+        )
 
     def is_pure_value_domain(self, c: str) -> bool:
         return self.is_value_domain(c) and not self.is_function(c)
 
     def is_function(self, c: str) -> bool:
-        return self.is_concept("Function") and self.is_a_subconcept_of_b(c, "Function", include_self=True)
+        return self.is_concept(ConceptHierarchyModel.default_function_name) and self.is_a_subconcept_of_b(
+            c, ConceptHierarchyModel.default_function_name, include_self=True
+        )
 
     def is_variable(self, v: str) -> bool:
         self.assert_structure()
@@ -130,9 +152,3 @@ class ConceptHierarchyModel:
 
     def instance_names(self) -> list[str]:
         return [c for c in self.instances]
-
-    def __repr__(self) -> str:
-        return (
-            f"ConceptHierarchyModel(name={self.name!r}, concepts={self.concept_names()!r}, "
-            f"instances={self.instance_names()!r}, metadata={self.metadata!r})"
-        )

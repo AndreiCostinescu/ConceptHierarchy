@@ -43,15 +43,15 @@ class ConceptHierarchyChecker:
     def read_concept_hierarchy(file: str, path_to_root_dir: str) -> object:
         def create_json(file_name: str) -> object:
             res = read_json_file(file_name)
-            if "external" in res:
-                assert isinstance(res["external"], list)
-                for sub_file_name in res["external"]:
+            if ConceptHierarchyModel.model_concepts_external in res:
+                assert isinstance(res[ConceptHierarchyModel.model_concepts_external], list)
+                for sub_file_name in res[ConceptHierarchyModel.model_concepts_external]:
                     if os.path.isabs(sub_file_name):
                         res.update(create_json(sub_file_name))
                     else:
                         rel_sub_file_name = sanitize_relative_path(join_path(path_to_root_dir, sub_file_name))
                         res.update(create_json(rel_sub_file_name))
-                res.pop("external")
+                res.pop(ConceptHierarchyModel.model_concepts_external)
             return res
 
         return create_json(file)
@@ -115,38 +115,44 @@ class ConceptHierarchyChecker:
 
         # interpret either as a meta-definition, or a direct definition of concepts
         ch_keys = set(concept_hierarchy.keys())
-        if not (ch_keys <= {"name", "metadata", "concepts", "instances"}):
+        if not (ch_keys <= ConceptHierarchyModel.model_keywords):
             # interpret this as a definition of concepts
-            concept_hierarchy = {"concepts": concept_hierarchy}
+            concept_hierarchy = {ConceptHierarchyModel.model_concepts: concept_hierarchy}
         elif len(ch_keys) == 0:
-            concept_hierarchy = {"concepts": {}}
+            concept_hierarchy = {ConceptHierarchyModel.model_concepts: {}}
 
         # -- hierarchy name --------------------------------------------------
 
-        self.ch.name = concept_hierarchy.get("name", "ConceptHierarchy")
+        self.ch.name = concept_hierarchy.get(ConceptHierarchyModel.model_name, "ConceptHierarchy")
         if not check_ch_name(self.ch.name, allow_starting_with_underscore=True):
             raise CHSyntaxError(
-                f"Concept Hierarchy name {self.ch.name!r} must be a non-empty, non-digit-starting string containing "
-                f"only alphanumeric characters or '_'.",
-                location_id=["name"],
+                f'Concept Hierarchy "{ConceptHierarchyModel.model_name}" {self.ch.name!r} must be a non-empty, '
+                f"non-digit-starting string containing only alphanumeric characters or '_'.",
+                location_id=[ConceptHierarchyModel.model_name],
             )
 
         # -- metadata (optional) --------------------------------------------
-        raw_meta = concept_hierarchy.get("metadata", {})
+        raw_meta = concept_hierarchy.get(ConceptHierarchyModel.model_metadata, {})
         if not isinstance(raw_meta, dict):
-            raise CHSyntaxError("Concept Hierarchy 'metadata' must be a JSON object.", location_id=["metadata"])
+            raise CHSyntaxError(
+                f'Concept Hierarchy "{ConceptHierarchyModel.model_metadata}" must be a JSON object.',
+                location_id=[ConceptHierarchyModel.model_metadata],
+            )
         self.ch.metadata = {str(k): str(v) for k, v in raw_meta.items()}
 
         # -- concepts --------------------------------------------------------
-        if "concepts" not in concept_hierarchy:
-            raise CHSyntaxError("Missing required top-level key: 'concepts'.", location_id=["concepts"])
-        concept_definition = concept_hierarchy["concepts"]
+        if ConceptHierarchyModel.model_concepts not in concept_hierarchy:
+            raise CHSyntaxError(
+                f'Missing required top-level key: "{ConceptHierarchyModel.model_concepts}".',
+                location_id=[ConceptHierarchyModel.model_concepts],
+            )
+        concept_definition = concept_hierarchy[ConceptHierarchyModel.model_concepts]
         # type checks for concept_definition data
         if not isinstance(concept_definition, dict):
             raise CHSyntaxError(
-                f"Concept Hierarchy 'concepts' data must be a JSON object of concept definitions, not "
-                f"{concept_definition!r}.",
-                location_id=["concepts"],
+                f'Concept Hierarchy "{ConceptHierarchyModel.model_concepts}" data must be a JSON object of concept '
+                f"definitions, not {concept_definition!r}.",
+                location_id=[ConceptHierarchyModel.model_concepts],
             )
         concepts_referencing_others: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
@@ -154,6 +160,7 @@ class ConceptHierarchyChecker:
             concept_definition = ConceptDefinition(
                 concept_name,
                 concept_def,
+                ConceptHierarchyModel.model_concepts,
                 external_data_resolver=self.ch.external_concept_data_resolver,
             )
             if concept_definition.is_reference():
@@ -161,7 +168,7 @@ class ConceptHierarchyChecker:
             else:
                 defined_concepts[concept_name] = concept_definition
         mapped_concepts = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
-            concepts_referencing_others, defined_concepts, "concepts"
+            concepts_referencing_others, defined_concepts, ConceptHierarchyModel.model_concepts
         )
         assert all(mapped_concepts[x] is None for x in defined_concepts)
         for referencing_concept in concepts_referencing_others:
@@ -171,27 +178,30 @@ class ConceptHierarchyChecker:
             defined_concepts[referencing_concept] = ConceptDefinition(
                 referencing_concept,
                 referenced_concept.definition_data,
+                ConceptHierarchyModel.model_concepts,
                 external_data_resolver=self.ch.external_concept_data_resolver,
             )
 
         # -- instances --------------------------------------------------------
-        instance_definition = concept_hierarchy.get("instances", {})
+        instance_definition = concept_hierarchy.get(ConceptHierarchyModel.model_instances, {})
         if not isinstance(instance_definition, dict):
             raise CHSyntaxError(
-                f"Concept Hierarchy 'instances' data must be a JSON object of definitions of instances, "
-                f"i.e. global variables, not {instance_definition!r}.",
-                location_id=["instances"],
+                f'Concept Hierarchy "{ConceptHierarchyModel.model_instances}" data must be a JSON object of definitions'
+                f" of instances, i.e. global variables, not {instance_definition!r}.",
+                location_id=[ConceptHierarchyModel.model_instances],
             )
         instances_referencing_others: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
         for variable_name, variable_def in instance_definition.items():  # type: str, object
-            variable_definition = GlobalVariableDefinition(variable_name, variable_def)
+            variable_definition = GlobalVariableDefinition(
+                variable_name, variable_def, ConceptHierarchyModel.model_instances
+            )
             if variable_definition.is_reference():
                 instances_referencing_others[variable_name] = variable_definition
             else:
                 defined_instances[variable_name] = variable_definition
         mapped_instances = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
-            instances_referencing_others, defined_instances, "instances"
+            instances_referencing_others, defined_instances, ConceptHierarchyModel.model_instances
         )
         assert all(mapped_instances[x] is None for x in defined_instances)
         for referencing_instance in instances_referencing_others:
@@ -199,7 +209,7 @@ class ConceptHierarchyChecker:
             assert referenced_instance_name is not None
             referenced_instance = defined_instances[referenced_instance_name]
             defined_instances[referenced_instance_name] = GlobalVariableDefinition(
-                referencing_instance, referenced_instance.definition_data
+                referencing_instance, referenced_instance.definition_data, ConceptHierarchyModel.model_instances
             )
         # missing checks: valid expressions for all global variables
 
@@ -210,17 +220,27 @@ class ConceptHierarchyChecker:
                 if p_name not in defined_concepts:
                     raise CHSemanticError(
                         f"The parent {p_name!r} of concept {c_name!r} is not defined in the hierarchy.",
-                        location_id=["concepts", c_name, "directParents", index],
+                        location_id=[
+                            ConceptHierarchyModel.model_concepts,
+                            c_name,
+                            ConceptDefinition.concept_direct_parents,
+                            index,
+                        ],
                     )
         try:
             self.ch.concept_topo_sort, roots = topological_sort(concept_parent_mapping)
             if self.ch.root_concept_name in roots and len(roots) != 1:
-                raise CHSemanticError(f"Concept Hierarchy has multiple roots: {roots!r}", location_id=["concepts"])
+                raise CHSemanticError(
+                    f"Concept Hierarchy has multiple roots: {roots!r}",
+                    location_id=[ConceptHierarchyModel.model_concepts],
+                )
             elif self.ch.root_concept_name not in roots:
                 for root in roots:
                     defined_concepts[root].parents.append(self.ch.root_concept_name)
                 self.ch.concept_topo_sort = [self.ch.root_concept_name] + self.ch.concept_topo_sort
-                defined_concepts[self.ch.root_concept_name] = ConceptDefinition(self.ch.root_concept_name, {})
+                defined_concepts[self.ch.root_concept_name] = ConceptDefinition(
+                    self.ch.root_concept_name, {}, ConceptHierarchyModel.model_concepts
+                )
                 roots = [self.ch.root_concept_name]
             assert len(roots) == 1
             root = roots[0]
@@ -228,14 +248,15 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f'The root concept of the Concept Hierarchy must be called "{self.ch.root_concept_name}", not '
                     f"{root!r}!",
-                    location_id=["concepts"],
+                    location_id=[ConceptHierarchyModel.model_concepts],
                 )
             defined_concepts[root].is_root = True
             self.ch.root_concept_name = root
         except RuntimeError as e:
             if str(e).startswith("Non-hierarchy structure detected! The following items form one or more cycles:"):
                 raise CHSemanticError(
-                    f"Cycles detected in Concept Hierarchy:\n{tab}{e!s}", location_id=["concepts"]
+                    f"Cycles detected in Concept Hierarchy:\n{tab}{e!s}",
+                    location_id=[ConceptHierarchyModel.model_concepts],
                 ) from e
             raise e
 
@@ -259,7 +280,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f"The global variable name {instance_name!r} is also a concept name!\n\tThis can create ambiguity! "
                     f"Please rename the global variable name!",
-                    location_id=["instances", instance_name],
+                    location_id=[ConceptHierarchyModel.model_instances, instance_name],
                 )
         self.ch.instances = defined_instances
         self.ch.checked_structure = True
@@ -276,9 +297,14 @@ class ConceptHierarchyChecker:
                 self.ch.concepts[c_name] = DomainConceptDefinition.from_node(c)
             else:
                 raise CHSemanticError(
-                    f"Found concept {c_name} with parents {c.parents!r} that is neither a Function, ValueDomain, "
-                    f"not a domain concept!",
-                    location_id=["concepts", c_name, "directParents"],
+                    f"Found concept {c_name} with parents {c.parents!r} that is neither a "
+                    f"{FunctionDefinition.function_name}, {ValueDomainDefinition.value_domain_name}, "
+                    f"nor a {DomainConceptDefinition.domain_concept_name}!",
+                    location_id=[
+                        ConceptHierarchyModel.model_concepts,
+                        c_name,
+                        ConceptDefinition.concept_direct_parents,
+                    ],
                 )
         # check domain_concept, value_domain, and function data!
         for c_name, c in self.ch.concepts.items():
@@ -292,15 +318,26 @@ class ConceptHierarchyChecker:
                             f"\n\tThis can cause ambiguity in the template argument's constraint formulae definition, "
                             f"in template instantiations and in template substitutions."
                             f"\nPlease rename the template argument!",
-                            location_id=["concepts", c_name, "data", "templateArguments"],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                HiddenImplementationDefinition.hidden_template_arguments,
+                            ],
                         )
             if isinstance(c, ValueDomainDefinition):
                 if c.default_serialization is not None and c.default_serialization in self.ch.default_serializations:
                     raise CHSemanticError(
                         f"The default serialization value of ValueDomains must be unique across all concepts!"
-                        f'\nFound (non-inclusive) duplicate "defaultSerialization" specifications in {c_name} and '
+                        f"\nFound (non-inclusive) duplicate "
+                        f'"{ValueDomainDefinition.value_domain_default_serialization}" specifications in {c_name} and '
                         f"{self.ch.default_serializations[c.default_serialization]}!",
-                        ["concepts", c_name, "data", "defaultSerialization"],
+                        location_id=[
+                            ConceptHierarchyModel.model_concepts,
+                            c_name,
+                            ConceptDefinition.concept_definition_data,
+                            ValueDomainDefinition.value_domain_default_serialization,
+                        ],
                     )
                 self.ch.default_serializations[c.default_serialization] = c_name
             if isinstance(c, FunctionDefinition):
@@ -312,7 +349,12 @@ class ConceptHierarchyChecker:
                             f"\n\tThis can cause ambiguity in the context of the FunctionComposition of Function "
                             f"procedures, inversions, and variations!"
                             f"\nPlease rename the Function argument or the global variable!",
-                            location_id=["concepts", c_name, "data", "interface"],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                FunctionDefinition.function_interface,
+                            ],
                         )
             if isinstance(c, DomainConceptDefinition):
                 # check unique property names, unique function names, distinct function and property names,
@@ -325,7 +367,13 @@ class ConceptHierarchyChecker:
                             f"\n\tThis can cause ambiguity in the context of property hooks, computations, concept "
                             f"functions, and management functions."
                             f"\nPlease rename the property or the global variable!",
-                            location_id=["concepts", c_name, "data", "properties", prop_name],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                DomainConceptDefinition.domain_concept_properties,
+                                prop_name,
+                            ],
                         )
                     if prop_name in self.ch.all_domain_concept_properties:
                         raise CHSemanticError(
@@ -333,7 +381,13 @@ class ConceptHierarchyChecker:
                             f"{c_name!r} and in {self.ch.all_domain_concept_properties[prop_name]!r}."
                             f"\n\tPlease move the property to a common concept or rename one of them so that property "
                             f"names are unique!",
-                            location_id=["concepts", c_name, "data", "properties", prop_name],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                DomainConceptDefinition.domain_concept_properties,
+                                prop_name,
+                            ],
                         )
                     if prop_name in self.ch.all_domain_concept_functions:
                         raise CHSemanticError(
@@ -341,7 +395,13 @@ class ConceptHierarchyChecker:
                             f"{c_name!r} as a property and in {self.ch.all_domain_concept_functions[prop_name]!r} as a "
                             f"function!\n\tPlease rename one of them so that property names are distinct from function "
                             f"names!",
-                            location_id=["concepts", c_name, "data", "properties", prop_name],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                DomainConceptDefinition.domain_concept_properties,
+                                prop_name,
+                            ],
                         )
                 for func_name in c.functions:
                     if func_name in self.ch.instances:
@@ -351,7 +411,13 @@ class ConceptHierarchyChecker:
                             f"\n\tThis can cause ambiguity in the context of property hooks, computations, concept "
                             f"functions, and management functions."
                             f"\nPlease rename the function or the global variable!",
-                            location_id=["concepts", c_name, "data", "functions", func_name],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                DomainConceptDefinition.domain_concept_functions,
+                                func_name,
+                            ],
                         )
                     if func_name in self.ch.all_domain_concept_functions:
                         raise CHSemanticError(
@@ -359,7 +425,13 @@ class ConceptHierarchyChecker:
                             f"{c_name!r} and in {self.ch.all_domain_concept_functions[func_name]!r}."
                             f"\n\tPlease move the function to a common concept or rename one of them so that function "
                             f"names are unique!",
-                            location_id=["concepts", c_name, "data", "functions", func_name],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                DomainConceptDefinition.domain_concept_functions,
+                                func_name,
+                            ],
                         )
                     if func_name in self.ch.all_domain_concept_properties:
                         raise CHSemanticError(
@@ -367,7 +439,13 @@ class ConceptHierarchyChecker:
                             f"{c_name!r} as a function and in {self.ch.all_domain_concept_properties[func_name]!r} as a"
                             f" property!\n\tPlease rename one of them so that function names are distinct from property"
                             f" names!",
-                            location_id=["concepts", c_name, "data", "functions", func_name],
+                            location_id=[
+                                ConceptHierarchyModel.model_concepts,
+                                c_name,
+                                ConceptDefinition.concept_definition_data,
+                                DomainConceptDefinition.domain_concept_functions,
+                                func_name,
+                            ],
                         )
 
 

@@ -23,12 +23,17 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 
 
 class ConceptDefinition(ConceptHierarchyDefinition):
-    concept_data_keys: set[str] = {"directParents", "description", "data"}
+    concept_name: str = "Concept"
+    concept_definition_data: str = "data"
+    concept_description: str = "description"
+    concept_direct_parents: str = "directParents"
+    concept_data_keys: set[str] = {concept_direct_parents, concept_description, concept_definition_data}
 
     def __init__(
         self,
         name: str,
         definition_data: object,
+        definition_location_str: str,
         *,
         external_data_resolver: Callable | None = None,
     ):
@@ -37,7 +42,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self.data: dict[str, object] = {}
         self._data_def: object = None
         self.external_data_resolver = external_data_resolver
-        super().__init__(name, definition_data)
+        super().__init__(name, definition_data, definition_location_str)
         self.concept_data_check()  # sets the members of subclasses of ConceptDefinition
 
     def check(self):
@@ -57,11 +62,11 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                 f"Found extra keys {extra_keys!r} in the concept definition of {self.name}", self.location_id()
             )
 
-        self.parents = self.definition_data.get("directParents", [])
+        self.parents = self.definition_data.get(ConceptDefinition.concept_direct_parents, [])
         if not isinstance(self.parents, list):
             raise CHSyntaxError(
                 f"Direct parents of the concept {self.name} must be a JSON array of strings, not {self.parents!r}!",
-                self.location_id("directParents"),
+                self.location_id(ConceptDefinition.concept_direct_parents),
             )
         else:
             for index, parent in enumerate(self.parents):
@@ -69,22 +74,22 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                     raise CHSyntaxError(
                         f"Direct parents of the concept {self.name} must be a list of concepts. "
                         f"Encountered {parent!r} at parent {index}!",
-                        self.location_id("directParents", index),
+                        self.location_id(ConceptDefinition.concept_direct_parents, index),
                     )
                 # Don't check here the concept-name string formatting requirements for the parent nodes,
                 #  because the parent's concept name will be checked when it will be processed.
                 #  And if the string is not a valid parent name, then the parent-in-ch semantic rule will determine an
                 #  invalid parent specification when computing the topological sort of the hierarchy graph!
 
-        self.description = self.definition_data.get("description", None)
+        self.description = self.definition_data.get(ConceptDefinition.concept_description, None)
         if not isinstance(self.description, (str, NoneType)):
             raise CHSyntaxError(
                 f"The description of the concept {self.name} must be a JSON string or null, not {self.description!r}",
                 self.location_id("definition"),
             )
 
-        self._data_def = self.definition_data.get("data", None)
-        data_location_id = ["data"]
+        self._data_def = self.definition_data.get(ConceptDefinition.concept_definition_data, None)
+        data_location_id = [ConceptDefinition.concept_definition_data]
         while self._check_data_content(data_location_id):
             if self.external_data_resolver is None:
                 raise RuntimeError(
@@ -103,11 +108,11 @@ class ConceptDefinition(ConceptHierarchyDefinition):
 
     @property
     def definition_type(self) -> str:
-        return "Concept"
+        return ConceptDefinition.concept_name
 
     @property
     def definition_location(self) -> list[str]:
-        return ["concepts", self.name]
+        return super().definition_location + [self.name]
 
     # returns whether the data is NOT an external file
     def _check_data_content(self, data_location_id: LocationId) -> bool:

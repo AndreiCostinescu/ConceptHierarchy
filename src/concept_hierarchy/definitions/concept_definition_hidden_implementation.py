@@ -22,10 +22,23 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
 
 
 class HiddenImplementationDefinition(ConceptDefinition, ABC):
-    implementation_related_keys: set[str] = {"implementation", "abstract", "templateArguments"}
-    template_arguments_data_keys: set[str] = {"order", "substitution", "variadicGroupIdentifiers"}
+    hidden_implementation: str = "implementation"
+    hidden_abstract: str = "abstract"
+    hidden_template_arguments: str = "templateArguments"
+    hidden_template_arguments_order: str = "order"
+    hidden_template_arguments_substitutions: str = "substitutions"
+    hidden_template_arguments_variadic_ids: str = "variadicGroupIdentifiers"
     default_template_argument_constraint: str = "ValueDomain"
     variadic_group_identifier_characters: str = "!$"
+    implementation_related_keys: set[str] = {hidden_implementation, hidden_abstract, hidden_template_arguments}
+    template_arguments_data_keys: set[str] = {
+        hidden_template_arguments_order,
+        hidden_template_arguments_substitutions,
+        hidden_template_arguments_variadic_ids,
+    }
+    variadic_group_identifier_character_enumeration: str = ", ".join(
+        "'" + x + "'" for x in variadic_group_identifier_characters
+    )
 
     def __init__(self, name: str, definition_data: object):
         super().__init__(name, definition_data)
@@ -73,7 +86,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 raise CHSyntaxError(
                     f"Template argument names must be JSON uppercase-starting strings (ending in '...' "
                     f"if variadic), not {t_arg!r} at {self.definition_type} {self.name}!",
-                    self.location_id("templateArguments", t_arg_index),
+                    self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
                 )
             is_variadic = t_arg.endswith("...")
             t_arg_clean = t_arg if not is_variadic else t_arg[:-3]
@@ -81,39 +94,41 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 raise CHSyntaxError(
                     f"Template argument names must be JSON uppercase-starting strings (ending in '...' "
                     f"if variadic), not {t_arg!r} at {self.definition_type} {self.name}!",
-                    self.location_id("templateArguments", t_arg_index),
+                    self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
                 )
             self.template_argument_order += (t_arg_clean,)
             if is_variadic:
                 self.variadic_template_arguments.add(t_arg_clean)
-            self.template_argument_constraints[t_arg_clean] = self.default_template_argument_constraint
+            self.template_argument_constraints[t_arg_clean] = (
+                HiddenImplementationDefinition.default_template_argument_constraint
+            )
 
     def check_implementation(self):
         # check "implementation"
-        self.implementation = self.data.get("implementation", None)
+        self.implementation = self.data.get(HiddenImplementationDefinition.hidden_implementation, None)
         if self.implementation is not None:
             if not isinstance(self.implementation, str):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type}'s implementation file must be a JSON string, not "
                     f"{self.implementation!r} for the {self.definition_type} {self.name}",
-                    self.location_id("implementation"),
+                    self.location_id(HiddenImplementationDefinition.hidden_implementation),
                 )
             elif "." in self.implementation:
                 raise CHSemanticError(
                     f"Do not define the file extensions for the {self.definition_type} implementation file! "
                     f"Found {self.implementation!r} for the {self.definition_type} {self.name}",
-                    self.location_id("implementation"),
+                    self.location_id(HiddenImplementationDefinition.hidden_implementation),
                 )
 
     def check_abstract(self):
         # check "abstract"
-        self.abstract = self.data.get("abstract", None)
+        self.abstract = self.data.get(HiddenImplementationDefinition.hidden_abstract, None)
         if self.abstract is not None:
             if not isinstance(self.abstract, bool):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type}'s abstract marker must be a JSON boolean, not "
                     f"{self.abstract!r} for the {self.definition_type} {self.name}",
-                    self.location_id("abstract"),
+                    self.location_id(HiddenImplementationDefinition.hidden_abstract),
                 )
         else:
             self.abstract = False
@@ -122,39 +137,55 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         # check "templateArguments"
         # can only be completely parsed after the concept data is initialized for all concepts
         #   because of constraints and substitutions requiring template-instantiations of other concepts
-        self.template_arguments = self.data.get("templateArguments", None)
+        self.template_arguments = self.data.get(HiddenImplementationDefinition.hidden_template_arguments, None)
         if self.template_arguments is not None:
             if not isinstance(self.template_arguments, (dict, list)):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type}'s template arguments must be a JSON array or object, "
                     f"not {self.template_arguments!r} for the {self.definition_type} {self.name}",
-                    self.location_id("templateArguments"),
+                    self.location_id(HiddenImplementationDefinition.hidden_template_arguments),
                 )
             elif isinstance(self.template_arguments, list):
                 self.check_template_argument_definition_list(self.template_arguments)
             else:
                 template_structure_data = {
-                    k: v for k, v in self.template_arguments.items() if k in self.template_arguments_data_keys
+                    k: v
+                    for k, v in self.template_arguments.items()
+                    if k in HiddenImplementationDefinition.template_arguments_data_keys
                 }
-                if "order" in template_structure_data:
-                    if not isinstance(template_structure_data["order"], list):
+                if HiddenImplementationDefinition.hidden_template_arguments_order in template_structure_data:
+                    if not isinstance(
+                        template_structure_data[HiddenImplementationDefinition.hidden_template_arguments_order], list
+                    ):
                         raise CHSyntaxError(
                             f"The definition of a {self.definition_type}'s template arguments must contain the order of"
-                            f' arguments (specified at the "order" keyword) as a JSON array of strings!'
-                            f"\n\tGot {template_structure_data['order']!r}",
-                            self.location_id("templateArguments", "order"),
+                            f" arguments (specified at the "
+                            f'"{HiddenImplementationDefinition.hidden_template_arguments_order}" keyword) as a JSON '
+                            f"array of strings!\n\tGot "
+                            f"{template_structure_data[HiddenImplementationDefinition.hidden_template_arguments_order]!r}",
+                            self.location_id(
+                                HiddenImplementationDefinition.hidden_template_arguments,
+                                HiddenImplementationDefinition.hidden_template_arguments_order,
+                            ),
                         )
                     else:
-                        self.check_template_argument_definition_list(template_structure_data["order"])
+                        self.check_template_argument_definition_list(
+                            template_structure_data[HiddenImplementationDefinition.hidden_template_arguments_order]
+                        )
                 # "substitution_of_template_arguments" TO BE CHECKED AFTER ALL CONCEPTS ARE INITIALIZED
-                self.substitution_of_template_arguments = template_structure_data.get("substitutions", {})
+                self.substitution_of_template_arguments = template_structure_data.get(
+                    HiddenImplementationDefinition.hidden_template_arguments_substitutions, {}
+                )
                 if not isinstance(self.substitution_of_template_arguments, dict):
                     raise CHSyntaxError(
                         f"The definition of the substitution of parent {self.definition_type} template arguments must "
                         f"be a JSON object mapping template argument identifiers (i.e. "
                         f'"DirectParentName:NameOrDirectParentTemplateArgument") as JSON strings to the substitution '
                         f"formula also specified as JSON strings.\n\tGot {self.substitution_of_template_arguments!r}",
-                        self.location_id("templateArguments", "substitutions"),
+                        self.location_id(
+                            HiddenImplementationDefinition.hidden_template_arguments,
+                            HiddenImplementationDefinition.hidden_template_arguments_substitutions,
+                        ),
                     )
                 else:
                     for subst_key in self.substitution_of_template_arguments:
@@ -164,23 +195,38 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             raise CHSyntaxError(
                                 f"The substitution identifier of a parent {self.definition_type} template arguments "
                                 f'must be "DirectParentName:NameOrDirectParentTemplateArgument".\n\tGot {subst_key!r}',
-                                self.location_id("templateArguments", "substitutions", subst_key),
+                                self.location_id(
+                                    HiddenImplementationDefinition.hidden_template_arguments,
+                                    HiddenImplementationDefinition.hidden_template_arguments_substitutions,
+                                    subst_key,
+                                ),
                             )
-                if self.template_argument_order == () and "variadicGroupIdentifiers" in template_structure_data:
+                if (
+                    self.template_argument_order == ()
+                    and HiddenImplementationDefinition.hidden_template_arguments_variadic_ids in template_structure_data
+                ):
                     raise CHSyntaxError(
                         f"Can't specify variadicGroupIdentifiers for {self.definition_type} that does not define any "
-                        f'template argument (based on missing "order" keyword in the definition of {self.name})',
-                        self.location_id("templateArguments", "variadicGroupIdentifiers"),
+                        f"template argument (based on missing "
+                        f'"{HiddenImplementationDefinition.hidden_template_arguments_order}" keyword in the '
+                        f"definition of {self.name})",
+                        self.location_id(
+                            HiddenImplementationDefinition.hidden_template_arguments,
+                            HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                        ),
                     )
                 self.variadic_template_argument_group_identifiers = template_structure_data.get(
-                    "variadicGroupIdentifiers", {}
+                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids, {}
                 )
                 if not isinstance(self.variadic_template_argument_group_identifiers, dict):
                     raise CHSyntaxError(
                         f"The definition of variadic group identifiers must be a JSON object mapping variadic template "
                         f"argument names to a JSON string identifier containing only the characters '!' and '$' "
                         f"(or empty).\n\tGot {self.variadic_template_argument_group_identifiers!r}",
-                        self.location_id("templateArguments", "variadicGroupIdentifiers"),
+                        self.location_id(
+                            HiddenImplementationDefinition.hidden_template_arguments,
+                            HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                        ),
                     )
                 else:
                     allow_empty_identifier = len(self.variadic_template_arguments) == len(self.template_argument_order)
@@ -191,32 +237,53 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             raise CHSyntaxError(
                                 f"The key entry in the variadic group identifiers JSON must be a variadic template "
                                 f"argument without its '...' variadic identifier!\n\tGot {var_t_arg!r}",
-                                self.location_id("templateArguments", "variadicGroupIdentifiers", var_t_arg),
+                                self.location_id(
+                                    HiddenImplementationDefinition.hidden_template_arguments,
+                                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                                    var_t_arg,
+                                ),
                             )
                         elif var_t_arg not in self.template_argument_constraints:
                             raise CHSemanticError(
                                 f"{var_t_arg!r} is not a template argument of {self.name}!",
-                                self.location_id("templateArguments", "variadicGroupIdentifiers", var_t_arg),
+                                self.location_id(
+                                    HiddenImplementationDefinition.hidden_template_arguments,
+                                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                                    var_t_arg,
+                                ),
                             )
                         elif var_t_arg not in self.variadic_template_arguments:
                             raise CHSemanticError(
                                 f"{var_t_arg!r} is not a variadic template argument of {self.name}!",
-                                self.location_id("templateArguments", "variadicGroupIdentifiers", var_t_arg),
+                                self.location_id(
+                                    HiddenImplementationDefinition.hidden_template_arguments,
+                                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                                    var_t_arg,
+                                ),
                             )
-                        if any(char not in self.variadic_group_identifier_characters for char in var_t_g_id):
-                            variadic_group_identifier_character_enumeration = ", ".join(
-                                "'" + x + "'" for x in self.variadic_group_identifier_characters
-                            )
+                        if any(
+                            char not in HiddenImplementationDefinition.variadic_group_identifier_characters
+                            for char in var_t_g_id
+                        ):
                             raise CHSyntaxError(
                                 f"Valid variadic group identifiers contain only the characters "
-                                f"{variadic_group_identifier_character_enumeration}.\n\tGot invalid {var_t_g_id!r}!",
-                                self.location_id("templateArguments", "variadicGroupIdentifiers", var_t_arg),
+                                f"{HiddenImplementationDefinition.variadic_group_identifier_character_enumeration}."
+                                f"\n\tGot invalid {var_t_g_id!r}!",
+                                self.location_id(
+                                    HiddenImplementationDefinition.hidden_template_arguments,
+                                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                                    var_t_arg,
+                                ),
                             )
                         if var_t_g_id == "" and not allow_empty_identifier:
                             raise CHSemanticError(
                                 f"The empty variadic group identifier is only allowed when the {self.definition_type}"
                                 f" defines only variadic template arguments. This is not the case for {self.name}",
-                                self.location_id("templateArguments", "variadicGroupIdentifiers", var_t_arg),
+                                self.location_id(
+                                    HiddenImplementationDefinition.hidden_template_arguments,
+                                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                                    var_t_arg,
+                                ),
                             )
 
                 for t_arg, t_arg_constraint in self.template_arguments.items():
@@ -226,13 +293,15 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         raise CHSemanticError(
                             f"Can't define a constraint for {t_arg!r} which is not a template argument of {self.name}. "
                             f"\n\tIt only has these template arguments: {self.template_argument_order!r}",
-                            self.location_id("templateArguments", t_arg),
+                            self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg),
                         )
                     if not isinstance(t_arg_constraint, str):
                         raise CHSyntaxError(
                             f"The definition of a {self.definition_type} template argument constraint formulae must "
                             f"be a JSON string, got {t_arg_constraint!r}",
-                            self.location_id("templateArguments", t_arg_constraint),
+                            self.location_id(
+                                HiddenImplementationDefinition.hidden_template_arguments, t_arg_constraint
+                            ),
                         )
                     # parse the formula later, after all concepts are initialized!
                     self.template_argument_constraints[t_arg] = t_arg_constraint

@@ -29,12 +29,15 @@ TemplateDependentInstantiationDefinition: TypeAlias = dict[tuple[str | None, ...
 
 
 class ValueDomainDefinition(HiddenImplementationDefinition):
+    value_domain_name: str = "ValueDomain"
+    value_domain_instantiation: str = "instantiation"
+    value_domain_default_serialization: str = "defaultSerialization"
     implementation_related_keys: set[str] = HiddenImplementationDefinition.implementation_related_keys | {
-        "instantiation",
-        "defaultSerialization",
+        value_domain_instantiation,
+        value_domain_default_serialization,
     }
     allowed_default_serializations: set[str] = {"null", "boolean", "integer", "number", "string"}
-    argument_reference_types = {"Reference", "NoRef"}
+    argument_reference_types = {"NoRef", "Reference"}
 
     def __init__(self, name: str, definition_data: object):
         super().__init__(name, definition_data)
@@ -52,23 +55,24 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
 
     @property
     def definition_type(self) -> str:
-        return "ValueDomain"
+        return ValueDomainDefinition.value_domain_name
 
     def check_default_serialization(self):
         # check "defaultSerialization"
-        self.default_serialization = self.data.get("defaultSerialization", None)
+        self.default_serialization = self.data.get(ValueDomainDefinition.value_domain_default_serialization, None)
         if self.default_serialization is not None:
             if not isinstance(self.default_serialization, str):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type}'s defaultSerialization must be a JSON string, not "
                     f"{self.default_serialization!r} for the {self.definition_type} {self.name}",
-                    self.location_id("defaultSerialization"),
+                    self.location_id(ValueDomainDefinition.value_domain_default_serialization),
                 )
             elif self.default_serialization not in self.allowed_default_serializations:
                 raise CHSyntaxError(
-                    f'Invalid "defaultSerialization" string value for {self.definition_type} {self.name}: got: '
-                    f"{self.default_serialization!r}, allowed: {self.allowed_default_serializations}",
-                    self.location_id("default_serialization"),
+                    f'Invalid "{ValueDomainDefinition.value_domain_default_serialization}" string value for '
+                    f"{self.definition_type} {self.name}: got: {self.default_serialization!r}, allowed: "
+                    f"{self.allowed_default_serializations}",
+                    self.location_id(self.default_serialization),
                 )
 
     def check_instantiation(self):
@@ -76,13 +80,13 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         # can only be completely parsed after the concept data is initialized for all concepts
         #   because of template-instantiations of other concepts (whose template constraints/size must be validated)
         assert isinstance(self.abstract, bool)
-        if self.abstract and "instantiation" in self.data:
+        if self.abstract and ValueDomainDefinition.value_domain_instantiation in self.data:
             raise CHSemanticError(
                 f"An abstract {self.definition_type} can not be instantiated!\n\t"
-                f'Do not define the "instantiation" structure for {self.name}',
-                self.location_id("instantiation"),
+                f'Do not define the "{ValueDomainDefinition.value_domain_instantiation}" structure for {self.name}',
+                self.location_id(ValueDomainDefinition.value_domain_instantiation),
             )
-        self.instantiation = self.data.get("instantiation", None)
+        self.instantiation = self.data.get(ValueDomainDefinition.value_domain_instantiation, None)
         if self.instantiation is not None:
             if not isinstance(self.instantiation, (str, dict, list)):
                 raise CHSyntaxError(
@@ -92,7 +96,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     f"\ta 2-element JSON array mapping template argument constraint definitions to "
                     f"JSON string or object deserialization structures,\n"
                     f"not {self.instantiation!r} for the {self.definition_type} {self.name}",
-                    self.location_id("instantiation"),
+                    self.location_id(ValueDomainDefinition.value_domain_instantiation),
                 )
             elif not isinstance(self.instantiation, list):
                 # if there are no template arguments, template_argument_order is an empty tuple
@@ -106,7 +110,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                             f"2-element array mapping template argument constraints to JSON (string or object) "
                             f"deserialization structures, not {instantiation_entry!r} for the {self.definition_type} "
                             f"{self.name}",
-                            self.location_id("instantiation", entry_index),
+                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index),
                         )
                     # check template constraints
                     if not isinstance(instantiation_entry[0], list):
@@ -115,7 +119,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                             f"2-element array must be a JSON array of string (template argument constraint formulae) or"
                             f" null (unconstrained) values for each template argument.\n\t"
                             f"Got {instantiation_entry[0]!r}",
-                            self.location_id("instantiation", entry_index, 0),
+                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 0),
                         )
                     elif len(instantiation_entry[0]) != len(self.template_argument_order):
                         raise CHSyntaxError(
@@ -124,7 +128,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                             f" null (unconstrained) values of length {len(self.template_argument_order)}.\n\t\t"
                             f"An entry for each template argument!\n\tGot {instantiation_entry[0]!r} of length "
                             f"{len(instantiation_entry[0])}",
-                            self.location_id("instantiation", entry_index, 0),
+                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 0),
                         )
                     else:
                         for constraint_index, template_arg_constraint in instantiation_entry[0]:
@@ -134,7 +138,12 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                                     f" of the 2-element array must be a JSON array of string (template argument "
                                     f"constraint formulae) or null (unconstrained) values for each template argument."
                                     f"\n\tGot {template_arg_constraint!r}",
-                                    self.location_id("instantiation", entry_index, 0, constraint_index),
+                                    self.location_id(
+                                        ValueDomainDefinition.value_domain_instantiation,
+                                        entry_index,
+                                        0,
+                                        constraint_index,
+                                    ),
                                 )
                     # check deserialization structure specification (just its outer structure, not its content)
                     if not isinstance(instantiation_entry[1], (str, dict)):
@@ -142,7 +151,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                             f"Invalid entry in template-specific instantiation definition:\n\tthe second entry of the"
                             f"2-element array must be a JSON (string or object) deserialization structures, not "
                             f"{instantiation_entry[1]!r}.",
-                            self.location_id("instantiation", entry_index, 1),
+                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 1),
                         )
                     # add data to dictionary
                     instantiation_dict[tuple(instantiation_entry[0])] = instantiation_entry[1]

@@ -19,10 +19,11 @@ from concept_hierarchy.errors import CHSyntaxError, LocationId
 
 
 class ConceptHierarchyDefinition(ABC):
-    def __init__(self, name: str, definition_data: object):
+    def __init__(self, name: str, definition_data: object, definition_location_str: str):
         self.name: str = name
         # noinspection PyTypeChecker
         self.definition_data: dict | str = definition_data
+        self.definition_location_str: str = definition_location_str
 
         self.is_root: bool = False
         self.is_reference_to: str | None = None
@@ -55,7 +56,7 @@ class ConceptHierarchyDefinition(ABC):
     @property
     @abstractmethod
     def definition_location(self) -> list[str]:
-        pass
+        return [self.definition_location_str]
 
     def location_id(self, *location_ids: str | int) -> LocationId:
         return self.definition_location + [*location_ids]
