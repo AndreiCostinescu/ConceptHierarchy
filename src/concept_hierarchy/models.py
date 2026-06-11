@@ -115,7 +115,7 @@ class ConceptHierarchyModel:
         self.assert_structure()
         return v in self.instances
 
-    def is_a_subconcept_of_b(self, a: str, b: str, *, include_self: bool = False) -> bool:
+    def is_a_subconcept_of_b(self, a: str, b: str, *, include_self: bool) -> bool:
         self.assert_structure()
         if not self.is_concept(a):
             raise RuntimeError(f"{a!r} is not the name of a concept in the Concept Hierarchy!")
