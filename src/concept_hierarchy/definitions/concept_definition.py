@@ -43,6 +43,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self._data_def: object = None
         self.external_data_resolver = external_data_resolver
         super().__init__(name, definition_data, definition_location_str)
+        # when the concept is initialized (just as a concept at the beginning) the function below does nothing
         self.concept_data_check()  # sets the members of subclasses of ConceptDefinition
 
     def check(self):
@@ -80,6 +81,16 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                 #  because the parent's concept name will be checked when it will be processed.
                 #  And if the string is not a valid parent name, then the parent-in-ch semantic rule will determine an
                 #  invalid parent specification when computing the topological sort of the hierarchy graph!
+        # missing checks:
+        #  - check that parents of Functions are Functions (except ValueDomain)
+        #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
+        #  - check that parents of ValueDomains are ValueDomains (except Concept)
+        #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
+        #  - check that parents of Domain Concepts are Domain Concepts
+        #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
 
         self.description = self.definition_data.get(ConceptDefinition.concept_description, None)
         if not isinstance(self.description, (str, NoneType)):

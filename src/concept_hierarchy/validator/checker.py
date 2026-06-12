@@ -316,6 +316,15 @@ class ConceptHierarchyChecker:
                             ],
                         )
             if isinstance(c, ValueDomainDefinition):
+                assert self.ch.is_pure_value_domain(c_name)
+                for parent_index, parent in enumerate(c.parents):
+                    if not self.ch.is_pure_value_domain(parent) and parent != ConceptDefinition.concept_name:
+                        raise CHSemanticError(
+                            f"Parents of {ValueDomainDefinition.value_domain_name}s must be "
+                            f"{ValueDomainDefinition.value_domain_name}s.\nEncountered non "
+                            f"{ValueDomainDefinition.value_domain_name} parent {parent!r} of {c_name}",
+                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                        )
                 if c.default_serialization is not None and c.default_serialization in self.ch.default_serializations:
                     raise CHSemanticError(
                         f"The default serialization value of ValueDomains must be unique across all concepts!"
@@ -331,6 +340,15 @@ class ConceptHierarchyChecker:
                     )
                 self.ch.default_serializations[c.default_serialization] = c_name
             if isinstance(c, FunctionDefinition):
+                assert self.ch.is_function(c_name)
+                for parent_index, parent in enumerate(c.parents):
+                    if not self.ch.is_function(parent) and parent != ValueDomainDefinition.value_domain_name:
+                        raise CHSemanticError(
+                            f"Parents of {FunctionDefinition.function_name}s must be "
+                            f"{FunctionDefinition.function_name}s.\nEncountered non {FunctionDefinition.function_name} "
+                            f"parent {parent!r} of {c_name}",
+                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                        )
                 for eval_arg_name in c.evaluation_interface:
                     if eval_arg_name in self.ch.instances:
                         raise CHSemanticError(
@@ -347,6 +365,15 @@ class ConceptHierarchyChecker:
                             ],
                         )
             if isinstance(c, DomainConceptDefinition):
+                assert self.ch.is_domain_concept(c_name)
+                for parent_index, parent in enumerate(c.parents):
+                    if not self.ch.is_domain_concept(parent):
+                        raise CHSemanticError(
+                            f"Parents of {DomainConceptDefinition.domain_concept_name}s must be "
+                            f"{DomainConceptDefinition.domain_concept_name}s.\nEncountered non "
+                            f"{DomainConceptDefinition.domain_concept_name} parent {parent!r} of {c_name}",
+                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                        )
                 # check unique property names, unique function names, distinct function and property names,
                 # and non-ambiguous definitions of properties or functions with the same name as a global variable
                 for prop_name in c.properties:
