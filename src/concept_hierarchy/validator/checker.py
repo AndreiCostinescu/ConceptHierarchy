@@ -110,7 +110,7 @@ class ConceptHierarchyChecker:
         for referencing_name, referencing_def in referencing_others.items():
             referenced_name = mapped_data[referencing_name]
             assert referenced_name is not None
-            defined_data[referenced_name] = referencing_def.create_from_reference(defined_data[referenced_name])
+            defined_data[referencing_name] = referencing_def.create_from_reference(defined_data[referenced_name])
 
     def check_structure(self):
         if self.ch.checked:
