@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
 
 
 class HiddenImplementationDefinition(ConceptDefinition, ABC):
@@ -236,6 +236,8 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     )
                 else:
                     allow_empty_identifier = len(self.variadic_template_arguments) == len(self.template_argument_order)
+                    # Check if either no variadic template argument has a variadic group identifier or all of them have
+                    is_variadic_id_defined: str | None = None
                     for var_t_arg, var_t_g_id in self.variadic_template_argument_group_identifiers.items():
                         # assertion, not check because this is a key of a JSON object
                         assert isinstance(var_t_arg, str)
@@ -291,6 +293,21 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     var_t_arg,
                                 ),
                             )
+                        is_variadic_id_defined = var_t_arg
+                    if isinstance(is_variadic_id_defined, str):
+                        for var_t_arg in self.variadic_template_arguments:
+                            if var_t_arg not in self.variadic_template_argument_group_identifiers:
+                                raise CHSemanticError(
+                                    f"Either no variadic group identifier is defined for variadic template arguments of"
+                                    f" a variadic group identifier is defined for all variadic template arguments!\n"
+                                    f"{self.name} has defined a variadic group id for {is_variadic_id_defined} but does"
+                                    f" not define one for {var_t_arg}!",
+                                    location_id=self.location_id(
+                                        HiddenImplementationDefinition.hidden_template_arguments,
+                                        HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                                    ),
+                                    part=PathPart.VALUE,
+                                )
 
                 for t_arg, t_arg_constraint in self.template_arguments.items():
                     if t_arg in template_structure_data:
