@@ -810,6 +810,10 @@ class DomainConceptDefinition(ConceptDefinition):
             if FunctionDefinition.DEFAULT in func_data:
                 assert isinstance(func_data[FunctionDefinition.DEFAULT], dict)
         # missing checks:
+        #  - check that the valueDomain of every domain concept function is a subconcept of CustomFunction
+        #    REQUIRES: all concepts to be processed and the type validator to be initialized
+        #    TYPE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
         #  - function names should be unique among all concepts (incl. defining a property with same name as a function)
         #    STRUCTURE CHECK
         #       - done in checker.py - check_after_parsing_concepts
