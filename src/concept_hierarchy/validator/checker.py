@@ -26,7 +26,7 @@ from concept_hierarchy.definitions.concept_definition_value_domain import ValueD
 from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
 from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.utils import (
     join_path,
@@ -315,6 +315,69 @@ class ConceptHierarchyChecker:
                                 HiddenImplementationDefinition.hidden_template_arguments,
                             ],
                         )
+                # maps names of template arguments of parents to the set of the parent concepts that use those names
+                template_arguments_to_substitute: dict[str, set[str]] = {}
+                extra_t_subst_keys: set[tuple[str | None, str]] = set(c.substitution_of_template_arguments)
+                matched_parents_of_shorthand_syntax: dict[str, str] = {}
+                # ensure all parent template arguments are specified in the substitution definition of this concept
+                for parent in c.parents:
+                    parent_c = self.ch.concepts[parent]
+                    if not isinstance(parent_c, HiddenImplementationDefinition):
+                        continue
+                    for parent_t_arg in parent_c.template_argument_order:
+                        if parent_t_arg not in template_arguments_to_substitute:
+                            template_arguments_to_substitute[parent_t_arg] = set()
+                        template_arguments_to_substitute[parent_t_arg].add(parent)
+                        # check that all parents are substituted in the concept
+                        # check later if the substitution is unambiguous
+                        full_key = (parent, parent_t_arg)
+                        if full_key in c.substitution_of_template_arguments:
+                            extra_t_subst_keys.remove(full_key)
+                            continue
+                        if parent_t_arg in c.substitution_of_template_arguments:
+                            extra_t_subst_keys.remove((None, parent_t_arg))
+                            matched_parents_of_shorthand_syntax[parent_t_arg] = parent
+                            continue
+                        raise CHSemanticError(
+                            f"Parent template argument {parent_t_arg} of {parent} is not specialized in {c_name}! "
+                            f'The specialization syntax is "<ParentConceptName>:<ParentTemplateArgumentName>".',
+                            location_id=c.location_of(
+                                HiddenImplementationDefinition.hidden_template_arguments_substitutions
+                            ),
+                            part=PathPart.VALUE,
+                        )
+                # ensure that shorthand-syntax specified substitution arguments are unambiguous
+                for t_arg_name, parents_defining_t_arg in template_arguments_to_substitute.items():
+                    if len(parents_defining_t_arg) > 1 and t_arg_name in c.substitution_of_template_arguments:
+                        raise CHSemanticError(
+                            f"The substitution specification of template argument {t_arg_name} is ambiguous in {c_name}"
+                            f" because the parent concepts {parents_defining_t_arg} define the template argument with "
+                            f'the same name. Use the "<ParentConceptName>:<ParentTemplateArgumentName>" syntax to '
+                            f"define the unambiguous substitution value for all parent template arguments",
+                            location_id=c.location_of(
+                                HiddenImplementationDefinition.hidden_template_arguments_substitutions
+                            ),
+                            part=PathPart.KEY,
+                        )
+                # ensure there are no extra keys specified in the substitution definition
+                if len(extra_t_subst_keys) > 0:
+                    extra_keys_str = ", ".join(
+                        (f"{p}:" if p is not None else "") + p_t_arg for p, p_t_arg in extra_t_subst_keys
+                    )
+                    raise CHSemanticError(
+                        f"Extra keys {extra_keys_str} in template substitution definition of {c_name} must be removed!",
+                        location_id=c.location_of(
+                            HiddenImplementationDefinition.hidden_template_arguments_substitutions
+                        ),
+                        part=PathPart.VALUE,
+                    )
+                # replace shorthand-syntax template arguments in concept's substitution member
+                for parent_t_arg, parent in matched_parents_of_shorthand_syntax.items():
+                    existing_key = (None, parent_t_arg)
+                    assert existing_key in c.substitution_of_template_arguments
+                    c.substitution_of_template_arguments[(parent, parent_t_arg)] = (
+                        c.substitution_of_template_arguments.pop((None, parent_t_arg))
+                    )
             if isinstance(c, ValueDomainDefinition):
                 assert self.ch.is_pure_value_domain(c_name)
                 for parent_index, parent in enumerate(c.parents):

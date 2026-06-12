@@ -52,7 +52,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         # unparsed template constraint formulae, must be strings
         self.template_argument_constraints: dict[str, str] = {}
         # mapping from (parent VD, parent template arg name) -> string value or list of strings variadic value
-        self.substitution_of_template_arguments: dict[tuple[str, str], str | list[str]] = {}
+        self.substitution_of_template_arguments: dict[tuple[str | None, str], str | list[str]] = {}
         self.variadic_template_arguments: set[str] = set()
         self.variadic_template_argument_group_identifiers: dict[str, str] = {}
 
@@ -172,11 +172,11 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         self.check_template_argument_definition_list(
                             template_structure_data[HiddenImplementationDefinition.hidden_template_arguments_order]
                         )
-                # "substitution_of_template_arguments" TO BE CHECKED AFTER ALL CONCEPTS ARE INITIALIZED
-                self.substitution_of_template_arguments = template_structure_data.get(
+                # missing checks: "substitution_of_template_arguments" TO BE CHECKED AFTER ALL CONCEPTS ARE INITIALIZED
+                substitution_data = template_structure_data.get(
                     HiddenImplementationDefinition.hidden_template_arguments_substitutions, {}
                 )
-                if not isinstance(self.substitution_of_template_arguments, dict):
+                if not isinstance(substitution_data, dict):
                     raise CHSyntaxError(
                         f"The definition of the substitution of parent {self.definition_type} template arguments must "
                         f"be a JSON object mapping template argument identifiers (i.e. "
@@ -188,10 +188,12 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         ),
                     )
                 else:
-                    for subst_key in self.substitution_of_template_arguments:
+                    for subst_key, subst_data in substitution_data.items():
                         # assertion, not check because this is a key of a JSON object
                         assert isinstance(subst_key, str)
-                        if subst_key.count(":") > 1:
+                        split_res = subst_key.split(":")
+                        colon_count = len(split_res)
+                        if colon_count > 1:
                             raise CHSyntaxError(
                                 f"The substitution identifier of a parent {self.definition_type} template arguments "
                                 f'must be "DirectParentName:NameOrDirectParentTemplateArgument".\n\tGot {subst_key!r}',
@@ -201,6 +203,10 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     subst_key,
                                 ),
                             )
+                        elif colon_count == 1:
+                            self.substitution_of_template_arguments[split_res[0], split_res[1]] = subst_data
+                        else:
+                            self.substitution_of_template_arguments[None, split_res[0]] = subst_data
                 if (
                     self.template_argument_order == ()
                     and HiddenImplementationDefinition.hidden_template_arguments_variadic_ids in template_structure_data
