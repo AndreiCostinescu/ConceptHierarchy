@@ -91,10 +91,10 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
             )
         self.instantiation = self.data.get(ValueDomainDefinition.value_domain_instantiation, None)
         if self.instantiation is not None:
-            if not isinstance(self.instantiation, (str, dict, list)):
+            if not isinstance(self.instantiation, (bool, str, dict, list)):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type}'s instantiation deserialization structure must be:\n"
-                    f"\ta JSON string,\n"
+                    f"\ta JSON boolean value\n\ta JSON string,\n"
                     f"\ta JSON object (representing the JSON schema of the to-be-deserialized value), or\n"
                     f"\ta 2-element JSON array mapping template argument constraint definitions to "
                     f"JSON string or object deserialization structures,\n"
