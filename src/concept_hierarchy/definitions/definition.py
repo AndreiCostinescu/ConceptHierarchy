@@ -34,6 +34,12 @@ class ConceptHierarchyDefinition(ABC):
 
         self.check()
 
+    def __str__(self):
+        return repr(self)
+
+    def __repr__(self):
+        return f"{self.definition_type}({self.name})"
+
     @classmethod
     def _from_node(cls, node: T) -> T:
         if not issubclass(cls, type(node)):
