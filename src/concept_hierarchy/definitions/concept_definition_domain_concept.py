@@ -666,8 +666,7 @@ class DomainConceptDefinition(ConceptDefinition):
             #  if so, the VALUE_DOMAIN entry does not appear in prop_data; so add it manually here below
             if value_domain_keyword not in available_data[name]:
                 available_data[name][value_domain_keyword] = self.name
-                data_specialization_for_this[name][value_domain_keyword] = (None, True)
-                # don't set VALUE_DOMAIN data for subconcepts, because VALUE_DOMAIN is not specializable!
+                # don't set VALUE_DOMAIN data for this or for subconcepts, because VALUE_DOMAIN is not specializable!
                 assert value_domain_keyword not in specializable_keywords
 
     def concept_data_check(self):
