@@ -19,7 +19,7 @@ from typing import TypeAlias
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
 
 # the instantiation value is either a string value or a JSON object representing a json-schema-definition
 InstantiationDefinition: TypeAlias = str | dict
@@ -66,6 +66,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     f"The definition of a {self.definition_type}'s defaultSerialization must be a JSON string, not "
                     f"{self.default_serialization!r} for the {self.definition_type} {self.name}",
                     self.location_id(ValueDomainDefinition.value_domain_default_serialization),
+                    part=PathPart.VALUE,
                 )
             elif self.default_serialization not in self.allowed_default_serializations:
                 raise CHSyntaxError(
@@ -73,6 +74,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     f"{self.definition_type} {self.name}: got: {self.default_serialization!r}, allowed: "
                     f"{self.allowed_default_serializations}",
                     self.location_id(self.default_serialization),
+                    part=PathPart.VALUE,
                 )
 
     def check_instantiation(self):
@@ -85,6 +87,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                 f"An abstract {self.definition_type} can not be instantiated!\n\t"
                 f'Do not define the "{ValueDomainDefinition.value_domain_instantiation}" structure for {self.name}',
                 self.location_id(ValueDomainDefinition.value_domain_instantiation),
+                part=PathPart.KEY,
             )
         self.instantiation = self.data.get(ValueDomainDefinition.value_domain_instantiation, None)
         if self.instantiation is not None:
@@ -97,6 +100,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     f"JSON string or object deserialization structures,\n"
                     f"not {self.instantiation!r} for the {self.definition_type} {self.name}",
                     self.location_id(ValueDomainDefinition.value_domain_instantiation),
+                    part=PathPart.VALUE,
                 )
             elif not isinstance(self.instantiation, list):
                 # if there are no template arguments, template_argument_order is an empty tuple

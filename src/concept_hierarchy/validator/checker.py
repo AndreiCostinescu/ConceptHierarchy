@@ -71,6 +71,7 @@ class ConceptHierarchyChecker:
                     f"The referenced concept {referenced_concept!r} of {reference} does not exist in the "
                     f"Concept Hierarchy!",
                     location_id=[data_type, reference],
+                    part=PathPart.VALUE,
                 )
         total_length = len(definitions) + len(references)
         prev_length = len(mapped_references)
@@ -91,6 +92,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f"There is a cycle in the {data_type[:-1]} references: {set(references.keys())!r}",
                     location_id=[data_type],
+                    part=PathPart.VALUE,
                 )
             prev_length = current_length
         return mapped_references
@@ -140,6 +142,7 @@ class ConceptHierarchyChecker:
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_name}" {self.ch.name!r} must be a non-empty, '
                 f"non-digit-starting string containing only alphanumeric characters or '_'.",
                 location_id=[ConceptHierarchyModel.model_name],
+                part=PathPart.VALUE,
             )
 
         # -- metadata (optional) --------------------------------------------
@@ -148,6 +151,7 @@ class ConceptHierarchyChecker:
             raise CHSyntaxError(
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_metadata}" must be a JSON object.',
                 location_id=[ConceptHierarchyModel.model_metadata],
+                part=PathPart.VALUE,
             )
         self.ch.metadata = {str(k): str(v) for k, v in raw_meta.items()}
 
@@ -156,6 +160,7 @@ class ConceptHierarchyChecker:
             raise CHSyntaxError(
                 f'Missing required top-level key: "{ConceptHierarchyModel.model_concepts}".',
                 location_id=[ConceptHierarchyModel.model_concepts],
+                part=PathPart.KEY,
             )
         concept_definition = concept_hierarchy[ConceptHierarchyModel.model_concepts]
         # type checks for concept_definition data
@@ -164,6 +169,7 @@ class ConceptHierarchyChecker:
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_concepts}" data must be a JSON object of concept '
                 f"definitions, not {concept_definition!r}.",
                 location_id=[ConceptHierarchyModel.model_concepts],
+                part=PathPart.VALUE,
             )
         concepts_referencing_others: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
@@ -187,6 +193,7 @@ class ConceptHierarchyChecker:
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_instances}" data must be a JSON object of definitions'
                 f" of instances, i.e. global variables, not {instance_definition!r}.",
                 location_id=[ConceptHierarchyModel.model_instances],
+                part=PathPart.VALUE,
             )
         instances_referencing_others: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
@@ -223,6 +230,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f"Concept Hierarchy has multiple roots: {roots!r}",
                     location_id=[ConceptHierarchyModel.model_concepts],
+                    part=PathPart.VALUE,
                 )
             elif self.ch.root_concept_name not in roots:
                 for root in roots:
@@ -239,6 +247,7 @@ class ConceptHierarchyChecker:
                     f'The root concept of the Concept Hierarchy must be called "{self.ch.root_concept_name}", not '
                     f"{root!r}!",
                     location_id=[ConceptHierarchyModel.model_concepts],
+                    part=PathPart.VALUE,
                 )
             defined_concepts[root].is_root = True
             self.ch.root_concept_name = root
@@ -247,6 +256,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f"Cycles detected in Concept Hierarchy:\n{tab}{e!s}",
                     location_id=[ConceptHierarchyModel.model_concepts],
+                    part=PathPart.VALUE,
                 ) from e
             raise e
 
@@ -271,6 +281,7 @@ class ConceptHierarchyChecker:
                     f"The global variable name {instance_name!r} is also a concept name!\n\tThis can create ambiguity! "
                     f"Please rename the global variable name!",
                     location_id=[ConceptHierarchyModel.model_instances, instance_name],
+                    part=PathPart.KEY,
                 )
         self.ch.instances = defined_instances
         self.ch.checked_structure = True
@@ -295,6 +306,7 @@ class ConceptHierarchyChecker:
                         c_name,
                         ConceptDefinition.concept_direct_parents,
                     ],
+                    part=PathPart.VALUE,
                 )
         # check domain_concept, value_domain, and function data!
         for c_name, c in self.ch.concepts.items():

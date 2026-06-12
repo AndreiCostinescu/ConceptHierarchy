@@ -19,7 +19,7 @@ from typing import Callable
 
 from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
 
 class ConceptDefinition(ConceptHierarchyDefinition):
@@ -51,7 +51,9 @@ class ConceptDefinition(ConceptHierarchyDefinition):
 
         if not check_ch_name(self.name, must_start_uppercase=True):
             raise CHSyntaxError(
-                f"Name of concept definition {self.name!r} must be an uppercase string!", self.location_id()
+                f"Name of concept definition {self.name!r} must be an uppercase string!",
+                self.location_id(),
+                part=PathPart.KEY,
             )
         if self.is_reference():
             return
@@ -60,7 +62,9 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         if not (defined_keys <= ConceptDefinition.concept_data_keys):
             extra_keys = defined_keys - ConceptDefinition.concept_data_keys
             raise CHSyntaxError(
-                f"Found extra keys {extra_keys!r} in the concept definition of {self.name}", self.location_id()
+                f"Found extra keys {extra_keys!r} in the concept definition of {self.name}",
+                self.location_id(),
+                part=PathPart.VALUE,
             )
 
         self.parents = self.definition_data.get(ConceptDefinition.concept_direct_parents, [])
@@ -68,6 +72,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
             raise CHSyntaxError(
                 f"Direct parents of the concept {self.name} must be a JSON array of strings, not {self.parents!r}!",
                 self.location_id(ConceptDefinition.concept_direct_parents),
+                part=PathPart.VALUE,
             )
         else:
             for index, parent in enumerate(self.parents):
@@ -97,6 +102,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
             raise CHSyntaxError(
                 f"The description of the concept {self.name} must be a JSON string or null, not {self.description!r}",
                 self.location_id("definition"),
+                part=PathPart.VALUE,
             )
 
         self._data_def = self.definition_data.get(ConceptDefinition.concept_definition_data, None)
@@ -114,6 +120,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                     raise CHSemanticError(
                         f"Incorrect external data file specified for concept {self.name}: {self._data_def!r}!",
                         self.location_id(*data_location_id),
+                        part=PathPart.VALUE,
                     ) from e
                 raise e
 
@@ -135,6 +142,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                 f"The data of the concept {self.name} must be a JSON object, null, or a string file path "
                 f"(absolute or relative to the root directory), not {self._data_def!r}",
                 location_id=self.location_id(*data_location_id),
+                part=PathPart.VALUE,
             )
         elif self._data_def is None:
             self.data = {}

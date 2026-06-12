@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from typing import TypeVar
 
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSyntaxError, LocationId, PathSegment
+from concept_hierarchy.errors import CHSyntaxError, LocationId, PathPart, PathSegment
 
 T = TypeVar("T", bound="ConceptHierarchyDefinition")
 
@@ -67,12 +67,14 @@ class ConceptHierarchyDefinition(ABC):
             raise CHSyntaxError(
                 f"Name of {self.definition_type!r} definition must be a valid string identifier, got {self.name!r}!",
                 self.location_id(),
+                part=PathPart.KEY,
             )
         if not isinstance(self.definition_data, (dict, str)):
             raise CHSyntaxError(
                 f"The concept definition of {self.name} is not a JSON object or a JSON string "
                 f"concept-name reference, but {self.definition_data!r}!",
                 self.location_id(),
+                part=PathPart.VALUE,
             )
         if isinstance(self.definition_data, str):
             self.is_reference_to = self.definition_data

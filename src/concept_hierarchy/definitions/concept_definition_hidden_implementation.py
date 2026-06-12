@@ -112,12 +112,14 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     f"The definition of a {self.definition_type}'s implementation file must be a JSON string, not "
                     f"{self.implementation!r} for the {self.definition_type} {self.name}",
                     self.location_id(HiddenImplementationDefinition.hidden_implementation),
+                    part=PathPart.VALUE,
                 )
             elif "." in self.implementation:
                 raise CHSemanticError(
                     f"Do not define the file extensions for the {self.definition_type} implementation file! "
                     f"Found {self.implementation!r} for the {self.definition_type} {self.name}",
                     self.location_id(HiddenImplementationDefinition.hidden_implementation),
+                    part=PathPart.VALUE,
                 )
 
     def check_abstract(self):
@@ -129,6 +131,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     f"The definition of a {self.definition_type}'s abstract marker must be a JSON boolean, not "
                     f"{self.abstract!r} for the {self.definition_type} {self.name}",
                     self.location_id(HiddenImplementationDefinition.hidden_abstract),
+                    part=PathPart.VALUE,
                 )
         else:
             self.abstract = False
@@ -144,6 +147,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     f"The definition of a {self.definition_type}'s template arguments must be a JSON array or object, "
                     f"not {self.template_arguments!r} for the {self.definition_type} {self.name}",
                     self.location_id(HiddenImplementationDefinition.hidden_template_arguments),
+                    part=PathPart.VALUE,
                 )
             elif isinstance(self.template_arguments, list):
                 self.check_template_argument_definition_list(self.template_arguments)
@@ -167,6 +171,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                 HiddenImplementationDefinition.hidden_template_arguments,
                                 HiddenImplementationDefinition.hidden_template_arguments_order,
                             ),
+                            part=PathPart.VALUE,
                         )
                     else:
                         self.check_template_argument_definition_list(
@@ -186,6 +191,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             HiddenImplementationDefinition.hidden_template_arguments,
                             HiddenImplementationDefinition.hidden_template_arguments_substitutions,
                         ),
+                        part=PathPart.VALUE,
                     )
                 else:
                     for subst_key, subst_data in substitution_data.items():
@@ -202,6 +208,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     HiddenImplementationDefinition.hidden_template_arguments_substitutions,
                                     subst_key,
                                 ),
+                                part=PathPart.KEY,
                             )
                         elif colon_count == 1:
                             self.substitution_of_template_arguments[split_res[0], split_res[1]] = subst_data
@@ -220,6 +227,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             HiddenImplementationDefinition.hidden_template_arguments,
                             HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                         ),
+                        part=PathPart.KEY,
                     )
                 self.variadic_template_argument_group_identifiers = template_structure_data.get(
                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids, {}
@@ -233,6 +241,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             HiddenImplementationDefinition.hidden_template_arguments,
                             HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                         ),
+                        part=PathPart.VALUE,
                     )
                 else:
                     allow_empty_identifier = len(self.variadic_template_arguments) == len(self.template_argument_order)
@@ -250,6 +259,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
                                 ),
+                                part=PathPart.KEY,
                             )
                         elif var_t_arg not in self.template_argument_constraints:
                             raise CHSemanticError(
@@ -259,6 +269,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
                                 ),
+                                part=PathPart.KEY,
                             )
                         elif var_t_arg not in self.variadic_template_arguments:
                             raise CHSemanticError(
@@ -268,6 +279,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
                                 ),
+                                part=PathPart.KEY,
                             )
                         if any(
                             char not in HiddenImplementationDefinition.variadic_group_identifier_characters
@@ -282,6 +294,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
                                 ),
+                                part=PathPart.VALUE,
                             )
                         if var_t_g_id == "" and not allow_empty_identifier:
                             raise CHSemanticError(
@@ -292,6 +305,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
                                 ),
+                                part=PathPart.VALUE,
                             )
                         is_variadic_id_defined = var_t_arg
                     if isinstance(is_variadic_id_defined, str):
@@ -317,6 +331,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             f"Can't define a constraint for {t_arg!r} which is not a template argument of {self.name}. "
                             f"\n\tIt only has these template arguments: {self.template_argument_order!r}",
                             self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg),
+                            part=PathPart.KEY,
                         )
                     if not isinstance(t_arg_constraint, str):
                         raise CHSyntaxError(
@@ -325,8 +340,9 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             self.location_id(
                                 HiddenImplementationDefinition.hidden_template_arguments, t_arg_constraint
                             ),
+                            part=PathPart.VALUE,
                         )
-                    # parse the formula later, after all concepts are initialized!
+                    # missing checks: parse the formula later, after all concepts are initialized!
                     self.template_argument_constraints[t_arg] = t_arg_constraint
 
     def concept_data_check(self):
@@ -336,6 +352,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
             raise CHSyntaxError(
                 f"Found extra keys {extra_keys!r} in the {self.definition_type} data definition of {self.name}",
                 self.location_id(),
+                part=PathPart.VALUE,
             )
 
         self.check_implementation()

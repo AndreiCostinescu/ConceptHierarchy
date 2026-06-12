@@ -14,7 +14,7 @@
 
 from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSyntaxError
+from concept_hierarchy.errors import CHSyntaxError, PathPart
 
 
 class GlobalVariableDefinition(ConceptHierarchyDefinition):
@@ -35,6 +35,7 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
             raise CHSyntaxError(
                 f"Names of global variables must be valid non-digit-starting string names, not {self.name}",
                 location_id=self.location_id(),
+                part=PathPart.KEY,
             )
 
     @property
