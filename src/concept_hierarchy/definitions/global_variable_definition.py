@@ -43,7 +43,10 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
 
     @property
     def definition_location(self) -> list[str]:
-        return super().definition_location + [self.name]
+        location_res = super().definition_location + [self.name]
+        if self.from_reference is not None:
+            location_res.append("ref:" + self.from_reference)
+        return location_res
 
     def check_syntax(self):
         self.value = self.orig_data

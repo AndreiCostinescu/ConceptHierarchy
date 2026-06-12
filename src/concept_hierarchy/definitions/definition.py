@@ -13,9 +13,12 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
+from typing import TypeVar
 
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSyntaxError, LocationId, PathSegment
+
+T = TypeVar("T", bound="ConceptHierarchyDefinition")
 
 
 class ConceptHierarchyDefinition(ABC):
@@ -27,8 +30,34 @@ class ConceptHierarchyDefinition(ABC):
 
         self.is_root: bool = False
         self.is_reference_to: str | None = None
+        self.from_reference: str | None = None
 
         self.check()
+
+    @classmethod
+    def _from_node(cls, node: T) -> T:
+        if not issubclass(cls, type(node)):
+            raise TypeError(f"Expected parent class of {cls.__name__}, got {type(node).__name__}")
+        obj = cls.__new__(cls)
+        obj.__dict__.update(node.__dict__)
+        return obj
+
+    def create_from_reference(self, referenced_definition: T) -> T:
+        if not self.is_reference():
+            raise RuntimeError(
+                f"Can not call create_from_reference on a non-reference {self.definition_type} {self.name}"
+            )
+        assert isinstance(self.is_reference_to, str)
+        if self.is_reference_to != referenced_definition.name:
+            raise RuntimeError(
+                f"The received referenced {self.definition_type} definition's name {referenced_definition.name!r} does "
+                f"not match the reference name of this {self.definition_type} {self.is_reference_to!r}"
+            )
+        res = self.__class__._from_node(referenced_definition)
+        res.is_reference_to = None
+        res.from_reference = res.name
+        res.name = self.name
+        return res
 
     @abstractmethod
     def check(self):

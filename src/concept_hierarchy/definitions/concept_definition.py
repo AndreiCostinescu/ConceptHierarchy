@@ -112,7 +112,10 @@ class ConceptDefinition(ConceptHierarchyDefinition):
 
     @property
     def definition_location(self) -> list[str]:
-        return super().definition_location + [self.name]
+        location_res = super().definition_location + [self.name]
+        if self.from_reference is not None:
+            location_res.append("ref:" + self.from_reference)
+        return location_res
 
     # returns whether the data is NOT an external file
     def _check_data_content(self, data_location_id: LocationId) -> bool:
@@ -130,9 +133,3 @@ class ConceptDefinition(ConceptHierarchyDefinition):
 
     def concept_data_check(self):
         pass
-
-    @classmethod
-    def _from_node(cls, node: ConceptDefinition):
-        obj = cls.__new__(cls)
-        obj.__dict__.update(node.__dict__)
-        return obj

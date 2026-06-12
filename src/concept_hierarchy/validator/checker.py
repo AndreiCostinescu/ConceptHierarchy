@@ -101,6 +101,17 @@ class ConceptHierarchyChecker:
             x, y, self.ch.file, self.ch.path_to_root_dir
         )
 
+    @staticmethod
+    def resolve_references(referencing_others, defined_data, reference_type: str):
+        mapped_data = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
+            referencing_others, defined_data, reference_type
+        )
+        assert all(mapped_data[x] is None for x in defined_data)
+        for referencing_name, referencing_def in referencing_others.items():
+            referenced_name = mapped_data[referencing_name]
+            assert referenced_name is not None
+            defined_data[referenced_name] = referencing_def.create_from_reference(defined_data[referenced_name])
+
     def check_structure(self):
         if self.ch.checked:
             return
@@ -167,20 +178,7 @@ class ConceptHierarchyChecker:
                 concepts_referencing_others[concept_name] = concept_definition
             else:
                 defined_concepts[concept_name] = concept_definition
-        mapped_concepts = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
-            concepts_referencing_others, defined_concepts, ConceptHierarchyModel.model_concepts
-        )
-        assert all(mapped_concepts[x] is None for x in defined_concepts)
-        for referencing_concept in concepts_referencing_others:
-            referenced_instance_name = mapped_concepts[referencing_concept]
-            assert referenced_instance_name is not None
-            referenced_concept = defined_concepts[referenced_instance_name]
-            defined_concepts[referencing_concept] = ConceptDefinition(
-                referencing_concept,
-                referenced_concept.definition_data,
-                ConceptHierarchyModel.model_concepts,
-                external_data_resolver=self.ch.external_concept_data_resolver,
-            )
+        self.resolve_references(concepts_referencing_others, defined_concepts, ConceptHierarchyModel.model_concepts)
 
         # -- instances --------------------------------------------------------
         instance_definition = concept_hierarchy.get(ConceptHierarchyModel.model_instances, {})
@@ -200,17 +198,7 @@ class ConceptHierarchyChecker:
                 instances_referencing_others[variable_name] = variable_definition
             else:
                 defined_instances[variable_name] = variable_definition
-        mapped_instances = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
-            instances_referencing_others, defined_instances, ConceptHierarchyModel.model_instances
-        )
-        assert all(mapped_instances[x] is None for x in defined_instances)
-        for referencing_instance in instances_referencing_others:
-            referenced_instance_name = mapped_concepts[referencing_instance]
-            assert referenced_instance_name is not None
-            referenced_instance = defined_instances[referenced_instance_name]
-            defined_instances[referenced_instance_name] = GlobalVariableDefinition(
-                referencing_instance, referenced_instance.definition_data, ConceptHierarchyModel.model_instances
-            )
+        self.resolve_references(instances_referencing_others, defined_instances, ConceptHierarchyModel.model_instances)
         # missing checks:
         #  - valid expressions for all global variables
         #    EXPRESSION CHECK
