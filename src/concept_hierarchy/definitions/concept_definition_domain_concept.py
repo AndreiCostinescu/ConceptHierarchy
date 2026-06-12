@@ -494,7 +494,8 @@ class DomainConceptDefinition(ConceptDefinition):
     domain_concept_management: str = "management"
     domain_concept_management_initialization: str = "initialization"
     domain_concept_management_consolidation: str = "consolidation"
-    data_specialization_keyword: str = "_specializations"
+    domain_concept_specialization: str = "_specializations"
+    domain_concept_specialization_for_this: str = "_forThis"
     domain_concept_data_keys: set[str] = {
         domain_concept_properties,
         domain_concept_functions,
@@ -527,8 +528,18 @@ class DomainConceptDefinition(ConceptDefinition):
         self.properties: dict[str, dict] = {}
         self.functions: dict[str, dict] = {}
         self.management: dict[str, dict] = {}
-        self.property_specializations: dict[str, dict[str, dict]] = {}
-        self.function_specializations: dict[str, dict[str, dict]] = {}
+
+        # [prop name -> data to be inherited by subconcepts (prop-def-key -> value)]
+        # will be extended with the "implicit get" values => they won't just contain the specified values in the concept
+        self.property_specializations_for_sub: dict[str, dict[str, str | object]] = {}
+        self.function_specializations_for_sub: dict[str, dict[str, str | object]] = {}
+        # [prop name -> data to be set in this concept (prop-def-key -> (value, whether it was defined or inherited))]
+        self.property_specializations_for_this: dict[str, dict[str, tuple[str | object, bool]]] = {}
+        self.function_specializations_for_this: dict[str, dict[str, tuple[str | object, bool]]] = {}
+        # keys are (property name -> property definition keyword) / (function name -> function definition keyword)
+        # value is the name of the concept in which the value of the property definition keyword is defined
+        self.available_property_data: dict[str, dict[str, str]] = {}
+        self.available_function_data: dict[str, dict[str, str]] = {}
 
         # (property name, concept that defines it, property type)
         # self.all_properties: dict[str, tuple[str, str, ValueDomainType]] = {}
@@ -543,8 +554,13 @@ class DomainConceptDefinition(ConceptDefinition):
         domain_concept.properties = {}
         domain_concept.functions = {}
         domain_concept.management = {}
-        domain_concept.property_specializations = {}
-        domain_concept.function_specializations = {}
+
+        domain_concept.property_specializations_for_sub = {}
+        domain_concept.function_specializations_for_sub = {}
+        domain_concept.property_specializations_for_this = {}
+        domain_concept.function_specializations_for_this = {}
+        domain_concept.available_property_data = {}
+        domain_concept.available_function_data = {}
         return domain_concept
 
     @property
@@ -554,6 +570,105 @@ class DomainConceptDefinition(ConceptDefinition):
     @property
     def definition_location(self) -> list[str]:
         return super().definition_location + ["data"]
+
+    def initialize_domain_concept_data(
+        self,
+        for_either_properties_or_functions: bool,
+        data_container: dict[str, dict[str, object]],
+        data_specialization_for_sub: dict[str, dict[str, object]],
+        data_specialization_for_this: dict[str, dict[str, tuple[str | object, bool]]],
+    ):
+        """Modify data_container, data_specialization_for_sub, and data_specialization_for_this in place!"""
+        data_container.clear()
+        data_specialization_for_sub.clear()
+        data_specialization_for_this.clear()
+        data_type_plural = "properties" if for_either_properties_or_functions else "functions"
+        def_location = (
+            DomainConceptDefinition.domain_concept_properties
+            if for_either_properties_or_functions
+            else DomainConceptDefinition.domain_concept_functions
+        )
+
+        data_container.update(self.data.get(def_location, {}))
+        if not isinstance(data_container, dict):
+            raise CHSyntaxError(
+                f"The definition of domain concept {data_type_plural} must be a JSON object, not "
+                f"{data_container!r} as encountered at domain concept {self.name}",
+                location_id=self.location_id(def_location),
+                part=PathPart.VALUE,
+            )
+        data_specialization_for_sub.update(
+            data_container.pop(DomainConceptDefinition.domain_concept_specialization, {})
+        )
+        for name, spec_data in data_specialization_for_sub.pop(
+            DomainConceptDefinition.domain_concept_specialization_for_this, {}
+        ).items():
+            data_specialization_for_this[name] = {}
+            for def_key, def_data in spec_data.items():
+                # Assumption that data defined here is inherited.
+                # Correct the False value below in :func:`initialize_domain_concept_specialization_data`
+                #  if name is a property/function defined in this concept
+                data_specialization_for_this[name][def_key] = (def_data, False)
+
+    def initialize_domain_concept_specialization_data(
+        self,
+        for_either_properties_or_functions: bool,
+        data_container: dict[str, dict[str, object]],
+        data_specialization_for_sub: dict[str, dict[str, object]],
+        data_specialization_for_this: dict[str, dict[str, tuple[str | object, bool]]],
+        available_data: dict[str, dict[str, str]],
+        specializable_keywords: list[str],
+        value_domain_keyword: str,
+    ):
+        """Modify data_container, data_specialization_for_sub, and data_specialization_for_this in place!"""
+        data_type = "property" if for_either_properties_or_functions else "function"
+        def_location = (
+            DomainConceptDefinition.domain_concept_properties
+            if for_either_properties_or_functions
+            else DomainConceptDefinition.domain_concept_functions
+        )
+        for name, definition_data in data_container.items():
+            # create the specialization data for the own defined data (i.e. add it to the specialized data)
+            if name not in data_specialization_for_sub:
+                data_specialization_for_sub[name] = {}
+            else:
+                # Tried to specialize a property in the top-level SPECIALIZATIONS object that is defined in this concept
+                raise CHSemanticError(
+                    f"The {data_type} {name!r} that is defined in this concept can not be specialized at"
+                    f" the top-level.\nTop-level specializations mean to specialize for subconcepts, which already is "
+                    f"the default specialization when defining the {data_type}.\n\tRemove the key from "
+                    f'"{DomainConceptDefinition.domain_concept_specialization}" and merge the data with the {data_type}'
+                    f' definition in "{def_location}/{name}".!',
+                    location_id=self.location_id(
+                        def_location, DomainConceptDefinition.domain_concept_specialization, name
+                    ),
+                    part=PathPart.KEY,
+                )
+            if name not in data_specialization_for_this:
+                data_specialization_for_this[name] = {}
+            else:
+                # mark existing keys as set, not inherited
+                for spec_for_this_name, spec_for_this_data in data_specialization_for_this.items():
+                    for spec_for_this_def_key, spec_for_this_def_data in spec_for_this_data.items():
+                        assert isinstance(spec_for_this_def_data, tuple) and spec_for_this_def_data[1] is False
+                        spec_for_this_data[spec_for_this_def_key] = (spec_for_this_def_data[0], True)
+            available_data[name] = {}
+            for def_key, def_data in definition_data.items():
+                available_data[name][def_key] = self.name
+                if def_key in specializable_keywords:
+                    # don't overwrite data of existing keys with the definition in properties
+                    if def_key not in data_specialization_for_this[name]:
+                        # only set data in forThis if it was not already specified in the specialization
+                        data_specialization_for_this[name][def_key] = (def_data, True)
+                    assert def_key not in data_specialization_for_sub[name]
+                    data_specialization_for_sub[name][def_key] = def_data
+            # the value domain definition could be a constraint instead of a string/ValueDomain
+            #  if so, the VALUE_DOMAIN entry does not appear in prop_data; so add it manually here below
+            if value_domain_keyword not in available_data[name]:
+                available_data[name][value_domain_keyword] = self.name
+                data_specialization_for_this[name][value_domain_keyword] = (None, True)
+                # don't set VALUE_DOMAIN data for subconcepts, because VALUE_DOMAIN is not specializable!
+                assert value_domain_keyword not in specializable_keywords
 
     def concept_data_check(self):
         data_keys: set[str] = set(self.data.keys())
@@ -573,18 +688,14 @@ class DomainConceptDefinition(ConceptDefinition):
                 f"Found a domain concept with no data defined {self.name}", self.location_id(), part=PathPart.VALUE
             )
 
-        self.properties = self.data.get(DomainConceptDefinition.domain_concept_properties, {})
-        self.functions = self.data.get(DomainConceptDefinition.domain_concept_functions, {})
-        self.management = self.data.get(DomainConceptDefinition.domain_concept_management, {})
-        if not isinstance(self.properties, dict):
-            raise CHSyntaxError(
-                f"The definition of domain concept properties must be a JSON object, not {self.properties!r} for the "
-                f"domain concept {self.name}",
-                self.location_id(DomainConceptDefinition.domain_concept_properties),
-            )
-        self.property_specializations = self.properties.pop(DomainConceptDefinition.data_specialization_keyword, {})
+        self.initialize_domain_concept_data(
+            True,
+            self.properties,
+            self.property_specializations_for_sub,
+            self.property_specializations_for_this,
+        )
         for prop_name, prop_data in self.properties.items():
-            assert prop_name != DomainConceptDefinition.data_specialization_keyword
+            assert prop_name != DomainConceptDefinition.domain_concept_specialization
             # write assertion because the data from "properties" comes directly from json deserialization of an object,
             #  which comes directly from a syntactically valid json file, where object keys are defined to be strings
             assert isinstance(prop_name, str)
@@ -617,6 +728,15 @@ class DomainConceptDefinition(ConceptDefinition):
                     self.properties[prop_name] = {PropertyDefinition.CONSTRAINT: prop_data}
             else:
                 self.properties[prop_name] = {PropertyDefinition.VALUE_DOMAIN: prop_data}
+        self.initialize_domain_concept_specialization_data(
+            True,
+            self.properties,
+            self.property_specializations_for_sub,
+            self.property_specializations_for_this,
+            self.available_property_data,
+            PropertyDefinition.SPECIALIZATION_KEYWORDS,
+            PropertyDefinition.VALUE_DOMAIN,
+        )
         for prop_name, prop_data in self.properties.items():
             prop_def_data_keys = set(prop_data.keys())
             if not any(
@@ -730,15 +850,11 @@ class DomainConceptDefinition(ConceptDefinition):
         #  - whether DEFAULT_INSTANCE_NAME can be true (check that the property type contains instances in its type!)
         #    TYPE CHECK
 
-        if not isinstance(self.functions, dict):
-            raise CHSyntaxError(
-                f"The definition of domain concept functions must be a JSON object, not {self.functions!r} for the "
-                f"domain concept {self.name}",
-                self.location_id(DomainConceptDefinition.domain_concept_functions),
-            )
-        self.function_specializations = self.functions.pop(DomainConceptDefinition.data_specialization_keyword, {})
+        self.initialize_domain_concept_data(
+            False, self.functions, self.function_specializations_for_sub, self.function_specializations_for_this
+        )
         for func_name, func_data in self.functions.items():
-            assert func_name != DomainConceptDefinition.data_specialization_keyword
+            assert func_name != DomainConceptDefinition.domain_concept_specialization
             # write assertion because the data from "functions" comes directly from json deserialization of an object,
             #  which comes directly from a syntactically valid json file, where object keys are defined to be strings
             assert isinstance(func_name, str)
@@ -768,9 +884,21 @@ class DomainConceptDefinition(ConceptDefinition):
                         )
                     # interpret as default value of the static property
                     self.functions[func_name] = {FunctionDefinition.STATIC: True, FunctionDefinition.DEFAULT: func_data}
+        self.initialize_domain_concept_specialization_data(
+            False,
+            self.functions,
+            self.function_specializations_for_sub,
+            self.function_specializations_for_this,
+            self.available_function_data,
+            FunctionDefinition.SPECIALIZATION_KEYWORDS,
+            FunctionDefinition.VALUE_DOMAIN,
+        )
         for func_name, func_data in self.functions.items():
             for func_data_def_key, func_data_def_val in func_data.items():
                 assert func_data_def_key in DomainConceptDefinition.function_data_keys
+            if func_data == {}:
+                func_data[FunctionDefinition.STATIC] = True
+                func_data[FunctionDefinition.DEFAULT] = {}
             if FunctionDefinition.VALUE_DOMAIN not in func_data:
                 func_data[FunctionDefinition.VALUE_DOMAIN] = (
                     DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions
@@ -824,6 +952,7 @@ class DomainConceptDefinition(ConceptDefinition):
         #    PROCESS AFTER: all concept data represented, all types parsed, all expressions processed
         #    STRUCTURE CHECK
 
+        self.management = self.data.get(DomainConceptDefinition.domain_concept_management, {})
         if not isinstance(self.management, dict):
             raise CHSyntaxError(
                 f"The definition of domain concept management data must be a JSON object, not {self.management!r} for "
