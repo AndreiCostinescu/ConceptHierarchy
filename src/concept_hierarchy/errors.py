@@ -21,7 +21,8 @@ from typing import TypeAlias
 
 from concept_hierarchy.utils import tab
 
-LocationId: TypeAlias = list[str | int]
+PathSegment: TypeAlias = str | int
+LocationId: TypeAlias = list[PathSegment]
 
 
 def print_location_id(location_id: LocationId):

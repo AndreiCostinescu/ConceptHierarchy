@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathSegment
 from concept_hierarchy.models import ConceptHierarchyModel
 
 
@@ -181,7 +181,7 @@ class DomainDataDefinition(ABC):
                         self.set_data(specialization_keyword, res_data, False, False)
                 self.inherited_keywords[specialization_keyword] = True
 
-    def location_id(self, *location_ids: str | int):
+    def location_id(self, *location_ids: PathSegment):
         return self._location_id + [*location_ids]
 
 

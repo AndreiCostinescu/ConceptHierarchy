@@ -15,7 +15,7 @@
 from abc import ABC, abstractmethod
 
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSyntaxError, LocationId
+from concept_hierarchy.errors import CHSyntaxError, LocationId, PathSegment
 
 
 class ConceptHierarchyDefinition(ABC):
@@ -58,7 +58,7 @@ class ConceptHierarchyDefinition(ABC):
     def definition_location(self) -> list[str]:
         return [self.definition_location_str]
 
-    def location_id(self, *location_ids: str | int) -> LocationId:
+    def location_id(self, *location_ids: PathSegment) -> LocationId:
         return self.definition_location + [*location_ids]
 
     def is_reference(self) -> bool:
