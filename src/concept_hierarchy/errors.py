@@ -16,7 +16,10 @@
 errors.py — Custom exception hierarchy for the ConceptHierarchy compiler.
 """
 
+from __future__ import annotations
+
 import json
+from enum import Enum
 from typing import TypeAlias
 
 from concept_hierarchy.utils import tab
@@ -29,10 +32,23 @@ def print_location_id(location_id: LocationId):
     return ":".join(json.dumps(x) for x in location_id)
 
 
+class PathPart(Enum):
+    """
+    Whether a :class:`ConceptHierarchyError` refers to the *key* / property name at ``path``,
+     or to the *value* found under that key.
+    """
+
+    KEY = "key"
+    VALUE = "value"
+    NONE = ""
+
+
 class ConceptHierarchyError(Exception):
     """Base class for all ConceptHierarchy compiler errors."""
 
-    def __init__(self, message: str, location_id: LocationId | None = None):
+    def __init__(
+        self, message: str, location_id: LocationId | None, part: PathPart, causes: list[ConceptHierarchyError] | None
+    ):
         super().__init__(message)
         if location_id is None:
             self.prefix = ""
@@ -40,32 +56,51 @@ class ConceptHierarchyError(Exception):
             self.prefix = "ROOT"
         else:
             self.prefix = print_location_id(location_id)
+        if part is PathPart.KEY:
+            self.prefix += f" ({part.value})"
+
+        self.location_id = location_id
+        self.part = part
+        self.causes = causes or []
 
     def __repr__(self):
         return self.print()
 
-    def print(self, indent: int = 0):
+    def print(self, indent: int = 0) -> str:
         """Prints the Concept Hierarchy error message with indents and the location causing the error."""
         message_lines = str(self).split("\n")
         prefix_str = f"[{self.prefix}] " if self.prefix else ""
         indent_str = tab * indent + prefix_str
-        return indent_str + ("\n" + indent_str).join(message_lines)
+        text = indent_str + ("\n" + indent_str).join(message_lines)
+        for cause in self.causes:
+            text += "\n" + cause.print(indent + 1)
+        return text
 
 
 class CHSyntaxError(ConceptHierarchyError):
     """Raised when the JSON definition violates ConceptHierarchy syntax rules."""
 
-    def __init__(self, message: str, location_id: LocationId | None = None) -> None:
-        super().__init__(message, location_id)
-        self.location_id = location_id
+    def __init__(
+        self,
+        message: str,
+        location_id: LocationId | None = None,
+        part: PathPart = PathPart.NONE,
+        causes: list[ConceptHierarchyError] | None = None,
+    ) -> None:
+        super().__init__(message, location_id, part, causes)
 
 
 class CHSemanticError(ConceptHierarchyError):
     """Raised when the hierarchy is syntactically valid but semantically incorrect."""
 
-    def __init__(self, message: str, location_id: LocationId | None = None) -> None:
-        super().__init__(message, location_id)
-        self.location_id = location_id
+    def __init__(
+        self,
+        message: str,
+        location_id: LocationId | None = None,
+        part: PathPart = PathPart.NONE,
+        causes: list[ConceptHierarchyError] | None = None,
+    ) -> None:
+        super().__init__(message, location_id, part, causes)
 
 
 class CodegenError(ConceptHierarchyError):
