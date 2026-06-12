@@ -39,8 +39,8 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
     allowed_default_serializations: set[str] = {"null", "boolean", "integer", "number", "string"}
     argument_reference_types = {"NoRef", "Reference"}
 
-    def __init__(self, name: str, definition_data: object):
-        super().__init__(name, definition_data)
+    def __init__(self, name: str, definition_data: object, definition_location: str):
+        super().__init__(name, definition_data, definition_location)
 
         self.default_serialization: str | None = None
         # if the ValueDomain has no template arguments, the tuple dict entry will be empty: ()
