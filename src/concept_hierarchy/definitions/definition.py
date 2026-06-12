@@ -54,11 +54,9 @@ class ConceptHierarchyDefinition(ABC):
                 f"Can not call create_from_reference on a non-reference {self.definition_type} {self.name}"
             )
         assert isinstance(self.is_reference_to, str)
-        if self.is_reference_to != referenced_definition.name:
-            raise RuntimeError(
-                f"The received referenced {self.definition_type} definition's name {referenced_definition.name!r} does "
-                f"not match the reference name of this {self.definition_type} {self.is_reference_to!r}"
-            )
+        # This ``self.is_reference_to != referenced_definition.name`` can happen in long reference chains!
+        # because is_reference_to is the direct reference; but this direct reference can reference other data itself...
+        # So can't check correctness of the referenced_definition by the name alone...
         res = self.__class__._from_node(referenced_definition)
         res.is_reference_to = None
         res.from_reference = res.name
