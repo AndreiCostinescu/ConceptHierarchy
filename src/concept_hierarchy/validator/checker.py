@@ -134,7 +134,7 @@ class ConceptHierarchyChecker:
         elif len(ch_keys) == 0:
             concept_hierarchy = {ConceptHierarchyModel.model_concepts: {}}
 
-        # -- hierarchy name --------------------------------------------------
+        # -- hierarchy name (optional: default "ConceptHierarchy") ----------
 
         self.ch.name = concept_hierarchy.get(ConceptHierarchyModel.model_name, "ConceptHierarchy")
         if not check_ch_name(self.ch.name, allow_starting_with_underscore=True):
@@ -186,7 +186,7 @@ class ConceptHierarchyChecker:
                 defined_concepts[concept_name] = concept_definition
         self.resolve_references(concepts_referencing_others, defined_concepts, ConceptHierarchyModel.model_concepts)
 
-        # -- instances --------------------------------------------------------
+        # -- instances (optional: default {}) --------------------------------
         instance_definition = concept_hierarchy.get(ConceptHierarchyModel.model_instances, {})
         if not isinstance(instance_definition, dict):
             raise CHSyntaxError(
