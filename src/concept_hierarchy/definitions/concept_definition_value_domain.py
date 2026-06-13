@@ -39,8 +39,8 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
     allowed_default_serializations: set[str] = {"null", "boolean", "integer", "number", "string"}
     argument_reference_types = {"NoRef", "Reference"}
 
-    def __init__(self, name: str, definition_data: object, definition_location: str):
-        super().__init__(name, definition_data, definition_location)
+    def __init__(self, name: str, definition_data: object, definition_location_str: str):
+        super().__init__(name, definition_data, definition_location_str)
 
         self.default_serialization: str | None = None
         # if the ValueDomain has no template arguments, the tuple dict entry will be empty: ()
@@ -53,7 +53,6 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         domain_concept.instantiation = None
         return domain_concept
 
-    @property
     def definition_type(self) -> str:
         return ValueDomainDefinition.value_domain_name
 
@@ -63,15 +62,15 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         if self.default_serialization is not None:
             if not isinstance(self.default_serialization, str):
                 raise CHSyntaxError(
-                    f"The definition of a {self.definition_type}'s defaultSerialization must be a JSON string, not "
-                    f"{self.default_serialization!r} for the {self.definition_type} {self.name}",
+                    f"The definition of a {self.definition_type()}'s defaultSerialization must be a JSON string, not "
+                    f"{self.default_serialization!r} for the {self.definition_type()} {self.name}",
                     self.location_id(ValueDomainDefinition.value_domain_default_serialization),
                     part=PathPart.VALUE,
                 )
             elif self.default_serialization not in self.allowed_default_serializations:
                 raise CHSyntaxError(
                     f'Invalid "{ValueDomainDefinition.value_domain_default_serialization}" string value for '
-                    f"{self.definition_type} {self.name}: got: {self.default_serialization!r}, allowed: "
+                    f"{self.definition_type()} {self.name}: got: {self.default_serialization!r}, allowed: "
                     f"{self.allowed_default_serializations}",
                     self.location_id(self.default_serialization),
                     part=PathPart.VALUE,
@@ -84,7 +83,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         assert isinstance(self.abstract, bool)
         if self.abstract and ValueDomainDefinition.value_domain_instantiation in self.data:
             raise CHSemanticError(
-                f"An abstract {self.definition_type} can not be instantiated!\n\t"
+                f"An abstract {self.definition_type()} can not be instantiated!\n\t"
                 f'Do not define the "{ValueDomainDefinition.value_domain_instantiation}" structure for {self.name}',
                 self.location_id(ValueDomainDefinition.value_domain_instantiation),
                 part=PathPart.KEY,
@@ -93,12 +92,12 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         if self.instantiation is not None:
             if not isinstance(self.instantiation, (bool, str, dict, list)):
                 raise CHSyntaxError(
-                    f"The definition of a {self.definition_type}'s instantiation deserialization structure must be:\n"
+                    f"The definition of a {self.definition_type()}'s instantiation deserialization structure must be:\n"
                     f"\ta JSON boolean value\n\ta JSON string,\n"
                     f"\ta JSON object (representing the JSON schema of the to-be-deserialized value), or\n"
                     f"\ta 2-element JSON array mapping template argument constraint definitions to "
                     f"JSON string or object deserialization structures,\n"
-                    f"not {self.instantiation!r} for the {self.definition_type} {self.name}",
+                    f"not {self.instantiation!r} for the {self.definition_type()} {self.name}",
                     self.location_id(ValueDomainDefinition.value_domain_instantiation),
                     part=PathPart.VALUE,
                 )
@@ -112,7 +111,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                         raise CHSyntaxError(
                             f"Invalid entry in template-specific instantiation definition:\n\tmust be a "
                             f"2-element array mapping template argument constraints to JSON (string or object) "
-                            f"deserialization structures, not {instantiation_entry!r} for the {self.definition_type} "
+                            f"deserialization structures, not {instantiation_entry!r} for the {self.definition_type()} "
                             f"{self.name}",
                             self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index),
                         )

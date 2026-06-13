@@ -38,13 +38,11 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
                 part=PathPart.KEY,
             )
 
-    @property
     def definition_type(self) -> str:
         return GlobalVariableDefinition.global_variable_name
 
-    @property
     def definition_location(self) -> list[str]:
-        location_res = super().definition_location + [self.name]
+        location_res = super().definition_location() + [self.name]
         if self.from_reference is not None:
             location_res.append("ref:" + self.from_reference)
         return location_res

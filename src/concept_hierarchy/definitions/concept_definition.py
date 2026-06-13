@@ -42,9 +42,17 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self.data: dict[str, object] = {}
         self._data_def: object = None
         self.external_data_resolver = external_data_resolver
+
+        # initialize this member before calling super, which calls the check function
+        self._data_location_id = [ConceptDefinition.concept_definition_data]
+
         super().__init__(name, definition_data, definition_location_str)
         # when the concept is initialized (just as a concept at the beginning) the function below does nothing
         self.concept_data_check()  # sets the members of subclasses of ConceptDefinition
+
+    @property
+    def data_location_id(self):
+        return ConceptDefinition.definition_location(self) + self._data_location_id
 
     def check(self):
         super().check()
@@ -106,31 +114,28 @@ class ConceptDefinition(ConceptHierarchyDefinition):
             )
 
         self._data_def = self.definition_data.get(ConceptDefinition.concept_definition_data, None)
-        data_location_id = [ConceptDefinition.concept_definition_data]
-        while self._check_data_content(data_location_id):
+        while self._check_data_content(self._data_location_id):
             if self.external_data_resolver is None:
                 raise RuntimeError(
                     f"Need to read external data for concept {self.name}, but the external data reader is None!"
                 )
             try:
-                data_location_id.append(self._data_def)
+                self._data_location_id.append("ext:" + self._data_def)
                 self._data_def = self.external_data_resolver(self.name, self._data_def)
             except RuntimeError as e:
                 if str(e).startswith("Could not find external data file"):
                     raise CHSemanticError(
                         f"Incorrect external data file specified for concept {self.name}: {self._data_def!r}!",
-                        self.location_id(*data_location_id),
+                        self.location_id(*self._data_location_id),
                         part=PathPart.VALUE,
                     ) from e
                 raise e
 
-    @property
     def definition_type(self) -> str:
         return ConceptDefinition.concept_name
 
-    @property
     def definition_location(self) -> list[str]:
-        location_res = super().definition_location + [self.name]
+        location_res = super().definition_location() + [self.name]
         if self.from_reference is not None:
             location_res.append("ref:" + self.from_reference)
         return location_res

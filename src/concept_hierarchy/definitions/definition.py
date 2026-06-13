@@ -38,7 +38,7 @@ class ConceptHierarchyDefinition(ABC):
         return repr(self)
 
     def __repr__(self):
-        return f"{self.definition_type}({self.name})"
+        return f"{self.definition_type()}({self.name})"
 
     @classmethod
     def _from_node(cls, node: T) -> T:
@@ -51,7 +51,7 @@ class ConceptHierarchyDefinition(ABC):
     def create_from_reference(self, referenced_definition: T) -> T:
         if not self.is_reference():
             raise RuntimeError(
-                f"Can not call create_from_reference on a non-reference {self.definition_type} {self.name}"
+                f"Can not call create_from_reference on a non-reference {self.definition_type()} {self.name}"
             )
         assert isinstance(self.is_reference_to, str)
         # This ``self.is_reference_to != referenced_definition.name`` can happen in long reference chains!
@@ -65,11 +65,11 @@ class ConceptHierarchyDefinition(ABC):
 
     @abstractmethod
     def check(self):
-        if not isinstance(self.definition_type, str):
-            raise RuntimeError(f"Definition type must be a string, not {self.definition_type!r}")
+        if not isinstance(self.definition_type(), str):
+            raise RuntimeError(f"Definition type must be a string, not {self.definition_type()!r}")
         if not isinstance(self.name, str) or not check_ch_name(self.name):
             raise CHSyntaxError(
-                f"Name of {self.definition_type!r} definition must be a valid string identifier, got {self.name!r}!",
+                f"Name of {self.definition_type()!r} definition must be a valid string identifier, got {self.name!r}!",
                 self.location_id(),
                 part=PathPart.KEY,
             )
@@ -83,18 +83,16 @@ class ConceptHierarchyDefinition(ABC):
         if isinstance(self.definition_data, str):
             self.is_reference_to = self.definition_data
 
-    @property
     @abstractmethod
     def definition_type(self) -> str:
         pass
 
-    @property
     @abstractmethod
     def definition_location(self) -> list[str]:
         return [self.definition_location_str]
 
     def location_id(self, *location_ids: PathSegment) -> LocationId:
-        return self.definition_location + [*location_ids]
+        return self.definition_location() + [*location_ids]
 
     def is_reference(self) -> bool:
         return self.is_reference_to is not None

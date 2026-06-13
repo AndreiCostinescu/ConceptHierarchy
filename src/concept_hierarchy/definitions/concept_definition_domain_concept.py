@@ -522,8 +522,8 @@ class DomainConceptDefinition(ConceptDefinition):
     management_data_keys: set[str] = {domain_concept_management_initialization, domain_concept_management_consolidation}
     default_value_domain_type_of_domain_concept_functions: str = "CustomFunction"
 
-    def __init__(self, name: str, definition_data: object, definition_location: str):
-        super().__init__(name, definition_data, definition_location)
+    def __init__(self, name: str, definition_data: object, definition_location_str: str):
+        super().__init__(name, definition_data, definition_location_str)
 
         self.properties: dict[str, dict] = {}
         self.functions: dict[str, dict] = {}
@@ -563,13 +563,11 @@ class DomainConceptDefinition(ConceptDefinition):
         domain_concept.available_function_data = {}
         return domain_concept
 
-    @property
     def definition_type(self) -> str:
         return DomainConceptDefinition.domain_concept_name
 
-    @property
     def definition_location(self) -> list[str]:
-        return super().definition_location + ["data"]
+        return self.data_location_id
 
     def initialize_domain_concept_data(
         self,
