@@ -330,20 +330,16 @@ class ConceptHierarchyChecker:
         for c_name, c in self.ch.concepts.items():
             c.concept_data_check()
             if isinstance(c, HiddenImplementationDefinition):
-                for t_arg_name in c.template_argument_order:
+                for t_index, t_arg_name in enumerate(c.template_argument_order):
                     if t_arg_name in self.ch.concepts:
+                        t_order_location = c.location_of(HiddenImplementationDefinition.hidden_template_arguments_order)
                         raise CHSemanticError(
                             f"The template argument name {t_arg_name!r} of {c_name} is also the name of a defined "
                             f"concept in this Concept Hierarchy!"
                             f"\n\tThis can cause ambiguity in the template argument's constraint formulae definition, "
                             f"in template instantiations and in template substitutions."
                             f"\nPlease rename the template argument!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                HiddenImplementationDefinition.hidden_template_arguments,
-                            ],
+                            location_id=t_order_location + [t_index],
                         )
                 # maps names of template arguments of parents to the set of the parent concepts that use those names
                 template_arguments_to_substitute: dict[str, set[str]] = {}
