@@ -37,6 +37,29 @@ class LocationId(list[PathSegment]):
     def print(self):
         return ": ".join(json.dumps(x) for x in self)
 
+    def __getitem__(self, index: int | slice) -> str | int | LocationId:
+        """Get item or slice; slices return LocationId."""
+        result = super().__getitem__(index)
+        if isinstance(index, slice):
+            return LocationId(result)
+        return result
+
+    def __add__(self, other: list[str | int]) -> LocationId:
+        """Return LocationId when concatenating."""
+        return LocationId(super().__add__(other))
+
+    def __mul__(self, other: int) -> LocationId:
+        """Return LocationId when multiplying."""
+        return LocationId(super().__mul__(other))
+
+    def __rmul__(self, other: int) -> LocationId:
+        """Return LocationId when multiplying (reversed)."""
+        return LocationId(super().__rmul__(other))
+
+    def copy(self) -> LocationId:
+        """Return LocationId when copying."""
+        return LocationId(super().copy())
+
 
 class PathPart(Enum):
     """
