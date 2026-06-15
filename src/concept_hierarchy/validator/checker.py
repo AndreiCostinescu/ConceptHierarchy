@@ -31,7 +31,7 @@ from concept_hierarchy.definitions.concept_definition_value_domain import ValueD
 from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, PathPart
 from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.utils import (
     join_path,
@@ -306,253 +306,232 @@ class ConceptHierarchyChecker:
 
     def check_after_parsing_concepts(self):
         # promote to subconcepts the concept definitions
+        errors = []
         for c_name, c in self.ch.concepts.items():
-            assert c.is_root == (c.parents == [])
-            if self.ch.is_function(c_name):
-                self.ch.concepts[c_name] = FunctionDefinition.from_node(c)
-            elif self.ch.is_value_domain(c_name):
-                self.ch.concepts[c_name] = ValueDomainDefinition.from_node(c)
-            elif self.ch.is_domain_concept(c_name):
-                self.ch.concepts[c_name] = DomainConceptDefinition.from_node(c)
-            else:
-                raise CHSemanticError(
-                    f"Found concept {c_name} with parents {c.parents!r} that is neither a "
-                    f"{FunctionDefinition.function_name}, {ValueDomainDefinition.value_domain_name}, "
-                    f"nor a {DomainConceptDefinition.domain_concept_name}!",
-                    location_id=[
-                        ConceptHierarchyModel.model_concepts,
-                        c_name,
-                        ConceptDefinition.concept_direct_parents,
-                    ],
-                    part=PathPart.VALUE,
-                )
+            try:
+                assert c.is_root == (c.parents == [])
+                if self.ch.is_function(c_name):
+                    self.ch.concepts[c_name] = FunctionDefinition.from_node(c)
+                elif self.ch.is_value_domain(c_name):
+                    self.ch.concepts[c_name] = ValueDomainDefinition.from_node(c)
+                elif self.ch.is_domain_concept(c_name):
+                    self.ch.concepts[c_name] = DomainConceptDefinition.from_node(c)
+                else:
+                    raise CHSemanticError(
+                        f"Found concept {c_name} with parents {c.parents!r} that is neither a "
+                        f"{FunctionDefinition.function_name}, {ValueDomainDefinition.value_domain_name}, "
+                        f"nor a {DomainConceptDefinition.domain_concept_name}!",
+                        location_id=c.location_of(ConceptDefinition.concept_direct_parents),
+                        part=PathPart.VALUE,
+                    )
+            except ConceptHierarchyError as e:
+                errors.append(e)
+        if errors:
+            if len(errors) == 1:
+                raise errors[0]
+            raise CHSemanticError("Processing concept data failed because of the errors below!", causes=errors)
         # check domain_concept, value_domain, and function data!
         for c_name, c in self.ch.concepts.items():
-            c.concept_data_check()
-            if isinstance(c, HiddenImplementationDefinition):
-                for t_index, t_arg_name in enumerate(c.template_argument_order):
-                    if t_arg_name in self.ch.concepts:
-                        t_order_location = c.location_of(HiddenImplementationDefinition.hidden_template_arguments_order)
-                        raise CHSemanticError(
-                            f"The template argument name {t_arg_name!r} of {c_name} is also the name of a defined "
-                            f"concept in this Concept Hierarchy!"
-                            f"\n\tThis can cause ambiguity in the template argument's constraint formulae definition, "
-                            f"in template instantiations and in template substitutions."
-                            f"\nPlease rename the template argument!",
-                            location_id=t_order_location + [t_index],
+            try:
+                c.concept_data_check()
+                if isinstance(c, HiddenImplementationDefinition):
+                    for t_index, t_arg_name in enumerate(c.template_argument_order):
+                        if t_arg_name in self.ch.concepts:
+                            t_order_location = c.location_of(
+                                HiddenImplementationDefinition.hidden_template_arguments_order
+                            )
+                            raise CHSemanticError(
+                                f"The template argument name {t_arg_name!r} of {c_name} is also the name of a defined "
+                                f"concept in this Concept Hierarchy!"
+                                f"\n\tThis can cause ambiguity in the template argument's constraint formulae "
+                                f"definition, in template instantiations and in template substitutions."
+                                f"\nPlease rename the template argument!",
+                                location_id=t_order_location + [t_index],
+                            )
+                    # maps names of template arguments of parents to the set of the parent concepts that use those names
+                    template_arguments_to_substitute: dict[str, set[str]] = {}
+                    extra_t_subst_keys: set[tuple[str | None, str]] = set(c.substitution_of_template_arguments)
+                    matched_parents_of_shorthand_syntax: dict[str, str] = {}
+                    # ensure all parent template arguments are specified in the substitution definition of this concept
+                    for parent in c.parents:
+                        parent_c = self.ch.concepts[parent]
+                        if not isinstance(parent_c, HiddenImplementationDefinition):
+                            continue
+                        for parent_t_arg in parent_c.template_argument_order:
+                            if parent_t_arg not in template_arguments_to_substitute:
+                                template_arguments_to_substitute[parent_t_arg] = set()
+                            template_arguments_to_substitute[parent_t_arg].add(parent)
+                            # check that all parents are substituted in the concept
+                            # check later if the substitution is unambiguous
+                            full_key = (parent, parent_t_arg)
+                            if full_key in c.substitution_of_template_arguments:
+                                extra_t_subst_keys.remove(full_key)
+                                continue
+                            if parent_t_arg in c.substitution_of_template_arguments:
+                                extra_t_subst_keys.remove((None, parent_t_arg))
+                                matched_parents_of_shorthand_syntax[parent_t_arg] = parent
+                                continue
+                            raise CHSemanticError(
+                                f"Parent template argument {parent_t_arg} of {parent} is not specialized in {c_name}! "
+                                f'The specialization syntax is "<ParentConceptName>:<ParentTemplateArgumentName>".',
+                                location_id=c.location_of(
+                                    HiddenImplementationDefinition.hidden_template_arguments_substitutions
+                                ),
+                                part=PathPart.VALUE,
+                            )
+                    # ensure that shorthand-syntax specified substitution arguments are unambiguous
+                    for t_arg_name, parents_defining_t_arg in template_arguments_to_substitute.items():
+                        if len(parents_defining_t_arg) > 1 and t_arg_name in c.substitution_of_template_arguments:
+                            raise CHSemanticError(
+                                f"The substitution specification of template argument {t_arg_name} is ambiguous in "
+                                f"{c_name} because the parent concepts {parents_defining_t_arg} define the template "
+                                f"argument with the same name. Use the "
+                                f'"<ParentConceptName>:<ParentTemplateArgumentName>" syntax to define the unambiguous '
+                                f"substitution value for all parent template arguments",
+                                location_id=c.location_of(
+                                    HiddenImplementationDefinition.hidden_template_arguments_substitutions
+                                ),
+                                part=PathPart.KEY,
+                            )
+                    # ensure there are no extra keys specified in the substitution definition
+                    if len(extra_t_subst_keys) > 0:
+                        extra_keys_str = ", ".join(
+                            (f"{p}:" if p is not None else "") + p_t_arg for p, p_t_arg in extra_t_subst_keys
                         )
-                # maps names of template arguments of parents to the set of the parent concepts that use those names
-                template_arguments_to_substitute: dict[str, set[str]] = {}
-                extra_t_subst_keys: set[tuple[str | None, str]] = set(c.substitution_of_template_arguments)
-                matched_parents_of_shorthand_syntax: dict[str, str] = {}
-                # ensure all parent template arguments are specified in the substitution definition of this concept
-                for parent in c.parents:
-                    parent_c = self.ch.concepts[parent]
-                    if not isinstance(parent_c, HiddenImplementationDefinition):
-                        continue
-                    for parent_t_arg in parent_c.template_argument_order:
-                        if parent_t_arg not in template_arguments_to_substitute:
-                            template_arguments_to_substitute[parent_t_arg] = set()
-                        template_arguments_to_substitute[parent_t_arg].add(parent)
-                        # check that all parents are substituted in the concept
-                        # check later if the substitution is unambiguous
-                        full_key = (parent, parent_t_arg)
-                        if full_key in c.substitution_of_template_arguments:
-                            extra_t_subst_keys.remove(full_key)
-                            continue
-                        if parent_t_arg in c.substitution_of_template_arguments:
-                            extra_t_subst_keys.remove((None, parent_t_arg))
-                            matched_parents_of_shorthand_syntax[parent_t_arg] = parent
-                            continue
                         raise CHSemanticError(
-                            f"Parent template argument {parent_t_arg} of {parent} is not specialized in {c_name}! "
-                            f'The specialization syntax is "<ParentConceptName>:<ParentTemplateArgumentName>".',
+                            f"Extra keys {extra_keys_str} in template substitution definition of {c_name} must be "
+                            f"removed!",
                             location_id=c.location_of(
                                 HiddenImplementationDefinition.hidden_template_arguments_substitutions
                             ),
                             part=PathPart.VALUE,
                         )
-                # ensure that shorthand-syntax specified substitution arguments are unambiguous
-                for t_arg_name, parents_defining_t_arg in template_arguments_to_substitute.items():
-                    if len(parents_defining_t_arg) > 1 and t_arg_name in c.substitution_of_template_arguments:
-                        raise CHSemanticError(
-                            f"The substitution specification of template argument {t_arg_name} is ambiguous in {c_name}"
-                            f" because the parent concepts {parents_defining_t_arg} define the template argument with "
-                            f'the same name. Use the "<ParentConceptName>:<ParentTemplateArgumentName>" syntax to '
-                            f"define the unambiguous substitution value for all parent template arguments",
-                            location_id=c.location_of(
-                                HiddenImplementationDefinition.hidden_template_arguments_substitutions
-                            ),
-                            part=PathPart.KEY,
+                    # replace shorthand-syntax template arguments in concept's substitution member
+                    for parent_t_arg, parent in matched_parents_of_shorthand_syntax.items():
+                        existing_key = (None, parent_t_arg)
+                        assert existing_key in c.substitution_of_template_arguments
+                        c.substitution_of_template_arguments[(parent, parent_t_arg)] = (
+                            c.substitution_of_template_arguments.pop((None, parent_t_arg))
                         )
-                # ensure there are no extra keys specified in the substitution definition
-                if len(extra_t_subst_keys) > 0:
-                    extra_keys_str = ", ".join(
-                        (f"{p}:" if p is not None else "") + p_t_arg for p, p_t_arg in extra_t_subst_keys
-                    )
-                    raise CHSemanticError(
-                        f"Extra keys {extra_keys_str} in template substitution definition of {c_name} must be removed!",
-                        location_id=c.location_of(
-                            HiddenImplementationDefinition.hidden_template_arguments_substitutions
-                        ),
-                        part=PathPart.VALUE,
-                    )
-                # replace shorthand-syntax template arguments in concept's substitution member
-                for parent_t_arg, parent in matched_parents_of_shorthand_syntax.items():
-                    existing_key = (None, parent_t_arg)
-                    assert existing_key in c.substitution_of_template_arguments
-                    c.substitution_of_template_arguments[(parent, parent_t_arg)] = (
-                        c.substitution_of_template_arguments.pop((None, parent_t_arg))
-                    )
-            if isinstance(c, ValueDomainDefinition):
-                assert self.ch.is_pure_value_domain(c_name)
-                for parent_index, parent in enumerate(c.parents):
-                    if not self.ch.is_pure_value_domain(parent) and parent != ConceptDefinition.concept_name:
+                if isinstance(c, ValueDomainDefinition):
+                    assert self.ch.is_pure_value_domain(c_name)
+                    for parent_index, parent in enumerate(c.parents):
+                        if not self.ch.is_pure_value_domain(parent) and parent != ConceptDefinition.concept_name:
+                            raise CHSemanticError(
+                                f"Parents of {ValueDomainDefinition.value_domain_name}s must be "
+                                f"{ValueDomainDefinition.value_domain_name}s.\nEncountered non "
+                                f"{ValueDomainDefinition.value_domain_name} parent {parent!r} of {c_name}",
+                                location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                            )
+                    if (
+                        c.default_serialization is not None
+                        and c.default_serialization in self.ch.default_serializations
+                    ):
                         raise CHSemanticError(
-                            f"Parents of {ValueDomainDefinition.value_domain_name}s must be "
-                            f"{ValueDomainDefinition.value_domain_name}s.\nEncountered non "
-                            f"{ValueDomainDefinition.value_domain_name} parent {parent!r} of {c_name}",
-                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                            f"The default serialization value of ValueDomains must be unique across all concepts!"
+                            f"\nFound (non-inclusive) duplicate "
+                            f'"{ValueDomainDefinition.value_domain_default_serialization}" specifications in {c_name} '
+                            f"and {self.ch.default_serializations[c.default_serialization]}!",
+                            location_id=c.location_of(ValueDomainDefinition.value_domain_default_serialization),
                         )
-                if c.default_serialization is not None and c.default_serialization in self.ch.default_serializations:
-                    raise CHSemanticError(
-                        f"The default serialization value of ValueDomains must be unique across all concepts!"
-                        f"\nFound (non-inclusive) duplicate "
-                        f'"{ValueDomainDefinition.value_domain_default_serialization}" specifications in {c_name} and '
-                        f"{self.ch.default_serializations[c.default_serialization]}!",
-                        location_id=[
-                            ConceptHierarchyModel.model_concepts,
-                            c_name,
-                            ConceptDefinition.concept_definition_data,
-                            ValueDomainDefinition.value_domain_default_serialization,
-                        ],
-                    )
-                self.ch.default_serializations[c.default_serialization] = c_name
-            if isinstance(c, FunctionDefinition):
-                assert self.ch.is_function(c_name)
-                for parent_index, parent in enumerate(c.parents):
-                    if not self.ch.is_function(parent) and parent != ValueDomainDefinition.value_domain_name:
-                        raise CHSemanticError(
-                            f"Parents of {FunctionDefinition.function_name}s must be "
-                            f"{FunctionDefinition.function_name}s.\nEncountered non {FunctionDefinition.function_name} "
-                            f"parent {parent!r} of {c_name}",
-                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
-                        )
-                for eval_arg_name in c.evaluation_interface:
-                    if eval_arg_name in self.ch.instances:
-                        raise CHSemanticError(
-                            f"The name of the evaluation argument {eval_arg_name!r} of {c_name} is also the name of a "
-                            f"defined global variable (global instance) in this Concept Hierarchy."
-                            f"\n\tThis can cause ambiguity in the context of the FunctionComposition of Function "
-                            f"procedures, inversions, and variations!"
-                            f"\nPlease rename the Function argument or the global variable!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                FunctionDefinition.function_interface,
-                            ],
-                        )
-            if isinstance(c, DomainConceptDefinition):
-                assert self.ch.is_domain_concept(c_name)
-                for parent_index, parent in enumerate(c.parents):
-                    if not self.ch.is_domain_concept(parent):
-                        raise CHSemanticError(
-                            f"Parents of {DomainConceptDefinition.domain_concept_name}s must be "
-                            f"{DomainConceptDefinition.domain_concept_name}s.\nEncountered non "
-                            f"{DomainConceptDefinition.domain_concept_name} parent {parent!r} of {c_name}",
-                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
-                        )
-                # check unique property names, unique function names, distinct function and property names,
-                # and non-ambiguous definitions of properties or functions with the same name as a global variable
-                for prop_name in c.properties:
-                    if prop_name in self.ch.instances:
-                        raise CHSemanticError(
-                            f"The name of the concept property {prop_name!r} of {c_name} is also the name of a defined "
-                            f"global variable (global instance) in this Concept Hierarchy."
-                            f"\n\tThis can cause ambiguity in the context of property hooks, computations, concept "
-                            f"functions, and management functions."
-                            f"\nPlease rename the property or the global variable!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                DomainConceptDefinition.domain_concept_properties,
-                                prop_name,
-                            ],
-                        )
-                    if prop_name in self.ch.all_domain_concept_properties:
-                        raise CHSemanticError(
-                            f"The property {prop_name} is defined in multiple places!\nFound (non-inclusively) in "
-                            f"{c_name!r} and in {self.ch.all_domain_concept_properties[prop_name]!r}."
-                            f"\n\tPlease move the property to a common concept or rename one of them so that property "
-                            f"names are unique!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                DomainConceptDefinition.domain_concept_properties,
-                                prop_name,
-                            ],
-                        )
-                    if prop_name in self.ch.all_domain_concept_functions:
-                        raise CHSemanticError(
-                            f"The property {prop_name} is defined in multiple places!\nFound (non-inclusively) in "
-                            f"{c_name!r} as a property and in {self.ch.all_domain_concept_functions[prop_name]!r} as a "
-                            f"function!\n\tPlease rename one of them so that property names are distinct from function "
-                            f"names!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                DomainConceptDefinition.domain_concept_properties,
-                                prop_name,
-                            ],
-                        )
-                for func_name in c.functions:
-                    if func_name in self.ch.instances:
-                        raise CHSemanticError(
-                            f"The name of the concept function {func_name!r} of {c_name} is also the name of a defined "
-                            f"global variable (global instance) in this Concept Hierarchy."
-                            f"\n\tThis can cause ambiguity in the context of property hooks, computations, concept "
-                            f"functions, and management functions."
-                            f"\nPlease rename the function or the global variable!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                DomainConceptDefinition.domain_concept_functions,
-                                func_name,
-                            ],
-                        )
-                    if func_name in self.ch.all_domain_concept_functions:
-                        raise CHSemanticError(
-                            f"The function {func_name} is defined in multiple places!\nFound (non-inclusively) in "
-                            f"{c_name!r} and in {self.ch.all_domain_concept_functions[func_name]!r}."
-                            f"\n\tPlease move the function to a common concept or rename one of them so that function "
-                            f"names are unique!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                DomainConceptDefinition.domain_concept_functions,
-                                func_name,
-                            ],
-                        )
-                    if func_name in self.ch.all_domain_concept_properties:
-                        raise CHSemanticError(
-                            f"The function {func_name} is defined in multiple places!\nFound (non-inclusively) in "
-                            f"{c_name!r} as a function and in {self.ch.all_domain_concept_properties[func_name]!r} as a"
-                            f" property!\n\tPlease rename one of them so that function names are distinct from property"
-                            f" names!",
-                            location_id=[
-                                ConceptHierarchyModel.model_concepts,
-                                c_name,
-                                ConceptDefinition.concept_definition_data,
-                                DomainConceptDefinition.domain_concept_functions,
-                                func_name,
-                            ],
-                        )
+                    self.ch.default_serializations[c.default_serialization] = c_name
+                if isinstance(c, FunctionDefinition):
+                    assert self.ch.is_function(c_name)
+                    for parent_index, parent in enumerate(c.parents):
+                        if not self.ch.is_function(parent) and parent != ValueDomainDefinition.value_domain_name:
+                            raise CHSemanticError(
+                                f"Parents of {FunctionDefinition.function_name}s must be "
+                                f"{FunctionDefinition.function_name}s.\nEncountered non "
+                                f"{FunctionDefinition.function_name} parent {parent!r} of {c_name}",
+                                location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                            )
+                    for eval_arg_name in c.evaluation_interface:
+                        if eval_arg_name in self.ch.instances:
+                            raise CHSemanticError(
+                                f"The name of the evaluation argument {eval_arg_name!r} of {c_name} is also the name of"
+                                f" a defined global variable (global instance) in this Concept Hierarchy."
+                                f"\n\tThis can cause ambiguity in the context of the FunctionComposition of Function "
+                                f"procedures, inversions, and variations!"
+                                f"\nPlease rename the Function argument or the global variable!",
+                                location_id=c.location_of(FunctionDefinition.function_interface) + [eval_arg_name],
+                                part=PathPart.KEY,
+                            )
+                if isinstance(c, DomainConceptDefinition):
+                    assert self.ch.is_domain_concept(c_name)
+                    for parent_index, parent in enumerate(c.parents):
+                        if not self.ch.is_domain_concept(parent):
+                            raise CHSemanticError(
+                                f"Parents of {DomainConceptDefinition.domain_concept_name}s must be "
+                                f"{DomainConceptDefinition.domain_concept_name}s.\nEncountered non "
+                                f"{DomainConceptDefinition.domain_concept_name} parent {parent!r} of {c_name}",
+                                location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                            )
+                    # check unique property names, unique function names, distinct function and property names,
+                    # and non-ambiguous definitions of properties or functions with the same name as a global variable
+                    for prop_name in c.properties:
+                        if prop_name in self.ch.instances:
+                            raise CHSemanticError(
+                                f"The name of the concept property {prop_name!r} of {c_name} is also the name of a "
+                                f"defined global variable (global instance) in this Concept Hierarchy."
+                                f"\n\tThis can cause ambiguity in the context of property hooks, computations, concept "
+                                f"functions, and management functions."
+                                f"\nPlease rename the property or the global variable!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_properties, prop_name),
+                                part=PathPart.KEY,
+                            )
+                        if prop_name in self.ch.all_domain_concept_properties:
+                            raise CHSemanticError(
+                                f"The property {prop_name} is defined in multiple places!\nFound (non-inclusively) in "
+                                f"{c_name!r} and in {self.ch.all_domain_concept_properties[prop_name]!r}."
+                                f"\n\tPlease move the property to a common concept or rename one of them so that "
+                                f"property names are unique!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_properties, prop_name),
+                                part=PathPart.KEY,
+                            )
+                        if prop_name in self.ch.all_domain_concept_functions:
+                            raise CHSemanticError(
+                                f"The property {prop_name} is defined in multiple places!\nFound (non-inclusively) in "
+                                f"{c_name!r} as a property and in {self.ch.all_domain_concept_functions[prop_name]!r} "
+                                f"as a function!\n\tPlease rename one of them so that property names are distinct from "
+                                f"function names!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_properties, prop_name),
+                                part=PathPart.KEY,
+                            )
+                    for func_name in c.functions:
+                        if func_name in self.ch.instances:
+                            raise CHSemanticError(
+                                f"The name of the concept function {func_name!r} of {c_name} is also the name of a "
+                                f"defined global variable (global instance) in this Concept Hierarchy."
+                                f"\n\tThis can cause ambiguity in the context of property hooks, computations, concept "
+                                f"functions, and management functions."
+                                f"\nPlease rename the function or the global variable!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_functions, func_name),
+                                part=PathPart.KEY,
+                            )
+                        if func_name in self.ch.all_domain_concept_functions:
+                            raise CHSemanticError(
+                                f"The function {func_name} is defined in multiple places!\nFound (non-inclusively) in "
+                                f"{c_name!r} and in {self.ch.all_domain_concept_functions[func_name]!r}."
+                                f"\n\tPlease move the function to a common concept or rename one of them so that "
+                                f"function names are unique!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_functions, func_name),
+                                part=PathPart.KEY,
+                            )
+                        if func_name in self.ch.all_domain_concept_properties:
+                            raise CHSemanticError(
+                                f"The function {func_name} is defined in multiple places!\nFound (non-inclusively) in "
+                                f"{c_name!r} as a function and in {self.ch.all_domain_concept_properties[func_name]!r} "
+                                f"as a property!\n\tPlease rename one of them so that function names are distinct from "
+                                f"property names!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_functions, func_name),
+                                part=PathPart.KEY,
+                            )
+            except ConceptHierarchyError as e:
+                errors.append(e)
+        if errors:
+            if len(errors) == 1:
+                raise errors[0]
+            raise CHSemanticError("Processing concept data failed because of the errors below!", causes=errors)
 
     def check_specializations(self):
         context = ConceptHierarchyContext(self.ch, TemplateContext(), VariableContext())
