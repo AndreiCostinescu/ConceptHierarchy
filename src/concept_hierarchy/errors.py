@@ -29,7 +29,7 @@ LocationId: TypeAlias = list[PathSegment]
 
 
 def print_location_id(location_id: LocationId):
-    return ":".join(json.dumps(x) for x in location_id)
+    return ": ".join(json.dumps(x) for x in location_id)
 
 
 class PathPart(Enum):
@@ -70,8 +70,9 @@ class ConceptHierarchyError(Exception):
         """Prints the Concept Hierarchy error message with indents and the location causing the error."""
         message_lines = str(self).split("\n")
         prefix_str = f"[{self.prefix}] " if self.prefix else ""
-        indent_str = tab * indent + prefix_str
-        text = indent_str + ("\n" + indent_str).join(message_lines)
+        content_indent_str = tab * (indent + 1)
+        indent_str = tab * indent + prefix_str + "\n" + content_indent_str
+        text = indent_str + ("\n" + content_indent_str).join(message_lines)
         for cause in self.causes:
             text += "\n" + cause.print(indent + 1)
         return text
