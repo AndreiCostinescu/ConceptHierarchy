@@ -17,6 +17,7 @@ checker.py — Syntax- and semantic-level validation of a parsed ConceptHierarch
 """
 
 import os
+from typing import Callable
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext, VariableContext
 from concept_hierarchy.data.validators.domain_concept_specialization_validation import (
@@ -101,11 +102,18 @@ class ConceptHierarchyChecker:
             prev_length = current_length
         return mapped_references
 
-    def __init__(self, concept_hierarchy_data: ConceptHierarchyModel):
+    def __init__(
+        self,
+        concept_hierarchy_data: ConceptHierarchyModel,
+        external_data_resolver: Callable[[str, str], object] | None = None,
+    ):
         self.ch = concept_hierarchy_data
-        self.ch.external_concept_data_resolver = lambda x, y: read_external_data_content(
-            x, y, self.ch.file, self.ch.path_to_root_dir
-        )
+        if external_data_resolver is None:
+            self.ch.external_concept_data_resolver = lambda x, y: read_external_data_content(
+                x, y, self.ch.file, self.ch.path_to_root_dir
+            )
+        else:
+            self.ch.external_concept_data_resolver = external_data_resolver
 
     @staticmethod
     def resolve_references(referencing_others, defined_data, reference_type: str):
