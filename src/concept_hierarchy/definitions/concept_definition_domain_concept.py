@@ -647,9 +647,9 @@ class DomainConceptDefinition(ConceptDefinition):
             else:
                 # mark existing keys as set, not inherited
                 for spec_for_this_def_key, spec_for_this_def_data in data_specialization_for_this[name].items():
-                    assert (
-                        isinstance(spec_for_this_def_data, tuple) and spec_for_this_def_data[1] is False
-                    ), f"At concept {self.name}: {spec_for_this_def_data!r}"
+                    assert isinstance(spec_for_this_def_data, tuple) and spec_for_this_def_data[1] is False, (
+                        f"At concept {self.name}: {spec_for_this_def_data!r}"
+                    )
                     data_specialization_for_this[name][spec_for_this_def_key] = (spec_for_this_def_data[0], True)
             available_data[name] = {}
             for def_key, def_data in definition_data.items():
