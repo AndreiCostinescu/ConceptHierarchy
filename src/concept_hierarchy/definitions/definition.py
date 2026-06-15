@@ -101,14 +101,14 @@ class ConceptHierarchyDefinition(ABC):
         if not isinstance(self.name, str) or not check_ch_name(self.name):
             raise CHSyntaxError(
                 f"Name of {self.definition_type()!r} definition must be a valid string identifier, got {self.name!r}!",
-                self.location_id(),
+                location_id=ConceptHierarchyDefinition.definition_location(self) + [self.name],
                 part=PathPart.KEY,
             )
         if not isinstance(self.definition_data, (dict, str)):
             raise CHSyntaxError(
                 f"The concept definition of {self.name} is not a JSON object or a JSON string "
                 f"concept-name reference, but {self.definition_data!r}!",
-                self.location_id(),
+                location_id=ConceptHierarchyDefinition.definition_location(self) + [self.name],
                 part=PathPart.VALUE,
             )
         if isinstance(self.definition_data, str):
