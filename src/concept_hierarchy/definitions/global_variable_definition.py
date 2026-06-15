@@ -14,20 +14,20 @@
 
 from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition, LocationOfCheckData
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSyntaxError, PathPart
+from concept_hierarchy.errors import CHSyntaxError, LocationId, PathPart
 
 
 class GlobalVariableDefinition(ConceptHierarchyDefinition):
     global_variable_name: str = "Global Variable"
 
-    def __init__(self, name: str, definition_data: object, definition_location_str: str):
+    def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
         self.orig_data = None
         self.value = None
         self.value_type = None
         self.deserialize_with_value = False
         self.is_literal = False
         self.is_instance = False
-        super().__init__(name, definition_data, definition_location_str)
+        super().__init__(name, definition_data, definition_location_id)
 
     def check(self):
         super().check()
@@ -41,7 +41,7 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
     def definition_type(self) -> str:
         return GlobalVariableDefinition.global_variable_name
 
-    def definition_location(self) -> list[str]:
+    def definition_location(self) -> LocationId:
         location_res = super().definition_location() + [self.name]
         if self.from_reference is not None:
             location_res.append("ref:" + self.from_reference)
@@ -54,7 +54,7 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
             super().location_of_impl(*keywords),
             GlobalVariableDefinition.definition_location(self),
             location_check=self.name,
-            previous_location=self.definition_location_str,
+            previous_location=self.definition_location_id[-1],
             allow_start_at_this_location=True,
         )
 

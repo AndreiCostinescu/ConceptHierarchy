@@ -37,7 +37,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self,
         name: str,
         definition_data: object,
-        definition_location_str: str,
+        definition_location_id: LocationId,
         *,
         external_data_resolver: Callable | None = None,
     ):
@@ -50,12 +50,12 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         # initialize this member before calling super, which calls the check function
         self._data_location_id = [ConceptDefinition.concept_definition_data]
 
-        super().__init__(name, definition_data, definition_location_str)
+        super().__init__(name, definition_data, definition_location_id)
         # when the concept is initialized (just as a concept at the beginning) the function below does nothing
         self.concept_data_check()  # sets the members of subclasses of ConceptDefinition
 
     @property
-    def data_location_id(self):
+    def data_location_id(self) -> LocationId:
         return ConceptDefinition.definition_location(self) + self._data_location_id
 
     def check(self):
@@ -138,7 +138,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
     def definition_type(self) -> str:
         return ConceptDefinition.concept_name
 
-    def definition_location(self) -> list[str]:
+    def definition_location(self) -> LocationId:
         location_res = super().definition_location() + [self.name]
         if self.from_reference is not None:
             location_res.append("ref:" + self.from_reference)
@@ -150,7 +150,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
             super().location_of_impl(*keywords),
             ConceptDefinition.definition_location(self),
             location_check=self.name,
-            previous_location=self.definition_location_str,
+            previous_location=self.definition_location_id[-1],
             allow_start_at_this_location=True,
         )
         # processes top-level concept keys: (data, description, directParents)

@@ -48,11 +48,11 @@ class FoundLocationId(StopLocationOfCheck):
 
 
 class ConceptHierarchyDefinition(ABC):
-    def __init__(self, name: str, definition_data: object, definition_location_str: str):
+    def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
         self.name: str = name
         # noinspection PyTypeChecker
         self.definition_data: dict | str = definition_data
-        self.definition_location_str: str = definition_location_str
+        self.definition_location_id: LocationId = definition_location_id
 
         self.is_root: bool = False
         self.is_reference_to: str | None = None
@@ -77,6 +77,8 @@ class ConceptHierarchyDefinition(ABC):
         # don't copy the dictionary cache data (otherwise referencing-concepts will share the cache with the reference!)
         obj._definition_location_cache = {}
         obj._definition_location_cache.update(node._definition_location_cache)
+        # Don't process definition_location_id specially, even if it is a mutable object (LocationId) because this is
+        #  treated as frozen/fixed in all (subclass) Definitions!
         return obj
 
     def create_from_reference(self, referenced_definition: T) -> T:
@@ -119,8 +121,8 @@ class ConceptHierarchyDefinition(ABC):
         pass
 
     @abstractmethod
-    def definition_location(self) -> list[str]:
-        return [self.definition_location_str]
+    def definition_location(self) -> LocationId:
+        return self.definition_location_id
 
     def location_id(self, *location_ids: PathSegment) -> LocationId:
         return self.definition_location() + [*location_ids]
@@ -158,7 +160,7 @@ class ConceptHierarchyDefinition(ABC):
         return self.check_location_id(
             LocationOfCheckData(None, keywords, (), False),
             ConceptHierarchyDefinition.definition_location(self),
-            location_check=self.definition_location_str,
+            location_check=self.definition_location_id[-1],
             previous_location=None,
             allow_start_at_this_location=True,
         )

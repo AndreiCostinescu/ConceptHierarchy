@@ -20,7 +20,7 @@ from typing import TypeAlias
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.definition import LocationOfCheckData
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
 # the instantiation value is either a string value or a JSON object representing a json-schema-definition
 InstantiationDefinition: TypeAlias = str | dict
@@ -40,8 +40,8 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
     allowed_default_serializations: set[str] = {"null", "boolean", "integer", "number", "string"}
     argument_reference_types = {"NoRef", "Reference"}
 
-    def __init__(self, name: str, definition_data: object, definition_location_str: str):
-        super().__init__(name, definition_data, definition_location_str)
+    def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
+        super().__init__(name, definition_data, definition_location_id)
 
         self.default_serialization: str | None = None
         # if the ValueDomain has no template arguments, the tuple dict entry will be empty: ()

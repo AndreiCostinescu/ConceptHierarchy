@@ -177,11 +177,15 @@ class ConceptHierarchyChecker:
             )
         concepts_referencing_others: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
+        concept_location_id = []
+        if self.ch.file is not None:
+            concept_location_id.append(self.ch.file)
+        concept_location_id.append(ConceptHierarchyModel.model_concepts)
         for concept_name, concept_def in concept_definition.items():  # type: str, object
             concept_definition = ConceptDefinition(
                 concept_name,
                 concept_def,
-                ConceptHierarchyModel.model_concepts,
+                concept_location_id,
                 external_data_resolver=self.ch.external_concept_data_resolver,
             )
             if concept_definition.is_reference():
@@ -201,10 +205,12 @@ class ConceptHierarchyChecker:
             )
         instances_referencing_others: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
+        instances_location_id = []
+        if self.ch.file is not None:
+            instances_location_id.append(self.ch.file)
+        instances_location_id.append(ConceptHierarchyModel.model_instances)
         for variable_name, variable_def in instance_definition.items():  # type: str, object
-            variable_definition = GlobalVariableDefinition(
-                variable_name, variable_def, ConceptHierarchyModel.model_instances
-            )
+            variable_definition = GlobalVariableDefinition(variable_name, variable_def, instances_location_id)
             if variable_definition.is_reference():
                 instances_referencing_others[variable_name] = variable_definition
             else:

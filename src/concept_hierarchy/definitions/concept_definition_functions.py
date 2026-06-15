@@ -45,8 +45,8 @@ class FunctionDefinition(HiddenImplementationDefinition):
     argument_reference_types: list[str] = ["NoRef", "Reference", "EmptyReference"]
     argument_modifier_types: list[str] = ["Get", "Modify", "GetModify"]
 
-    def __init__(self, name: str, definition_data: object, definition_location_str: str):
-        super().__init__(name, definition_data, definition_location_str)
+    def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
+        super().__init__(name, definition_data, definition_location_id)
 
         self.interface: dict = {}
         self.procedure: dict | None = None

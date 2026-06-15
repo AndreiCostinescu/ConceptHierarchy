@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.definition import LocationOfCheckData, StopLocationOfCheck
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
 
 class HiddenImplementationDefinition(ConceptDefinition, ABC):
@@ -41,8 +41,8 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         "'" + x + "'" for x in variadic_group_identifier_characters
     )
 
-    def __init__(self, name: str, definition_data: object, definition_location_str: str):
-        super().__init__(name, definition_data, definition_location_str)
+    def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
+        super().__init__(name, definition_data, definition_location_id)
 
         self.implementation: str | None = None
         self.abstract: bool | None = None
@@ -76,7 +76,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
     def definition_type(self) -> str:
         pass
 
-    def definition_location(self) -> list[str]:
+    def definition_location(self) -> LocationId:
         return self.data_location_id
 
     def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
