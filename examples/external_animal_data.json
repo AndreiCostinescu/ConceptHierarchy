@@ -21,6 +21,9 @@
                             "max": 14
                         }
                     }
+                },
+                "description": {
+                    "nameDefaultInstanceValuesWithThisInstanceName": false
                 }
             }
         }

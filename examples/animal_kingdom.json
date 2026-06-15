@@ -16,10 +16,84 @@
             "directParents": ["Animal"],
             "data": {
                 "properties": {
-                    "breed": "String"
+                    "breed": {
+                        "valueDomain": "String",
+                        "confidenceHalfDecayTime": [1, "y"]
+                    },
+                    "_specializations": {
+                        "age": {
+                            "confidenceHalfDecayTime": [1, "d"],
+                            "hooks": "inheritFrom:",
+                            "nameDefaultInstanceValuesWithThisInstanceName": "inheritFrom:Animal"
+                        },
+                        "_forThis": {
+                            "breed": {
+                                "confidenceHalfDecayTime": "inheritFrom:"
+                            }
+                        }
+                    }
+                },
+                "functions": {
+                    "f1": {},
+                    "f2": {
+                        "Add<Number>": {
+                            "arg1": 2,
+                            "arg2": 2
+                        }
+                    },
+                    "f3": {
+                        "interface": {
+                            "arg": "Number",
+                            "res": "Number"
+                        },
+                        "procedure": {
+                            "Return<Number>": {
+                                "what": {
+                                    "Add<Number>": {
+                                        "arg1": "arg",
+                                        "arg2": 2
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "f4": {
+                        "valueDomain": "CustomFunction2",
+                        "static": true,
+                        "default": {
+                            "interface": {
+                                "arg": "Number",
+                                "res": "Number"
+                            },
+                            "procedure": {
+                                "Return<Number>": {
+                                    "what": {
+                                        "Add<Number>": {
+                                            "arg1": "arg",
+                                            "arg2": 2
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "_specializations": {
+                        "_forThis": {
+                            "f1": {
+                                "Return<Number>": {
+                                    "Add<Number>": {
+                                        "arg1": 2,
+                                        "arg2": 2
+                                    }
+                                }
+                            },
+                            "f2": "inheritFrom:"
+                        }
+                    }
                 }
             }
         },
+        "DogClone": "Dog",
         "ValueDomain": {
             "directParents": ["Concept"],
             "data": {
@@ -35,7 +109,66 @@
         "String": {
             "directParents": ["ValueDomain"],
             "data": {
+                "defaultSerialization": "string",
                 "instantiation": "string"
+            }
+        },
+        "TypeName": {
+            "directParents": ["String"],
+            "data": {
+                "instantiation": "string"
+            }
+        },
+        "ClosedInterval": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateArguments": {
+                    "order": ["T"],
+                    "T": "Integer"
+                },
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "min": { "type": "T" },
+                        "max": { "type": "T" }
+                    },
+                    "additionalProperties": false
+                }
+            }
+        },
+        "CustomFunction": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "interface": {
+                            "type": "object",
+                            "properties": {
+                                "res": { "$ref": "#/$defs/argumentTypeDefinition" }
+                            },
+                            "patternProperties": {
+                                "^[a-z][A-Za-z0-9_]*$": { "$ref": "#/$defs/argumentTypeDefinition" }
+                            }
+                        },
+                        "procedure": "FunctionComposition"
+                    },
+                    "requiredProperties": ["procedure"],
+                    "additionalProperties": false,
+                    "$defs": {
+                        "argumentTypeDefinition": {
+                            "oneOf": [
+                                "TypeName",
+                                {
+                                    "type": "array",
+                                    "items": ["TypeName", "string"],
+                                    "minItems": 1,
+                                    "maxItems": 2
+                                }
+                            ]
+                        }
+                    }
+                }
             }
         }
     },
