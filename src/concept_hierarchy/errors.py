@@ -25,11 +25,17 @@ from typing import TypeAlias
 from concept_hierarchy.utils import tab
 
 PathSegment: TypeAlias = str | int
-LocationId: TypeAlias = list[PathSegment]
 
 
-def print_location_id(location_id: LocationId):
-    return ": ".join(json.dumps(x) for x in location_id)
+class LocationId(list[PathSegment]):
+    def __str__(self):
+        return repr(self)
+
+    def __repr__(self):
+        return self.print()
+
+    def print(self):
+        return ": ".join(json.dumps(x) for x in self)
 
 
 class PathPart(Enum):
@@ -55,7 +61,7 @@ class ConceptHierarchyError(Exception):
         elif not location_id:  # location_id == []
             self.prefix = "ROOT"
         else:
-            self.prefix = print_location_id(location_id)
+            self.prefix = location_id.print()
         if part is PathPart.KEY:
             self.prefix += f" ({part.value})"
 
