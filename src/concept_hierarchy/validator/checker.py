@@ -31,7 +31,7 @@ from concept_hierarchy.definitions.concept_definition_value_domain import ValueD
 from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, PathPart
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId, PathPart
 from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.utils import (
     join_path,
@@ -185,7 +185,7 @@ class ConceptHierarchyChecker:
             )
         concepts_referencing_others: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
-        concept_location_id = []
+        concept_location_id: LocationId = LocationId()
         if self.ch.file is not None:
             concept_location_id.append(self.ch.file)
         concept_location_id.append(ConceptHierarchyModel.model_concepts)
@@ -213,7 +213,7 @@ class ConceptHierarchyChecker:
             )
         instances_referencing_others: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
-        instances_location_id = []
+        instances_location_id: LocationId = LocationId()
         if self.ch.file is not None:
             instances_location_id.append(self.ch.file)
         instances_location_id.append(ConceptHierarchyModel.model_instances)
@@ -255,7 +255,7 @@ class ConceptHierarchyChecker:
                     defined_concepts[root].parents.append(self.ch.root_concept_name)
                 self.ch.concept_topo_sort = [self.ch.root_concept_name] + self.ch.concept_topo_sort
                 defined_concepts[self.ch.root_concept_name] = ConceptDefinition(
-                    self.ch.root_concept_name, {}, ConceptHierarchyModel.model_concepts
+                    self.ch.root_concept_name, {}, concept_location_id
                 )
                 roots = [self.ch.root_concept_name]
             assert len(roots) == 1
