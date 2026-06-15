@@ -36,7 +36,7 @@ dev = [
     "build",
     "twine",
     "mypy",
-    "ruff>=0.4",
+    "ruff==0.15.17",
     "pre-commit>=3.7",
 ]
 
