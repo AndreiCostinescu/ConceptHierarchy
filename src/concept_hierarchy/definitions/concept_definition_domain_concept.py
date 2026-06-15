@@ -471,7 +471,7 @@ class FunctionDefinition(DomainDataDefinition):
             if not self.concept_hierarchy_data.is_a_subconcept_of_b(datum, "CustomFunction", include_self=True):
                 raise CHSemanticError(
                     f"Bad ValueDomain {datum!r} defined for concept function {self.name}",
-                    self.location_id(FunctionDefinition.VALUE_DOMAIN),
+                    location_id=self.location_id(FunctionDefinition.VALUE_DOMAIN),
                     part=PathPart.VALUE,
                 )
             self.value_domain = datum
@@ -1229,7 +1229,7 @@ class DomainConceptDefinition(ConceptDefinition):
             extra_keys = data_keys - DomainConceptDefinition.domain_concept_data_keys
             raise CHSyntaxError(
                 f"Found extra keys {extra_keys!r} in the domain concept data definition of {self.name}",
-                self.location_id(),
+                location_id=self.location_id(),
                 part=PathPart.VALUE,
             )
 
@@ -1255,14 +1255,14 @@ class DomainConceptDefinition(ConceptDefinition):
             if not check_ch_name(prop_name, must_start_lowercase=True):
                 raise CHSyntaxError(
                     f"Property names of domain concepts must be a lowercase-starting string, not {prop_name!r}",
-                    self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
+                    location_id=self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                     part=PathPart.KEY,
                 )
             if not isinstance(prop_data, (dict, str)):
                 raise CHSyntaxError(
                     f"The definition of domain concept properties must be a JSON object or string "
                     f"(that defines its ValueDomain), not {prop_data!r} for {prop_name} of domain concept {self.name}!",
-                    self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
+                    location_id=self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                     part=PathPart.VALUE,
                 )
             if isinstance(prop_data, dict):
@@ -1273,7 +1273,7 @@ class DomainConceptDefinition(ConceptDefinition):
                         raise CHSyntaxError(
                             f"Found extra keys {extra_keys!r} in the domain concept data definition of property "
                             f"{prop_name} for {self.name}",
-                            self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
+                            location_id=self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                             part=PathPart.VALUE,
                         )
                     # if prop_def does not contain any property-definition-keys, interpret as the definition of an
@@ -1298,7 +1298,7 @@ class DomainConceptDefinition(ConceptDefinition):
                 raise CHSyntaxError(
                     f"The property definition of a domain concept property must define either its ValueDomain or "
                     f"its constraint.\n\tGot {prop_data!r} as the definition of {prop_name} of {self.name}",
-                    self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
+                    location_id=self.location_id(DomainConceptDefinition.domain_concept_properties, prop_name),
                     part=PathPart.VALUE,
                 )
             # check the type of each property definition keyword value!
@@ -1351,14 +1351,14 @@ class DomainConceptDefinition(ConceptDefinition):
             if not check_ch_name(func_name, must_start_lowercase=True):
                 raise CHSyntaxError(
                     f"Function names of domain concepts must be a lowercase-starting string, not {func_name!r}",
-                    self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
+                    location_id=self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                     part=PathPart.KEY,
                 )
             if not isinstance(func_data, dict):
                 raise CHSyntaxError(
                     f"The definition of domain concept functions must be a FunctionComposition value "
                     f"(serialized as a JSON object), not {func_data!r} for {func_name} of domain concept {self.name}!",
-                    self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
+                    location_id=self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                     part=PathPart.VALUE,
                 )
             else:
@@ -1369,7 +1369,7 @@ class DomainConceptDefinition(ConceptDefinition):
                         raise CHSyntaxError(
                             f"Found extra keys {extra_keys!r} in the domain concept data definition of function "
                             f"{func_name} for {self.name}",
-                            self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
+                            location_id=self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                             part=PathPart.VALUE,
                         )
                     # interpret as default value of the static property
@@ -1414,7 +1414,7 @@ class DomainConceptDefinition(ConceptDefinition):
             raise CHSyntaxError(
                 f"The definition of domain concept management data must be a JSON object, not {self.management!r} for "
                 f"domain concept {self.name}!",
-                self.location_id(DomainConceptDefinition.domain_concept_management),
+                location_id=self.location_id(DomainConceptDefinition.domain_concept_management),
                 part=PathPart.VALUE,
             )
         management_keys = set(self.management.keys())
@@ -1422,7 +1422,7 @@ class DomainConceptDefinition(ConceptDefinition):
             extra_keys = management_keys - DomainConceptDefinition.management_data_keys
             raise CHSyntaxError(
                 f"Found extra keys {extra_keys!r} in the domain concept management data definition of {self.name}",
-                self.location_id(DomainConceptDefinition.domain_concept_management),
+                location_id=self.location_id(DomainConceptDefinition.domain_concept_management),
                 part=PathPart.VALUE,
             )
         for management_key, management_data in self.management.items():
@@ -1431,7 +1431,7 @@ class DomainConceptDefinition(ConceptDefinition):
                 raise CHSyntaxError(
                     f"The definition of {management_key!r} domain concept management data must be a JSON object, not "
                     f"{management_data!r} for domain concept {self.name}!",
-                    self.location_id(DomainConceptDefinition.domain_concept_management, management_key),
+                    location_id=self.location_id(DomainConceptDefinition.domain_concept_management, management_key),
                     part=PathPart.VALUE,
                 )
         # missing checks:

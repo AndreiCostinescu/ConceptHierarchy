@@ -26,6 +26,7 @@ from typing import TypeAlias
 from concept_hierarchy.utils import tab
 
 PathSegment: TypeAlias = str | int
+LocationIdLike: TypeAlias = list[PathSegment]
 
 
 class LocationId(UserList[PathSegment]):
@@ -54,19 +55,28 @@ class ConceptHierarchyError(Exception):
     """Base class for all ConceptHierarchy compiler errors."""
 
     def __init__(
-        self, message: str, location_id: LocationId | None, part: PathPart, causes: list[ConceptHierarchyError] | None
+        self,
+        message: str,
+        location_id: LocationIdLike | LocationId | None,
+        part: PathPart,
+        causes: list[ConceptHierarchyError] | None,
     ):
         super().__init__(message)
         if location_id is None:
             self.prefix = ""
-        elif not location_id:  # location_id == []
-            self.prefix = "ROOT"
+            self.location_id = location_id
         else:
-            self.prefix = location_id.print()
+            if not isinstance(location_id, LocationId):
+                self.location_id = LocationId(location_id)
+            else:
+                self.location_id = location_id
+            if not self.location_id:  # location_id == []
+                self.prefix = "ROOT"
+            else:
+                self.prefix = self.location_id.print()
         if part is PathPart.KEY:
             self.prefix += f" ({part.value})"
 
-        self.location_id = location_id
         self.part = part
         self.causes = causes or []
 
@@ -76,9 +86,13 @@ class ConceptHierarchyError(Exception):
     def print(self, indent: int = 0) -> str:
         """Prints the Concept Hierarchy error message with indents and the location causing the error."""
         message_lines = str(self).split("\n")
-        prefix_str = f"[{self.prefix}] " if self.prefix else ""
-        content_indent_str = tab * (indent + 1)
-        indent_str = tab * indent + prefix_str + "\n" + content_indent_str
+        if self.prefix:
+            prefix_str = f"[{self.prefix}] " if self.prefix else ""
+            content_indent_str = tab * (indent + 1)
+            indent_str = tab * indent + prefix_str + "\n" + content_indent_str
+        else:
+            indent_str = tab * indent
+            content_indent_str = tab * indent
         text = indent_str + ("\n" + content_indent_str).join(message_lines)
         for cause in self.causes:
             text += "\n" + cause.print(indent + 1)
@@ -91,7 +105,7 @@ class CHSyntaxError(ConceptHierarchyError):
     def __init__(
         self,
         message: str,
-        location_id: LocationId | None = None,
+        location_id: LocationIdLike | LocationId | None = None,
         part: PathPart = PathPart.NONE,
         causes: list[ConceptHierarchyError] | None = None,
     ) -> None:
@@ -104,7 +118,7 @@ class CHSemanticError(ConceptHierarchyError):
     def __init__(
         self,
         message: str,
-        location_id: LocationId | None = None,
+        location_id: LocationIdLike | LocationId | None = None,
         part: PathPart = PathPart.NONE,
         causes: list[ConceptHierarchyError] | None = None,
     ) -> None:
