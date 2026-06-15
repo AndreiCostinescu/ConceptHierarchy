@@ -17,6 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
+from concept_hierarchy.definitions.definition import LocationOfCheckData, StopLocationOfCheck
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
 
@@ -77,6 +78,108 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
 
     def definition_location(self) -> list[str]:
         return self.data_location_id
+
+    def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
+        # process top-level implementation-related data keywords (abstract/implementation/templateArguments)
+        # after processing parent keywords
+        check_res = super().location_of_impl(*keywords)
+        self.check_location_id(
+            check_res,
+            HiddenImplementationDefinition.definition_location(self) + [check_res.first_remaining],
+            location_check=self.data,
+            previous_location=ConceptDefinition.concept_definition_data,
+            allow_start_at_this_location=True,
+        )
+        # Saving this value here is needed because there are subclasses
+        # This is the guarantee that the top-level data keywords were found in this function,
+        # so no more processing in subclasses is required!
+        found_keyword_in_here = check_res.check_successful is True
+        # stop the check if reached the leaf-nodes: implementation or abstract
+        if (
+            found_keyword_in_here
+            and check_res.last_consumed != HiddenImplementationDefinition.hidden_template_arguments
+        ):
+            raise StopLocationOfCheck(check_res)
+        # other sub-keywords/-locations that can be processed in this class live in "templateArguments"
+        if HiddenImplementationDefinition.hidden_template_arguments not in self.data:
+            # if there are no templateArguments defined in the data, there is nothing left to process
+            return check_res
+        # differentiate between the array definition and the object definition
+        template_arguments_data = self.data[HiddenImplementationDefinition.hidden_template_arguments]
+        assert isinstance(template_arguments_data, (list, dict))
+        if isinstance(template_arguments_data, list):
+            # process "order" keyword, which is actually the top-level templateArguments definition for the array-syntax
+            self.check_location_id(
+                check_res,
+                HiddenImplementationDefinition.definition_location(self)
+                + [HiddenImplementationDefinition.hidden_template_arguments],
+                location_check=HiddenImplementationDefinition.hidden_template_arguments_order,
+                previous_location=HiddenImplementationDefinition.hidden_template_arguments,
+                allow_start_at_this_location=True,
+            )
+            # stop check if templateArguments was found (found_keyword_in_here) or if order was found
+            if found_keyword_in_here or check_res.check_successful:
+                assert check_res.last_consumed == HiddenImplementationDefinition.hidden_template_arguments_order
+                raise StopLocationOfCheck(check_res)
+            return check_res
+
+        # check "order", "variadicGroupIdentifiers", "substitution" keywords as well as template argument constraints
+        self.check_location_id(
+            check_res,
+            HiddenImplementationDefinition.definition_location(self)
+            + [HiddenImplementationDefinition.hidden_template_arguments, check_res.first_remaining],
+            location_check=template_arguments_data,
+            previous_location=HiddenImplementationDefinition.hidden_template_arguments,
+            allow_start_at_this_location=True,
+        )
+        if check_res.check_successful and (
+            check_res.last_consumed in self.template_argument_constraints
+            or check_res.last_consumed == HiddenImplementationDefinition.hidden_template_arguments_order
+        ):
+            # processed a template argument or the "order" keyword; there is no more data
+            raise StopLocationOfCheck(check_res)
+
+        # check variadicGroupIdentifiers
+        template_arguments_variadic_data = template_arguments_data.get(
+            HiddenImplementationDefinition.hidden_template_arguments_variadic_ids, {}
+        )
+        self.check_location_id(
+            check_res,
+            HiddenImplementationDefinition.definition_location(self)
+            + [
+                HiddenImplementationDefinition.hidden_template_arguments,
+                HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                check_res.first_remaining,
+            ],
+            location_check=template_arguments_variadic_data,
+            previous_location=HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+            allow_start_at_this_location=False,
+        )
+        if check_res.check_successful:
+            assert check_res.last_consumed in self.template_argument_constraints
+            # processed a template argument defined in variadicGroupIdentifiers; there is no more data
+            raise StopLocationOfCheck(check_res)
+
+        # check substitutions
+        template_arguments_substitution_data = template_arguments_data.get(
+            HiddenImplementationDefinition.hidden_template_arguments_substitutions, {}
+        )
+        check_res = self.check_location_id(
+            check_res,
+            HiddenImplementationDefinition.definition_location(self)
+            + [
+                HiddenImplementationDefinition.hidden_template_arguments,
+                HiddenImplementationDefinition.hidden_template_arguments_substitutions,
+                check_res.first_remaining,
+            ],
+            location_check=template_arguments_substitution_data,
+            previous_location=HiddenImplementationDefinition.hidden_template_arguments_substitutions,
+            allow_start_at_this_location=False,
+        )
+        if found_keyword_in_here or check_res.check_successful:
+            # found_keyword_in_here means processed templateArguments keyword => don't continue parsing other keywords
+            raise StopLocationOfCheck(check_res)
+        return check_res
 
     def check_template_argument_definition_list(self, t_arg_list: list):
         for t_arg_index, t_arg in enumerate(t_arg_list):

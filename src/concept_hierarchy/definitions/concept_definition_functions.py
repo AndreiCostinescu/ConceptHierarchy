@@ -19,6 +19,7 @@ from typing import Callable
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
+from concept_hierarchy.definitions.definition import LocationOfCheckData, StopLocationOfCheck
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
 
@@ -93,6 +94,34 @@ class FunctionDefinition(HiddenImplementationDefinition):
 
     def definition_type(self) -> str:
         return FunctionDefinition.function_name
+
+    def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
+        check_res = super().location_of_impl(*keywords)
+        # process top-level function data keywords: interface, procedure, inversion, variations, addVariables, subScopes
+        self.check_location_id(
+            check_res,
+            FunctionDefinition.definition_location(self) + [check_res.first_remaining],
+            location_check=self.data,
+            previous_location=ConceptDefinition.concept_definition_data,
+            allow_start_at_this_location=True,
+        )
+        # stop if found procedure; it has no more sub-data (just the expression?)
+        if check_res.check_successful and check_res.last_consumed == FunctionDefinition.function_procedure:
+            raise StopLocationOfCheck(check_res)
+        # try to consume "interface" data
+        interface_data = self.data.get(FunctionDefinition.function_interface, {})
+        assert isinstance(interface_data, dict)
+        self.check_location_id(
+            check_res,
+            FunctionDefinition.definition_location(self)
+            + [FunctionDefinition.function_interface, check_res.first_remaining],
+            location_check=interface_data,
+            previous_location=FunctionDefinition.function_interface,
+            allow_start_at_this_location=True,
+        )
+        if check_res.check_successful:
+            raise StopLocationOfCheck(check_res)
+        return check_res
 
     def check_inversion_arguments(
         self, arg_inversion_mapping: dict[str, dict], location_id_functor: Callable[[str], LocationId]

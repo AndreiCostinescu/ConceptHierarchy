@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
+from concept_hierarchy.definitions.definition import LocationOfCheckData
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart, PathSegment
 from concept_hierarchy.models import ConceptHierarchyModel
@@ -574,6 +575,223 @@ class DomainConceptDefinition(ConceptDefinition):
 
     def definition_location(self) -> list[str]:
         return self.data_location_id
+
+    def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
+        check_res = super().location_of_impl(*keywords)
+        # check top-level properties, functions, management keys
+        self.check_location_id(
+            check_res,
+            DomainConceptDefinition.definition_location(self) + [check_res.first_remaining],
+            location_check=self.data,
+            previous_location=ConceptDefinition.concept_definition_data,
+            allow_start_at_this_location=True,
+        )
+        # try to consume property data
+        properties_data = self.data.get(DomainConceptDefinition.domain_concept_properties, {})
+        assert isinstance(properties_data, dict)
+        # check property data
+        self.check_location_id(
+            check_res,
+            DomainConceptDefinition.definition_location(self)
+            + [DomainConceptDefinition.domain_concept_properties, check_res.first_remaining],
+            location_check=properties_data,
+            previous_location=DomainConceptDefinition.domain_concept_properties,
+            allow_start_at_this_location=check_res.first_remaining
+            != DomainConceptDefinition.domain_concept_specialization,
+        )
+        if check_res.check_successful:
+            # try to consume property definition data and specializations data
+            prop_name_or_specialization = check_res.last_consumed
+            assert prop_name_or_specialization in properties_data
+            prop_def_data = properties_data[prop_name_or_specialization]
+            # check prop_def_key data or forSub prop_name data or forThis keyword
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=prop_def_data,
+                previous_location=prop_name_or_specialization,
+                allow_start_at_this_location=False,
+            )
+            if not check_res.check_successful:
+                # Stop processing location
+                return check_res
+            prop_def_key_or_for_sub_prop_name_or_for_this = check_res.last_consumed
+            # all property definition keywords except hooks have no more data: finish processing
+            if (
+                prop_def_key_or_for_sub_prop_name_or_for_this in PropertyDefinition.ALL_DEFINITION_KEYWORDS
+                and prop_def_key_or_for_sub_prop_name_or_for_this != PropertyDefinition.HOOKS
+            ):
+                return check_res
+            sub_data = prop_def_data[prop_def_key_or_for_sub_prop_name_or_for_this]
+            assert isinstance(sub_data, dict)
+            # prop_def_key can only be hooks at this point
+            # check prop_name hook_f_name data, forSub prop_def_key data or forThis prop_name data
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_data,
+                previous_location=prop_def_key_or_for_sub_prop_name_or_for_this,
+                allow_start_at_this_location=False,
+            )
+            if not check_res.check_successful:
+                return check_res
+            hook_f_name_or_for_sub_prop_def_key_or_for_this_prop_name = check_res.last_consumed
+            # stop processing if this was the forSub property definition key (except for hooks)
+            if (
+                hook_f_name_or_for_sub_prop_def_key_or_for_this_prop_name in PropertyDefinition.ALL_DEFINITION_KEYWORDS
+                and hook_f_name_or_for_sub_prop_def_key_or_for_this_prop_name != PropertyDefinition.HOOKS
+            ):
+                return check_res
+            sub_sub_data = sub_data[hook_f_name_or_for_sub_prop_def_key_or_for_this_prop_name]
+            assert isinstance(sub_sub_data, dict)
+            # check prop_name hook_f_arg data, forSub hook_f_name data or forThis prop_def_key data
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_sub_data,
+                previous_location=hook_f_name_or_for_sub_prop_def_key_or_for_this_prop_name,
+                allow_start_at_this_location=False,
+            )
+            if not check_res.check_successful:
+                return check_res
+            hook_f_arg_or_for_sub_hook_f_name_or_for_this_prop_def_key = check_res.last_consumed
+            # stop if for_this_prop_def_key != hooks or if the last consumed is "hook_f_arg"
+            #   check if the last consumed is "hook_f_arg" by prop_name_or_specialization != "_specializations"
+            if (
+                hook_f_arg_or_for_sub_hook_f_name_or_for_this_prop_def_key in PropertyDefinition.ALL_DEFINITION_KEYWORDS
+                and hook_f_arg_or_for_sub_hook_f_name_or_for_this_prop_def_key != PropertyDefinition.HOOKS
+            ) or prop_name_or_specialization != DomainConceptDefinition.domain_concept_specialization:
+                return check_res
+            sub_sub_sub_data = sub_sub_data[hook_f_arg_or_for_sub_hook_f_name_or_for_this_prop_def_key]
+            assert isinstance(sub_sub_sub_data, dict)
+            # check forSub hook_f_arg data or forThis hook_f_name data
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_sub_sub_data,
+                previous_location=hook_f_arg_or_for_sub_hook_f_name_or_for_this_prop_def_key,
+                allow_start_at_this_location=False,
+            )
+            if not check_res.check_successful:
+                return check_res
+            for_sub_hook_f_arg_or_for_this_hook_f_name = check_res.last_consumed
+            # finish processing for the forSub chain:
+            #  forSub is finished if prop_def_key_or_for_sub_prop_name_or_for_this is not the "_forThis" keyword
+            if (
+                prop_def_key_or_for_sub_prop_name_or_for_this
+                != DomainConceptDefinition.domain_concept_specialization_for_this
+            ):
+                return check_res
+            sub_sub_sub_sub_data = sub_sub_sub_data[for_sub_hook_f_arg_or_for_this_hook_f_name]
+            assert isinstance(sub_sub_sub_sub_data, dict)
+            # check forThis hook_f_arg
+            # final check: no matter if successful or not, this is the end-leaf of the data chain for specializations
+            return self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_sub_sub_sub_data,
+                previous_location=for_sub_hook_f_arg_or_for_this_hook_f_name,
+                allow_start_at_this_location=False,
+            )
+
+        # try to consume functions data
+        functions_data = self.data.get(DomainConceptDefinition.domain_concept_functions, {})
+        assert isinstance(functions_data, dict)
+        # check functions data
+        self.check_location_id(
+            check_res,
+            DomainConceptDefinition.definition_location(self)
+            + [DomainConceptDefinition.domain_concept_functions, check_res.first_remaining],
+            location_check=functions_data,
+            previous_location=DomainConceptDefinition.domain_concept_functions,
+            allow_start_at_this_location=check_res.first_remaining
+            != DomainConceptDefinition.domain_concept_specialization,
+        )
+        if check_res.check_successful:
+            # Watch out because function specialization data can be at the top-level (after the function name!)
+            #   It can skip the func_def_key, take this into account in the processing steps below!
+            #   Also, compared to the property chain above, there are no hooks that can go deeper with keywords!
+            # try to consume function definition data and specializations data
+            func_name_or_specialization = check_res.last_consumed
+            assert func_name_or_specialization in functions_data
+            func_def_data = functions_data[func_name_or_specialization]
+            # check that func_def_data is not a FunctionComposition value at func_name
+            if (
+                func_name_or_specialization != DomainConceptDefinition.domain_concept_specialization
+                and DomainConceptDefinition.looks_like_function_instantiation(
+                    func_def_data, accept_specialization=False
+                )
+            ):
+                return check_res
+            # check func_def_key data or forSub func_name data or forThis keyword
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=func_def_data,
+                previous_location=func_name_or_specialization,
+                allow_start_at_this_location=False,
+            )
+            if not check_res.check_successful:
+                # Stop processing location
+                return check_res
+            func_def_key_or_for_sub_func_name_or_for_this = check_res.last_consumed
+            # all function definition keywords have no more data: finish processing
+            if func_name_or_specialization != DomainConceptDefinition.domain_concept_specialization:
+                return check_res
+            sub_data = func_def_data[func_def_key_or_for_sub_func_name_or_for_this]
+            # check that func_def_data is not a FunctionComposition or INHERIT_FROM_KEYWORD value at forSub func_name
+            if (
+                func_def_key_or_for_sub_func_name_or_for_this
+                != DomainConceptDefinition.domain_concept_specialization_for_this
+                and DomainConceptDefinition.looks_like_function_instantiation(sub_data, accept_specialization=True)
+            ):
+                return check_res
+            assert isinstance(sub_data, dict)
+            # check forSub func_def_key data or forThis func_name data
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_data,
+                previous_location=func_def_key_or_for_sub_func_name_or_for_this,
+                allow_start_at_this_location=False,
+            )
+            if not check_res.check_successful:
+                return check_res
+            for_sub_func_def_key_or_for_this_func_name = check_res.last_consumed
+            # stop processing if this was the forSub function definition key
+            if (
+                func_def_key_or_for_sub_func_name_or_for_this
+                != DomainConceptDefinition.domain_concept_specialization_for_this
+            ):
+                return check_res
+            sub_sub_data = sub_data[for_sub_func_def_key_or_for_this_func_name]
+            # stop processing if this is a FunctionComposition or INHERIT_FROM_KEYWORD definition at forThis func_name
+            if DomainConceptDefinition.looks_like_function_instantiation(sub_sub_data, accept_specialization=True):
+                return check_res
+            assert isinstance(sub_sub_data, dict)
+            # check func_name hook_f_arg data, forSub hook_f_name data or forThis func_def_key data
+            return self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_sub_data,
+                previous_location=for_sub_func_def_key_or_for_this_func_name,
+                allow_start_at_this_location=False,
+            )
+
+        # try to consume management data
+        management_data = self.data.get(DomainConceptDefinition.domain_concept_management, {})
+        assert isinstance(management_data, dict)
+        # check management data
+        self.check_location_id(
+            check_res,
+            DomainConceptDefinition.definition_location(self)
+            + [DomainConceptDefinition.domain_concept_management, check_res.first_remaining],
+            location_check=management_data,
+            previous_location=DomainConceptDefinition.domain_concept_management,
+            allow_start_at_this_location=True,
+        )
+        # Stop after management data, because the initialization and consolidation data values are FunctionCompositions
+        return check_res
 
     def initialize_domain_concept_data(
         self,

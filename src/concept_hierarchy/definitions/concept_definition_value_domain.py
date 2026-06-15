@@ -19,6 +19,7 @@ from typing import TypeAlias
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
+from concept_hierarchy.definitions.definition import LocationOfCheckData
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, PathPart
 
 # the instantiation value is either a string value or a JSON object representing a json-schema-definition
@@ -55,6 +56,21 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
 
     def definition_type(self) -> str:
         return ValueDomainDefinition.value_domain_name
+
+    def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
+        check_res = super().location_of_impl(*keywords)
+        # check other top-level data keywords specific to ValueDomains
+        # no subclasses of ValueDomain => the statement below is equivalent to ``raise StopLocationOfCheck(check...)``
+        # and defaultSerialization and instantiation are leaf-definition-nodes => there is no more sub-data
+        #   However, there is expression data (especially for instantiation which is the json schema)...
+        #   -> delegate the remaining locationOf keywords to the json schema?
+        return self.check_location_id(
+            check_res,
+            ValueDomainDefinition.definition_location(self) + [check_res.first_remaining],
+            location_check=self.data,
+            previous_location=ConceptDefinition.concept_definition_data,
+            allow_start_at_this_location=True,
+        )
 
     def check_default_serialization(self):
         # check "defaultSerialization"

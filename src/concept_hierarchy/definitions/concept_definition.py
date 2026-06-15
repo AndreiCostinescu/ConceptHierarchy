@@ -17,7 +17,11 @@ from __future__ import annotations
 from types import NoneType
 from typing import Callable
 
-from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
+from concept_hierarchy.definitions.definition import (
+    ConceptHierarchyDefinition,
+    LocationOfCheckData,
+    StopLocationOfCheck,
+)
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
@@ -139,6 +143,32 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         if self.from_reference is not None:
             location_res.append("ref:" + self.from_reference)
         return location_res
+
+    def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
+        # processes name-of-concept keyword (after processing parent keywords: "concepts"/"instances")
+        check_res = self.check_location_id(
+            super().location_of_impl(*keywords),
+            ConceptDefinition.definition_location(self),
+            location_check=self.name,
+            previous_location=self.definition_location_str,
+            allow_start_at_this_location=True,
+        )
+        # processes top-level concept keys: (data, description, directParents)
+        assert isinstance(self.definition_data, dict)
+        self.check_location_id(
+            check_res,
+            ConceptDefinition.definition_location(self) + [check_res.remaining_keywords[0]],
+            location_check=self.definition_data,
+            previous_location=self.name,
+            allow_start_at_this_location=True,
+        )
+        # stop traversal if the keyword is not "data" (because other keywords are leaf-nodes: there is no more sub-data)
+        if (
+            check_res.check_successful is True
+            and check_res.consumed_keywords[-1] != ConceptDefinition.concept_definition_data
+        ):
+            raise StopLocationOfCheck(check_res)
+        return check_res
 
     # returns whether the data is NOT an external file
     def _check_data_content(self, data_location_id: LocationId) -> bool:

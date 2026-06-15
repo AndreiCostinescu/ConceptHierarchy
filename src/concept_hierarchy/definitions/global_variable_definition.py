@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
+from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition, LocationOfCheckData
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSyntaxError, PathPart
 
@@ -46,6 +46,17 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
         if self.from_reference is not None:
             location_res.append("ref:" + self.from_reference)
         return location_res
+
+    def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
+        # processes name-of-variable keyword (after processing parent keywords: "concepts"/"instances")
+        # if there will be subclasses of this; extend this code with logic on when to raise StopLocationOfCheck
+        return self.check_location_id(
+            super().location_of_impl(*keywords),
+            GlobalVariableDefinition.definition_location(self),
+            location_check=self.name,
+            previous_location=self.definition_location_str,
+            allow_start_at_this_location=True,
+        )
 
     def check_syntax(self):
         self.value = self.orig_data
