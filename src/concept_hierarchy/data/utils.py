@@ -30,8 +30,7 @@ class StopValidation(Exception):
 
 def record(errors: list[ConceptHierarchyError], collect_all: bool, err: ConceptHierarchyError) -> None:
     """
-    Append ``err`` to ``errors`` and, in fail-fast mode,
-    immediately stop validation by raising :class:`_StopValidation`.
+    Append ``err`` to ``errors`` and, in fail-fast mode, immediately stop validation by raising :class:`StopValidation`.
     """
     errors.append(err)
     if not collect_all:

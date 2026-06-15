@@ -53,7 +53,7 @@ from abc import ABC, abstractmethod
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.jsonschema.ast_nodes import CHSchemaNode
-from concept_hierarchy.data.jsonschema.internal import _record, _StopValidation
+from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import (
     CHSemanticError,
     CHSyntaxError,
@@ -135,7 +135,7 @@ def parse_schema(
         node = _build_node(schema, location_id, context, errors, collect_all)
         _resolve_local_refs(node, errors, collect_all)
         _check_meta_schema(node, errors, collect_all)
-    except _StopValidation:
+    except StopValidation:
         pass
     return node, errors
 
@@ -160,7 +160,7 @@ def _expand_array_shorthand(
         and raw[1] in context.argument_reference_types
     )
     if not valid_shape:
-        _record(
+        record(
             errors,
             collect_all,
             CHSyntaxError(
@@ -169,7 +169,7 @@ def _expand_array_shorthand(
             ),
         )
         if isinstance(raw[0], list):
-            _record(
+            record(
                 errors,
                 collect_all,
                 CHSyntaxError(
@@ -185,7 +185,7 @@ def _expand_array_shorthand(
 
     type_name, ref_kind = raw
     if type_name in BUILTIN_TYPES:
-        _record(
+        record(
             errors,
             collect_all,
             CHSyntaxError(
@@ -222,7 +222,7 @@ def _build_node(
     elif isinstance(raw, dict):
         canonical = raw
     else:
-        _record(
+        record(
             errors,
             collect_all,
             CHSyntaxError(
@@ -266,7 +266,7 @@ def _build_object_node(
                 valid_types.append(t)
             else:
                 any_invalid = True
-                _record(
+                record(
                     errors,
                     collect_all,
                     CHSyntaxError(
@@ -306,11 +306,11 @@ def _finish_custom_type_node(
 
     err = context.check_custom_type(type_name, location_id + ["type"])
     if err is not None:
-        _record(errors, collect_all, err)
+        record(errors, collect_all, err)
 
     ref = work.get("referenceType", "NoRef")
     if "referenceType" in work and work["referenceType"] not in context.argument_reference_types:
-        _record(
+        record(
             errors,
             collect_all,
             CHSyntaxError(
@@ -329,7 +329,7 @@ def _finish_custom_type_node(
 
     for key in work:
         if key not in CUSTOM_TYPE_EXTRA_KEYS:
-            _record(
+            record(
                 errors,
                 collect_all,
                 CHSyntaxError(
@@ -355,7 +355,7 @@ def _finish_builtin_node(
     collect_all: bool,
 ) -> CHSchemaNode:
     if "referenceType" in work:
-        _record(
+        record(
             errors,
             collect_all,
             CHSyntaxError(
@@ -378,7 +378,7 @@ def _finish_builtin_node(
             for key, sub in props.items():
                 node.properties[key] = child(sub, "properties", key)
         else:
-            _record(
+            record(
                 errors,
                 collect_all,
                 CHSyntaxError('"properties" must be an object', location_id + ["properties"]),
@@ -390,7 +390,7 @@ def _finish_builtin_node(
             for key, sub in pprops.items():
                 node.pattern_properties[key] = child(sub, "patternProperties", key)
         else:
-            _record(
+            record(
                 errors,
                 collect_all,
                 CHSyntaxError('"patternProperties" must be an object', location_id + ["patternProperties"]),
@@ -411,7 +411,7 @@ def _finish_builtin_node(
         if isinstance(req, list) and all(isinstance(x, str) for x in req):
             node.required = req
         else:
-            _record(
+            record(
                 errors, collect_all, CHSyntaxError('"required" must be an array of strings', location_id + ["required"])
             )
 
@@ -427,7 +427,7 @@ def _finish_builtin_node(
             if residual:
                 work["dependencies"] = residual
         else:
-            _record(
+            record(
                 errors,
                 collect_all,
                 CHSyntaxError('"dependencies" must be an object', location_id + ["dependencies"]),
@@ -458,7 +458,7 @@ def _finish_builtin_node(
             if isinstance(arr, list):
                 setattr(node, attr, [child(sub, keyword, i) for i, sub in enumerate(arr)])
             else:
-                _record(
+                record(
                     errors,
                     collect_all,
                     CHSyntaxError(f'"{keyword}" must be an array of schemas', location_id + [keyword]),
@@ -479,14 +479,14 @@ def _finish_builtin_node(
                 for key, sub in defs.items():
                     node.definitions[key] = child(sub, keyword, key)
             else:
-                _record(errors, collect_all, CHSyntaxError(f'"{keyword}" must be an object', location_id + [keyword]))
+                record(errors, collect_all, CHSyntaxError(f'"{keyword}" must be an object', location_id + [keyword]))
 
     if "$ref" in work:
         ref_val = work.pop("$ref")
         if isinstance(ref_val, str):
             node.ref_string = ref_val
         else:
-            _record(
+            record(
                 errors,
                 collect_all,
                 CHSyntaxError('"$ref" must be a string', location_id + ["$ref"]),
@@ -585,7 +585,7 @@ def _resolve_local_refs(root: CHSchemaNode, errors: list[ConceptHierarchyError],
         if m is not None and m.group(2) in defs_by_name:
             n.ref_resolved = defs_by_name[m.group(2)]
         else:
-            _record(
+            record(
                 errors,
                 collect_all,
                 CHSyntaxError(
@@ -609,7 +609,4 @@ def _check_meta_schema(root: CHSchemaNode, errors: list[ConceptHierarchyError], 
     """
     meta_validator = Draft7Validator(Draft7Validator.META_SCHEMA)
     for err in meta_validator.iter_errors(root.safe_canonical):
-        print(type(err))
-        print(err.path)
-        assert False
-        _record(errors, collect_all, CHSyntaxError(err.message, list(err.path)))
+        record(errors, collect_all, CHSyntaxError(err.message, list(err.path)))
