@@ -18,6 +18,10 @@ checker.py — Syntax- and semantic-level validation of a parsed ConceptHierarch
 
 import os
 
+from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext, VariableContext
+from concept_hierarchy.data.validators.domain_concept_specialization_validation import (
+    process_specialization_for_domain_concepts,
+)
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
@@ -540,6 +544,15 @@ class ConceptHierarchyChecker:
                             ],
                         )
 
+    def check_specializations(self):
+        context = ConceptHierarchyContext(self.ch, TemplateContext(), VariableContext())
+        process_specialization_for_domain_concepts(context)
+
+    def check(self):
+        self.check_structure()
+        self.check_after_parsing_concepts()
+        self.check_specializations()
+
 
 def check_model(model: ConceptHierarchyModel) -> None:
     """Validate syntax and semantic rules on *model*, raising on the first violation.
@@ -554,6 +567,4 @@ def check_model(model: ConceptHierarchyModel) -> None:
     concept_hierarchy.errors.SyntaxError
     concept_hierarchy.errors.SemanticError
     """
-    checker = ConceptHierarchyChecker(model)
-    checker.check_structure()
-    checker.check_after_parsing_concepts()
+    ConceptHierarchyChecker(model).check()

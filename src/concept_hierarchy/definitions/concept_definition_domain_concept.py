@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from enum import Enum
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
@@ -487,6 +488,11 @@ class FunctionDefinition(DomainDataDefinition):
             self.inherited_keywords[func_keyword] = False
 
 
+class ForPropertyOrFunction(Enum):
+    FUNCTION = 0
+    PROPERTY = 1
+
+
 class DomainConceptDefinition(ConceptDefinition):
     domain_concept_name: str = "Domain Concept"
     domain_concept_properties: str = "properties"
@@ -571,7 +577,7 @@ class DomainConceptDefinition(ConceptDefinition):
 
     def initialize_domain_concept_data(
         self,
-        for_either_properties_or_functions: bool,
+        for_either_properties_or_functions: ForPropertyOrFunction,
         data_container: dict[str, dict[str, object]],
         data_specialization_for_sub: dict[str, dict[str, object]],
         data_specialization_for_this: dict[str, dict[str, tuple[str | object, bool]]],
@@ -580,37 +586,139 @@ class DomainConceptDefinition(ConceptDefinition):
         data_container.clear()
         data_specialization_for_sub.clear()
         data_specialization_for_this.clear()
-        data_type_plural = "properties" if for_either_properties_or_functions else "functions"
+        data_type = "property" if for_either_properties_or_functions.value else "function"
+        data_type_plural = "properties" if for_either_properties_or_functions.value else "functions"
         def_location = (
             DomainConceptDefinition.domain_concept_properties
-            if for_either_properties_or_functions
+            if for_either_properties_or_functions.value
             else DomainConceptDefinition.domain_concept_functions
         )
 
-        data_container.update(self.data.get(def_location, {}))
-        if not isinstance(data_container, dict):
+        def_location_data = self.data.get(def_location, {})
+        if not isinstance(def_location_data, dict):
             raise CHSyntaxError(
                 f"The definition of domain concept {data_type_plural} must be a JSON object, not "
                 f"{data_container!r} as encountered at domain concept {self.name}",
                 location_id=self.location_id(def_location),
                 part=PathPart.VALUE,
             )
-        data_specialization_for_sub.update(
-            data_container.pop(DomainConceptDefinition.domain_concept_specialization, {})
-        )
-        for name, spec_data in data_specialization_for_sub.pop(
+        data_container.update(def_location_data)
+        def_specialization = data_container.pop(DomainConceptDefinition.domain_concept_specialization, {})
+        if not isinstance(def_specialization, dict):
+            raise CHSyntaxError(
+                f"The specialization content of {self.definition_type()} {data_type_plural} must be a JSON object, not "
+                f"{def_specialization!r}"
+                f'\nThe "{DomainConceptDefinition.domain_concept_specialization}" JSON object '
+                f"must contain the {data_type} name as key and, as value, a JSON object mapping the specializable "
+                f"definition keys of {self.definition_type()} {data_type_plural} to  their specialization value.\nThese"
+                f" values, specified in the top-level specialization definition will be passed on to subconcepts.\nTo "
+                f"specialize the values for (instances of) this concept only, the "
+                f'"{DomainConceptDefinition.domain_concept_specialization_for_this}" key must be specified at the top-'
+                f'level "{DomainConceptDefinition.domain_concept_specialization}" JSON object.\nThe structure and '
+                f'content of the "{DomainConceptDefinition.domain_concept_specialization_for_this}" JSON object is the '
+                f"same as at the top-level (just that it can not contain the "
+                f'"{DomainConceptDefinition.domain_concept_specialization_for_this}" key again :)',
+                location_id=self.location_id(def_location, DomainConceptDefinition.domain_concept_specialization),
+                part=PathPart.VALUE,
+            )
+        def_specialization_for_this = def_specialization.pop(
             DomainConceptDefinition.domain_concept_specialization_for_this, {}
-        ).items():
+        )
+        if not isinstance(def_specialization_for_this, dict):
+            raise CHSyntaxError(
+                f"The specialization content for {data_type_plural} of (the instances of) this {self.definition_type()}"
+                f" must be a JSON object, not {def_specialization_for_this!r}"
+                f'\nThe "{DomainConceptDefinition.domain_concept_specialization}" JSON object '
+                f"must contain the {data_type} name as key and, as value, a JSON object mapping the specializable "
+                f"definition keys of {self.definition_type()} {data_type_plural} to  their specialization value.\nThese"
+                f" values, specified in the top-level specialization definition will be passed on to subconcepts.\nTo "
+                f"specialize the values for (instances of) this concept only, the "
+                f'"{DomainConceptDefinition.domain_concept_specialization_for_this}" key must be specified at the top-'
+                f'level "{DomainConceptDefinition.domain_concept_specialization}" JSON object.\nThe structure and '
+                f'content of the "{DomainConceptDefinition.domain_concept_specialization_for_this}" JSON object is the '
+                f"same as at the top-level (just that it can not contain the "
+                f'"{DomainConceptDefinition.domain_concept_specialization_for_this}" key again :)',
+                location_id=self.location_id(
+                    def_location,
+                    DomainConceptDefinition.domain_concept_specialization,
+                    DomainConceptDefinition.domain_concept_specialization_for_this,
+                ),
+                part=PathPart.VALUE,
+            )
+        # check structure for specialization-forThis
+        for name, spec_data in def_specialization_for_this.items():
             data_specialization_for_this[name] = {}
-            for def_key, def_data in spec_data.items():
+            if for_either_properties_or_functions == ForPropertyOrFunction.FUNCTION and (
+                DomainConceptDefinition.looks_like_function_instantiation(spec_data, accept_specialization=True)
+            ):
+                # For functions that can be directly instantiated // or have the INHERIT_FROM_KEYWORD specified directly
+                #   without specifying the DEFAULT definition keyword
+                #   This is only possible because there is only one specializable def. key for domain concept functions
+                if isinstance(spec_data, str) and not spec_data.startswith(INHERIT_FROM_KEYWORD):
+                    raise CHSyntaxError(
+                        f"When defining the specialization value of a {self.definition_type()} function, you can choose"
+                        f" from which direct parent concept to use the specialized value passed on for subconcepts."
+                        f'\nUse the "{INHERIT_FROM_KEYWORD}<NameOfDirectParentConcept>" syntax to specify using that '
+                        f"value; got {spec_data!r}",
+                        location_id=self.location_id(
+                            def_location,
+                            DomainConceptDefinition.domain_concept_specialization,
+                            DomainConceptDefinition.domain_concept_specialization_for_this,
+                            name,
+                        ),
+                        part=PathPart.VALUE,
+                    )
                 # Assumption that data defined here is inherited.
-                # Correct the False value below in :func:`initialize_domain_concept_specialization_data`
+                # Correct the False value below in
+                #  :func:`initialize_domain_concept_specialization_data_from_defined_data`
                 #  if name is a property/function defined in this concept
-                data_specialization_for_this[name][def_key] = (def_data, False)
+                data_specialization_for_this[name][FunctionDefinition.DEFAULT] = (spec_data, False)
+            else:
+                if not isinstance(spec_data, dict):
+                    raise CHSyntaxError(
+                        f"The specialization content of {self.definition_type()} {data_type} data must be a JSON "
+                        f"object. Got {spec_data!r} at {data_type} {name} in {self.name}",
+                        location_id=self.location_id(
+                            def_location,
+                            DomainConceptDefinition.domain_concept_specialization,
+                            DomainConceptDefinition.domain_concept_specialization_for_this,
+                            name,
+                        ),
+                        part=PathPart.VALUE,
+                    )
+                for def_key, def_data in spec_data.items():
+                    # Assumption that data defined here is inherited.
+                    # Correct the False value below in
+                    #  :func:`initialize_domain_concept_specialization_data_from_defined_data`
+                    #  if name is a property/function defined in this concept
+                    data_specialization_for_this[name][def_key] = (def_data, False)
+        # check structure for specialization-forSub
+        for name, spec_data in def_specialization.items():
+            data_specialization_for_sub[name] = {}
+            if for_either_properties_or_functions == ForPropertyOrFunction.FUNCTION and (
+                DomainConceptDefinition.looks_like_function_instantiation(spec_data) or isinstance(spec_data, str)
+            ):
+                # For functions that can be directly instantiated // or have the INHERIT_FROM_KEYWORD specified directly
+                #   without specifying the DEFAULT definition keyword
+                #   This is only possible because there is only one specializable def. key for domain concept functions
+                data_specialization_for_sub[name][FunctionDefinition.DEFAULT] = spec_data
+            else:
+                if not isinstance(spec_data, dict):
+                    raise CHSyntaxError(
+                        f"The specialization content of {self.definition_type()} {data_type} data must be a JSON "
+                        f"object. Got {spec_data!r} at {data_type} {name} in {self.name}",
+                        location_id=self.location_id(
+                            def_location,
+                            DomainConceptDefinition.domain_concept_specialization,
+                            name,
+                        ),
+                        part=PathPart.VALUE,
+                    )
+                data_specialization_for_sub[name] = spec_data
 
-    def initialize_domain_concept_specialization_data(
+    def initialize_domain_concept_specialization_data_from_defined_data(
         self,
-        for_either_properties_or_functions: bool,
+        for_either_properties_or_functions: ForPropertyOrFunction,
         data_container: dict[str, dict[str, object]],
         data_specialization_for_sub: dict[str, dict[str, object]],
         data_specialization_for_this: dict[str, dict[str, tuple[str | object, bool]]],
@@ -619,10 +727,10 @@ class DomainConceptDefinition(ConceptDefinition):
         value_domain_keyword: str,
     ):
         """Modify data_container, data_specialization_for_sub, and data_specialization_for_this in place!"""
-        data_type = "property" if for_either_properties_or_functions else "function"
+        data_type = "property" if for_either_properties_or_functions.value else "function"
         def_location = (
             DomainConceptDefinition.domain_concept_properties
-            if for_either_properties_or_functions
+            if for_either_properties_or_functions.value
             else DomainConceptDefinition.domain_concept_functions
         )
         for name, definition_data in data_container.items():
@@ -668,6 +776,235 @@ class DomainConceptDefinition(ConceptDefinition):
                 # don't set VALUE_DOMAIN data for this or for subconcepts, because VALUE_DOMAIN is not specializable!
                 assert value_domain_keyword not in specializable_keywords
 
+    @staticmethod
+    def check_property_data_types(
+        c: DomainConceptDefinition,
+        prop_name: str,
+        prop_data: dict[str, object],
+        for_specialization: bool,
+        specialize_for_sub: bool = False,
+    ):
+        if for_specialization:
+            location_id = c.location_id(
+                DomainConceptDefinition.domain_concept_properties, DomainConceptDefinition.domain_concept_specialization
+            )
+            if not specialize_for_sub:
+                location_id.append(DomainConceptDefinition.domain_concept_specialization_for_this)
+            location_id.append(prop_name)
+            for def_key in PropertyDefinition.ALL_DEFINITION_KEYWORDS:
+                if def_key not in PropertyDefinition.SPECIALIZATION_KEYWORDS and def_key in prop_data:
+                    raise CHSemanticError(
+                        f"{c.definition_type()} property definition keyword {def_key} is not specializable!"
+                        f"\nPlease remove it from the specialization specification!",
+                        location_id=location_id,
+                        part=PathPart.KEY,
+                    )
+        else:
+            location_id = c.location_id(DomainConceptDefinition.domain_concept_properties, prop_name)
+        # Don't check constraints, default, assumed, and confidence values because they are the serialization of
+        #  ValueDomains  (i.e. any JSON value).
+        # only allow string values if this is a specialization, is specializable and starts with INHERIT_FROM_KEYWORD
+        if PropertyDefinition.VALUE_DOMAIN in prop_data:
+            prop_def_val = prop_data[PropertyDefinition.VALUE_DOMAIN]
+            if not isinstance(prop_def_val, str):
+                raise CHSyntaxError(
+                    f"The ValueDomain definition of properties must be a JSON string value, not {prop_def_val!r}",
+                    location_id=location_id + [PropertyDefinition.VALUE_DOMAIN],
+                    part=PathPart.VALUE,
+                )
+        if PropertyDefinition.DESCRIPTION in prop_data:
+            prop_def_val = prop_data[PropertyDefinition.DESCRIPTION]
+            if not isinstance(prop_def_val, str):
+                raise CHSyntaxError(
+                    f"The definition of a property description must be a JSON string value, not {prop_def_val!r}",
+                    location_id=location_id + [PropertyDefinition.DESCRIPTION],
+                    part=PathPart.VALUE,
+                )
+        if PropertyDefinition.STATIC in prop_data:
+            prop_def_val = prop_data[PropertyDefinition.STATIC]
+            if not isinstance(prop_def_val, bool):
+                raise CHSyntaxError(
+                    f"The marker of static properties must be a JSON boolean, not {prop_def_val!r}",
+                    location_id=location_id + [PropertyDefinition.STATIC],
+                    part=PathPart.VALUE,
+                )
+        if PropertyDefinition.HOOKS in prop_data:
+            prop_def_val = prop_data[PropertyDefinition.HOOKS]
+            if for_specialization and not specialize_for_sub:
+                assert isinstance(prop_def_val, tuple)
+                prop_def_val = prop_def_val[0]
+            if not isinstance(prop_def_val, dict):
+                # only allow string-values if this is a specialization
+                if (
+                    not for_specialization
+                    or not isinstance(prop_def_val, str)
+                    or not prop_def_val.startswith(INHERIT_FROM_KEYWORD)
+                ):
+                    raise CHSyntaxError(
+                        f"The structure of hooks should be a JSON object mapping template-instantiated Function types "
+                        f"to a JSON object mapping arguments of the template-instantiated Function to "
+                        f"FunctionComposition values of the hook.\nExpected a JSON object as the definition of property"
+                        f" hooks, not {prop_def_val!r}",
+                        location_id=location_id + [PropertyDefinition.HOOKS],
+                        part=PathPart.VALUE,
+                    )
+            else:
+                # this is a dictionary: check substructure
+                for hook_f_name, hook_f_data in prop_def_val.items():
+                    # assertion, not check because this is a key of a JSON object
+                    assert isinstance(hook_f_name, str)
+                    # missing checks:
+                    #  - check that hook_f_name is a correctly template-instantiated Function type!
+                    #    REQUIRES
+                    #    TYPE CHECK
+                    if not isinstance(hook_f_data, dict):
+                        raise CHSyntaxError(
+                            f"The structure of hooks should be a JSON object mapping template-instantiated Function "
+                            f"types to a JSON object mapping arguments of the template-instantiated Function to "
+                            f"FunctionComposition values of the hook.\nExpected a JSON object at Function {hook_f_name}"
+                            f", got {hook_f_data!r}!",
+                            location_id=location_id + [PropertyDefinition.HOOKS, hook_f_name],
+                            part=PathPart.VALUE,
+                        )
+                    for hook_f_arg, hook_f_procedure in hook_f_data.items():
+                        # assertion, not check because this is a key of a JSON object
+                        assert isinstance(hook_f_arg, str)
+                        # missing checks:
+                        #  - check that hook_f_arg is an argument of the Function
+                        #    REQUIRES all Function data to be initialized
+                        #    STRUCTURE CHECK
+                        #  - check that the type of hook_f_arg is a parent type of the property type
+                        #       on which the hook is attached
+                        #    REQUIRES types to be processable and validatable
+                        #    TYPE CHECK
+                        if not isinstance(hook_f_procedure, dict):
+                            raise CHSyntaxError(
+                                f"The structure of hooks should be a JSON object mapping template-instantiated Function"
+                                f" types to a JSON object mapping arguments of the template-instantiated Function to "
+                                f"FunctionComposition values of the hook.\nExpected a JSON object as "
+                                f"FunctionComposition value, not {hook_f_procedure!r}",
+                                location_id=location_id + [PropertyDefinition.HOOKS, hook_f_name, hook_f_arg],
+                                part=PathPart.VALUE,
+                            )
+                        # missing checks:
+                        #  - check that hook_f_procedure is a valid FunctionComposition expression
+                        #    EXPRESSION CHECK
+        if PropertyDefinition.COMPUTATIONS in prop_data:
+            prop_def_val = prop_data[PropertyDefinition.COMPUTATIONS]
+            if for_specialization and not specialize_for_sub:
+                assert isinstance(prop_def_val, tuple)
+                prop_def_val = prop_def_val[0]
+            if not isinstance(prop_def_val, dict):
+                # only allow string-values if this is a specialization
+                if not for_specialization or (
+                    not isinstance(prop_def_val, str) or not prop_def_val.startswith(INHERIT_FROM_KEYWORD)
+                ):
+                    raise CHSyntaxError(
+                        f"The definition of property computations must be a JSON object, not {prop_def_val!r}",
+                        location_id=location_id + [PropertyDefinition.COMPUTATIONS],
+                        part=PathPart.VALUE,
+                    )
+        if PropertyDefinition.DEFAULT_INSTANCE_NAMING in prop_data:
+            prop_def_val = prop_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING]
+            if for_specialization and not specialize_for_sub:
+                assert isinstance(prop_def_val, tuple)
+                prop_def_val = prop_def_val[0]
+            if not isinstance(prop_def_val, bool):
+                # only allow string-values if this is a specialization
+                if not for_specialization or (
+                    not isinstance(prop_def_val, str) or not prop_def_val.startswith(INHERIT_FROM_KEYWORD)
+                ):
+                    raise CHSyntaxError(
+                        f"The definition of whether to name instances created as part of default values of this "
+                        f"property with this instance's name must be a JSON boolean value, not {prop_def_val!r}",
+                        location_id=location_id + [PropertyDefinition.DEFAULT_INSTANCE_NAMING],
+                        part=PathPart.VALUE,
+                    )
+
+    @staticmethod
+    def check_function_data_types(
+        c: DomainConceptDefinition,
+        func_name: str,
+        func_data: dict[str, object],
+        for_specialization: bool,
+        specialize_for_sub: bool = False,
+    ):
+        if for_specialization:
+            location_id = c.location_id(
+                DomainConceptDefinition.domain_concept_functions, DomainConceptDefinition.domain_concept_specialization
+            )
+            if not specialize_for_sub:
+                location_id.append(DomainConceptDefinition.domain_concept_specialization_for_this)
+            location_id.append(func_name)
+            for def_key in FunctionDefinition.ALL_DEFINITION_KEYWORDS:
+                if def_key not in FunctionDefinition.SPECIALIZATION_KEYWORDS and def_key in func_data:
+                    raise CHSemanticError(
+                        f"{c.definition_type()} function definition keyword {def_key} is not specializable!"
+                        f"\nPlease remove it from the specialization specification!",
+                        location_id=location_id,
+                        part=PathPart.KEY,
+                    )
+        else:
+            location_id = c.location_id(DomainConceptDefinition.domain_concept_functions, func_name)
+        # check the type of each function definition keyword value!
+        # only allow string values if this is a specialization, is specializable and starts with INHERIT_FROM_KEYWORD
+        if FunctionDefinition.VALUE_DOMAIN in func_data:
+            func_def_val = func_data[FunctionDefinition.VALUE_DOMAIN]
+            if not isinstance(func_def_val, str):
+                raise CHSyntaxError(
+                    f"The ValueDomain definition of functions must be a JSON string value, not {func_def_val!r}",
+                    location_id=location_id + [FunctionDefinition.VALUE_DOMAIN],
+                    part=PathPart.VALUE,
+                )
+        if FunctionDefinition.DESCRIPTION in func_data:
+            func_def_val = func_data[FunctionDefinition.DESCRIPTION]
+            if not isinstance(func_def_val, str):
+                raise CHSyntaxError(
+                    f"The definition of a function description must be a JSON string value, not {func_def_val!r}",
+                    location_id=location_id + [FunctionDefinition.DESCRIPTION],
+                    part=PathPart.VALUE,
+                )
+        if FunctionDefinition.STATIC in func_data:
+            func_def_val = func_data[FunctionDefinition.STATIC]
+            if not isinstance(func_def_val, bool):
+                raise CHSyntaxError(
+                    f"The marker of static functions must be a JSON boolean, not {func_def_val!r}",
+                    location_id=location_id + [FunctionDefinition.STATIC],
+                    part=PathPart.VALUE,
+                )
+        if FunctionDefinition.DEFAULT in func_data:
+            func_def_val = func_data[FunctionDefinition.DEFAULT]
+            if for_specialization and not specialize_for_sub:
+                assert isinstance(func_def_val, tuple)
+                func_def_val = func_def_val[0]
+            if not isinstance(func_def_val, dict):
+                # only allow string-values if this is a specialization
+                if (
+                    not for_specialization
+                    or not isinstance(func_def_val, str)
+                    or not func_def_val.startswith(INHERIT_FROM_KEYWORD)
+                ):
+                    raise CHSemanticError(
+                        f"{c.definition_type()} function specialization values must be either:"
+                        f"\n - FunctionComposition values (i.e. the procedure of a CustomFunction without any input"
+                        f" arguments),\n - the instantiation of a CustomFunction (i.e. by specifying its procedure "
+                        f"and optional interface)\n - or a JSON object defining the only specializable definition "
+                        f'key for {c.definition_type()} functions: the "{FunctionDefinition.DEFAULT}" value (which '
+                        f"can be any of the above).\n\tGot {func_def_val!r}!",
+                        location_id=location_id,
+                        part=PathPart.VALUE,
+                    )
+
+    @staticmethod
+    def looks_like_function_instantiation(func_data: object, accept_specialization: bool = False) -> bool:
+        if not isinstance(func_data, dict):
+            return accept_specialization and isinstance(func_data, str)
+        func_def_data_keys = set(func_data.keys())
+        if not (func_def_data_keys <= DomainConceptDefinition.function_data_keys):
+            if not func_def_data_keys.isdisjoint(DomainConceptDefinition.function_data_keys):
+                return False
+        return True
+
     def concept_data_check(self):
         data_keys: set[str] = set(self.data.keys())
         if not (data_keys <= DomainConceptDefinition.domain_concept_data_keys):
@@ -687,7 +1024,7 @@ class DomainConceptDefinition(ConceptDefinition):
             )
 
         self.initialize_domain_concept_data(
-            True,
+            ForPropertyOrFunction.PROPERTY,
             self.properties,
             self.property_specializations_for_sub,
             self.property_specializations_for_this,
@@ -726,8 +1063,8 @@ class DomainConceptDefinition(ConceptDefinition):
                     self.properties[prop_name] = {PropertyDefinition.CONSTRAINT: prop_data}
             else:
                 self.properties[prop_name] = {PropertyDefinition.VALUE_DOMAIN: prop_data}
-        self.initialize_domain_concept_specialization_data(
-            True,
+        self.initialize_domain_concept_specialization_data_from_defined_data(
+            ForPropertyOrFunction.PROPERTY,
             self.properties,
             self.property_specializations_for_sub,
             self.property_specializations_for_this,
@@ -747,75 +1084,7 @@ class DomainConceptDefinition(ConceptDefinition):
                     part=PathPart.VALUE,
                 )
             # check the type of each property definition keyword value!
-            if PropertyDefinition.VALUE_DOMAIN in prop_data:
-                prop_def_val = prop_data[PropertyDefinition.VALUE_DOMAIN]
-                if not isinstance(prop_def_val, str):
-                    raise CHSyntaxError(
-                        f"The ValueDomain definition of properties must be a JSON string value, not {prop_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_properties,
-                            prop_name,
-                            PropertyDefinition.VALUE_DOMAIN,
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            if PropertyDefinition.DESCRIPTION in prop_data:
-                prop_def_val = prop_data[PropertyDefinition.DESCRIPTION]
-                if not isinstance(prop_def_val, str):
-                    raise CHSyntaxError(
-                        f"The definition of a property description must be a JSON string value, not {prop_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.DESCRIPTION
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            # Don't check constraints, default, assumed, and confidence values because they are the serialization of
-            #  ValueDomains  (i.e. any JSON value).
-            if PropertyDefinition.STATIC in prop_data:
-                prop_def_val = prop_data[PropertyDefinition.STATIC]
-                if not isinstance(prop_def_val, bool):
-                    raise CHSyntaxError(
-                        f"The marker of static properties must be a JSON boolean, not {prop_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.STATIC
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            if PropertyDefinition.HOOKS in prop_data:
-                prop_def_val = prop_data[PropertyDefinition.HOOKS]
-                if not isinstance(prop_def_val, dict):
-                    raise CHSyntaxError(
-                        f"The definition of property hooks must be a JSON object, not {prop_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.HOOKS
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            if PropertyDefinition.COMPUTATIONS in prop_data:
-                prop_def_val = prop_data[PropertyDefinition.COMPUTATIONS]
-                if not isinstance(prop_def_val, dict):
-                    raise CHSyntaxError(
-                        f"The definition of property computations must be a JSON object, not {prop_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_properties,
-                            prop_name,
-                            PropertyDefinition.COMPUTATIONS,
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            if PropertyDefinition.DEFAULT_INSTANCE_NAMING in prop_data:
-                prop_def_val = prop_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING]
-                if not isinstance(prop_def_val, bool):
-                    raise CHSyntaxError(
-                        f"The definition of whether to name instances created as part of default values of this "
-                        f"property with this instance's name must be a JSON boolean value, not {prop_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_properties,
-                            prop_name,
-                            PropertyDefinition.DEFAULT_INSTANCE_NAMING,
-                        ),
-                        part=PathPart.VALUE,
-                    )
+            DomainConceptDefinition.check_property_data_types(self, prop_name, prop_data, False)
         # missing checks:
         #  - property names should be unique among all concepts (incl. defining a function with same name as a property)
         #    REQUIRES: all concept data to be initialized
@@ -832,7 +1101,9 @@ class DomainConceptDefinition(ConceptDefinition):
         #  - hooks: correctly template-instantiated Function name, correct argument name
         #      (and type of this property must be a subtype of the argument's type)
         #      and the FunctionComposition hook expression
-        #    STRUCTURE and TYPE CHECK
+        #    STRUCTURE CHECK
+        #    TYPE CHECK
+        #    EXPRESSION CHECK
         #  - computations: valid FunctionComposition expression
         #    EXPRESSION CHECK
         #  - confidenceHalfDecayTime: valid Duration expression
@@ -849,7 +1120,10 @@ class DomainConceptDefinition(ConceptDefinition):
         #    TYPE CHECK
 
         self.initialize_domain_concept_data(
-            False, self.functions, self.function_specializations_for_sub, self.function_specializations_for_this
+            ForPropertyOrFunction.FUNCTION,
+            self.functions,
+            self.function_specializations_for_sub,
+            self.function_specializations_for_this,
         )
         for func_name, func_data in self.functions.items():
             assert func_name != DomainConceptDefinition.domain_concept_specialization
@@ -882,8 +1156,8 @@ class DomainConceptDefinition(ConceptDefinition):
                         )
                     # interpret as default value of the static property
                     self.functions[func_name] = {FunctionDefinition.STATIC: True, FunctionDefinition.DEFAULT: func_data}
-        self.initialize_domain_concept_specialization_data(
-            False,
+        self.initialize_domain_concept_specialization_data_from_defined_data(
+            ForPropertyOrFunction.FUNCTION,
             self.functions,
             self.function_specializations_for_sub,
             self.function_specializations_for_this,
@@ -901,40 +1175,7 @@ class DomainConceptDefinition(ConceptDefinition):
                 func_data[FunctionDefinition.VALUE_DOMAIN] = (
                     DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions
                 )
-            # check the type of each function definition keyword value!
-            if FunctionDefinition.VALUE_DOMAIN in func_data:
-                func_def_val = func_data[FunctionDefinition.VALUE_DOMAIN]
-                if not isinstance(func_def_val, str):
-                    raise CHSyntaxError(
-                        f"The ValueDomain definition of functions must be a JSON string value, not {func_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_functions, func_name, FunctionDefinition.VALUE_DOMAIN
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            # missing checks: the type check (subconcept of CustomFunction) of the defined domain concept function!
-            if FunctionDefinition.DESCRIPTION in func_data:
-                func_def_val = func_data[FunctionDefinition.DESCRIPTION]
-                if not isinstance(func_def_val, str):
-                    raise CHSyntaxError(
-                        f"The definition of a function description must be a JSON string value, not {func_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_functions, func_name, FunctionDefinition.DESCRIPTION
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            if FunctionDefinition.STATIC in func_data:
-                func_def_val = func_data[FunctionDefinition.STATIC]
-                if not isinstance(func_def_val, bool):
-                    raise CHSyntaxError(
-                        f"The marker of static functions must be a JSON boolean, not {func_def_val!r}",
-                        self.location_id(
-                            DomainConceptDefinition.domain_concept_functions, func_name, FunctionDefinition.STATIC
-                        ),
-                        part=PathPart.VALUE,
-                    )
-            if FunctionDefinition.DEFAULT in func_data:
-                assert isinstance(func_data[FunctionDefinition.DEFAULT], dict)
+            DomainConceptDefinition.check_function_data_types(self, func_name, func_data, False)
         # missing checks:
         #  - check that the valueDomain of every domain concept function is a subconcept of CustomFunction
         #    REQUIRES: all concepts to be processed and the type validator to be initialized
