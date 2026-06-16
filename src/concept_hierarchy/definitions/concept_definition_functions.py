@@ -250,8 +250,8 @@ class FunctionDefinition(HiddenImplementationDefinition):
     def concept_data_check(self):
         super().concept_data_check()
 
-        # check "interface"
-        if FunctionDefinition.function_interface not in self.data:
+        # check "interface"; abstract Functions may not have an interface
+        if FunctionDefinition.function_interface not in self.data and not self.abstract:
             raise CHSyntaxError(
                 f"A {self.definition_type()} must define its evaluation interface as a JSON object in the "
                 f'"{FunctionDefinition.function_interface}" key of its definition data. {self.definition_type()} '
@@ -259,7 +259,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 self.location_id(),
                 part=PathPart.VALUE,
             )
-        self.interface = self.data[FunctionDefinition.function_interface]
+        self.interface = self.data.get(FunctionDefinition.function_interface, {})
         if not isinstance(self.interface, dict):
             raise CHSyntaxError(
                 f"The evaluation interface of a {self.definition_type()} must be defined as a JSON object, not "
