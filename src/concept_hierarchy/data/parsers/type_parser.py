@@ -29,6 +29,7 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentVariadicGroup,
     TemplateArgumentWithVariadicId,
 )
+from concept_hierarchy.errors import CHSyntaxError, LocationId
 from concept_hierarchy.utils import is_integer
 
 
@@ -56,7 +57,7 @@ class TypeParser(StringParser):
 
     Usage::
 
-        types = TypeParser("!Map<[A, B], $List<int>>").parse()
+        types = TypeParser("!Map<[A, B], $List<int>>").parse_types()
     """
 
     _VARIADIC_CHARS: frozenset[str] = frozenset(VARIADIC_GROUP_IDENTIFIER_CHARACTERS)  # "" not a member
@@ -65,7 +66,7 @@ class TypeParser(StringParser):
         super().__init__(domain)
         self.allow_trailing_comma = allow_trailing_comma
 
-    def parse(self) -> tuple[ParsedType, ...]:
+    def parse_types(self) -> tuple[ParsedType, ...]:
         """
         Parse a complete domain expression and verify the entire input is consumed.
         Returns one ``ParsedType`` per comma-separated top-level entry.
@@ -73,6 +74,19 @@ class TypeParser(StringParser):
         domain ::= (named_type (',' named_type)* | ε) EOF
         """
         results: tuple[ParsedType, ...] = self._parse_entry_list_type_only(
+            stop_chars=frozenset(), allow_variadic_identifiers=False, allow_template_expansion_operator=False
+        )
+        self.check_finished()
+        return results
+
+    def parse(self) -> tuple[TemplateArgumentValue, ...]:
+        """
+        Parse a complete domain expression and verify the entire input is consumed.
+        Returns a ``TemplateArgumentValue`` per comma-separated top-level entry.
+
+        domain ::= entry_list_with_grp ::= ((group | literal | named_type) (',' (group | literal | named_type))*) | ε
+        """
+        results: tuple[TemplateArgumentValue, ...] = self._parse_entry_list(
             stop_chars=frozenset(), allow_variadic_identifiers=False, allow_template_expansion_operator=False
         )
         self.check_finished()
@@ -359,10 +373,56 @@ class TypeParser(StringParser):
         return name
 
 
+class TemplateArgumentParser:
+    def __init__(self, argument_value: object, location_id: LocationId):
+        self.argument_value = argument_value
+        self.location_id = location_id
+
+    def convert_to_string(self, val: object) -> str:
+        if isinstance(val, str):
+            return val
+        elif isinstance(val, (bool, int, float)):
+            return str(val)
+        elif isinstance(val, list):
+            return "[" + ", ".join(self.convert_to_string(x) for x in val) + "]"
+        else:
+            raise CHSyntaxError(
+                f"Expected a string type, a boolean, numeric or string literal, or a JSON array defining the variadic "
+                f"group elements containing the aforementioned types!\nGot {val!r}",
+                location_id=self.location_id,
+            )
+
+    def parse(self) -> TemplateArgumentValue:
+        expect_variadic_group = False
+        expect_literal = False
+        if isinstance(self.argument_value, list):
+            expect_variadic_group = True
+        elif isinstance(self.argument_value, str) and self.argument_value.startswith('"'):
+            expect_literal = True
+        elif isinstance(self.argument_value, (bool, int, float)):
+            expect_literal = True
+        res = TypeParser(self.convert_to_string(self.argument_value)).parse()
+        if len(res) != 1:
+            raise CHSyntaxError(
+                f"Expected a single value to be specified, but got {len(res)} values {res!r}",
+                location_id=self.location_id,
+            )
+        if expect_literal and not isinstance(res[0], TemplateArgumentLiteral):
+            raise RuntimeError(
+                f"Parsing failed... expected a TemplateArgumentLiteral value for {self.argument_value}, got {res[0]}"
+            )
+        if expect_variadic_group and not isinstance(res[0], TemplateArgumentVariadicGroup):
+            raise RuntimeError(
+                f"Parsing failed... expected a TemplateArgumentVariadicGroup value for {self.argument_value}, "
+                f"got {res[0]}"
+            )
+        return res[0]
+
+
 # Memoized public entry-point
 @functools.lru_cache(maxsize=None)
 def _parse_type_cached(domain: str) -> tuple[ParsedType, ...]:
-    return TypeParser(domain).parse()
+    return TypeParser(domain).parse_types()
 
 
 def parse_type(

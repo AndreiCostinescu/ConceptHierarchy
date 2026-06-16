@@ -40,7 +40,7 @@ from concept_hierarchy.data.types.parsed_type import TemplateArgumentLiteral, Te
 
 
 def _parse(text: str) -> tuple[ParsedType, ...]:
-    return TypeParser(text).parse()
+    return TypeParser(text).parse_types()
 
 
 def _p1(text: str) -> ParsedType:
@@ -1182,19 +1182,19 @@ class TestRegistry:
 
 class TestTrailingComma:
     def test_trailing_comma_allowed_in_template_args(self):
-        t = TypeParser("T<A,>", allow_trailing_comma=True).parse()[0]
+        t = TypeParser("T<A,>", allow_trailing_comma=True).parse_types()[0]
         assert t.template_args == ("A",)
 
     def test_trailing_comma_allowed_in_func_args(self):
-        t = TypeParser("T(a,)", allow_trailing_comma=True).parse()[0]
+        t = TypeParser("T(a,)", allow_trailing_comma=True).parse_types()[0]
         assert t.func_args == ("a",)
 
     def test_trailing_comma_allowed_at_top_level(self):
-        result = TypeParser("A, B,", allow_trailing_comma=True).parse()
+        result = TypeParser("A, B,", allow_trailing_comma=True).parse_types()
         assert len(result) == 2
 
     def test_trailing_comma_with_literal(self):
-        t = TypeParser("T<42,>", allow_trailing_comma=True).parse()[0]
+        t = TypeParser("T<42,>", allow_trailing_comma=True).parse_types()[0]
         assert t.template_args == ("42",)
 
     def test_trailing_comma_disallowed_by_default_in_template_args(self):
@@ -1212,7 +1212,7 @@ class TestTrailingComma:
     def test_double_trailing_comma_still_errors_even_with_allow(self):
         # "T<A,,>" – the second comma causes _parse_type_name to see a stop-char
         with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
-            TypeParser("T<A,,>", allow_trailing_comma=True).parse()
+            TypeParser("T<A,,>", allow_trailing_comma=True).parse_types()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

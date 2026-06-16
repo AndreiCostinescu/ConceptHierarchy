@@ -276,7 +276,7 @@ class _ConstraintParser(StringParser):
         start = self.pos
         while self.pos < len(self.text) and (self.text[self.pos].isalnum() or self.text[self.pos] == "_"):
             self.pos += 1
-        type_parse_res = TypeParser(self.text[start : self.pos]).parse()
+        type_parse_res = TypeParser(self.text[start : self.pos]).parse_types()
         assert len(type_parse_res) == 1
         ch_type = type_parse_res[0]
         if ch_type.full_name != ch_type.clean_name:
