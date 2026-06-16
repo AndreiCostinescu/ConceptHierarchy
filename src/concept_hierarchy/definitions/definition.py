@@ -142,17 +142,16 @@ class ConceptHierarchyDefinition(ABC):
 
         if keywords in self._definition_location_cache:
             return self._definition_location_cache[keywords]
-
         try:
-            location_id, remaining_keywords, _, _ = self.location_of_impl(*keywords)
+            location_of_res = self.location_of_impl(*keywords)
         except StopLocationOfCheck as e:
-            location_id, remaining_keywords, _, _ = e.data
-        if remaining_keywords != ():
+            location_of_res = e.data
+        if location_of_res.remaining_keywords != ():
             raise RuntimeError(
                 f"Keyword(s) {keywords!r} not found in the {self.definition_type()} definition of {self.name}"
             )
-        self._definition_location_cache[keywords] = location_id
-        return location_id
+        self._definition_location_cache[keywords] = location_of_res.current_location_id
+        return location_of_res.current_location_id
 
     @abstractmethod
     def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
