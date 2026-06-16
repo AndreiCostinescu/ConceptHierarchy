@@ -378,6 +378,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     allow_empty_identifier = len(self.variadic_template_arguments) == len(self.template_argument_order)
                     # Check if either no variadic template argument has a variadic group identifier or all of them have
                     is_variadic_id_defined: str | None = None
+                    defined_identifiers_to_prevent_duplicates: dict[str, str] = {}  # maps var_ids to their t arg
                     for var_t_arg, var_t_g_id in self.variadic_template_argument_group_identifiers.items():
                         # assertion, not check because this is a key of a JSON object
                         assert isinstance(var_t_arg, str)
@@ -439,6 +440,18 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                 part=PathPart.VALUE,
                             )
                         is_variadic_id_defined = var_t_arg
+                        if var_t_g_id in defined_identifiers_to_prevent_duplicates:
+                            raise CHSemanticError(
+                                f"Duplicate variadic group identifier {var_t_g_id!r} found at {var_t_arg} and "
+                                f"(at least) at {defined_identifiers_to_prevent_duplicates[var_t_g_id]}",
+                                location_id=self.location_id(
+                                    HiddenImplementationDefinition.hidden_template_arguments,
+                                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                                    var_t_arg,
+                                ),
+                                part=PathPart.VALUE,
+                            )
+                        defined_identifiers_to_prevent_duplicates[var_t_g_id] = var_t_arg
                     if isinstance(is_variadic_id_defined, str):
                         for var_t_arg in self.variadic_template_arguments:
                             if var_t_arg not in self.variadic_template_argument_group_identifiers:
