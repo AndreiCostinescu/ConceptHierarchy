@@ -520,5 +520,10 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         #       that satisfy the constraints of the parent template type!
         #    TYPE CHECK
 
+    def name_with_template_variables(self):
+        if not self.is_templatable():
+            return self.name
+        return self.name + "<" + ", ".join(self.template_argument_order) + ">"
+
     def is_templatable(self):
         return self.template_argument_order != ()
