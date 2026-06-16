@@ -220,10 +220,20 @@ class TestLocationOf:
         for c_name, c in concepts.items():
             with pytest.raises(
                 RuntimeError,
-                match=rf"Keyword\(s\) \('{ConceptDefinition.concept_description}',\) not found in the .* "
+                match=rf"Keyword\(s\) \('{c_name}', '{ConceptDefinition.concept_description}'\) not found in the .* "
                 rf"definition of {c_name}",
             ):
-                c.location_of(ConceptDefinition.concept_description)
+                # Use the concept_name before the description to not match
+                #  any properties, for example, that are also named "description"!
+                c_name, c.location_of(c_name, ConceptDefinition.concept_description).print()
+        assert concepts["Animal"].location_of(ConceptDefinition.concept_description) == [
+            "concepts",
+            "Animal",
+            "data",
+            "ext:external_animal_data.json",
+            "properties",
+            "description",
+        ]
 
     def test_location_of_concept_data(self):
         concepts = _model().concepts
