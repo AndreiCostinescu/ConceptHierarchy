@@ -454,11 +454,11 @@ templateInstantiation   ::= '<' (templateArgListWithGrp | templateArgListWithVar
 
 // Mode 1 — group mode: variadic groups allowed, variadicId forbidden
 templateArgListWithGrp  ::= templateArgWithGrp (', ' templateArgWithGrp)*
-templateArgWithGrp      ::= variadicGroup | literal | namedType
+templateArgWithGrp      ::= variadicGroup | literalValue | namedType
 
 // Mode 2 — variadicId mode: variadicId allowed, variadic groups forbidden
 templateArgListWithVar  ::= templateArgWithVar (', ' templateArgWithVar)*
-templateArgWithVar      ::= literal | (variadicId? namedType)
+templateArgWithVar      ::= literalValue | (variadicId? namedType)
 variadicId              ::= [!$]+
 
 // ── Variadic group ───────────────────────────────────────────────────────────
