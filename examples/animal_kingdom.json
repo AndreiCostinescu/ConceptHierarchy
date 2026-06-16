@@ -113,6 +113,20 @@
                 "instantiation": "string"
             }
         },
+        "Instance": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateArguments": {
+                    "order": ["AcceptConcepts...", "RejectConcepts..."],
+                    "AcceptConcepts": "And(Concept, Not(ValueDomain))",
+                    "RejectConcepts": "And(Concept, Not(ValueDomain))",
+                    "variadicGroupIdentifiers": {
+                        "AcceptConcepts": "",
+                        "RejectConcepts": "!"
+                    }
+                }
+            }
+        },
         "TypeName": {
             "directParents": ["String"],
             "data": {
@@ -168,6 +182,34 @@
                             ]
                         }
                     }
+                }
+            }
+        },
+        "Function": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "abstract": true
+            }
+        },
+        "FunctionReturning": {
+            "directParents": ["Function"],
+            "data": {
+                "abstract": true,
+                "templateArguments": ["T"]
+            }
+        },
+        "Add": {
+            "directParents": ["FunctionReturning"],
+            "data": {
+                "templateArguments": {
+                    "order": ["T"],
+                    "T": "ValueDomain",
+                    "substitutions": {
+                        "FunctionReturning:T": "T"
+                    }
+                },
+                "interface": {
+                    "arg1": [""]
                 }
             }
         }
