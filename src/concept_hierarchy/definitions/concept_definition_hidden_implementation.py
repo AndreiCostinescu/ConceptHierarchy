@@ -55,7 +55,10 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         # mapping from (parent VD, parent template arg name) -> string value or list of strings variadic value
         self.substitution_of_template_arguments: dict[tuple[str | None, str], str | list[str]] = {}
         self.variadic_template_arguments: set[str] = set()
+        # maps variadic template argument to its variadic group identifier
         self.variadic_template_argument_group_identifiers: dict[str, str] = {}
+        # maps a variadic group id to the variadic template argument that defines it (the inverse mapping from above)
+        self.defined_variadic_group_identifiers: dict[str, str] = {}
 
     @classmethod
     def from_node(cls, concept_definition: ConceptDefinition):
@@ -69,6 +72,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         domain_concept.substitution_of_template_arguments = {}
         domain_concept.variadic_template_arguments = set()
         domain_concept.variadic_template_argument_group_identifiers = {}
+        domain_concept.defined_variadic_group_identifiers = {}
 
         return domain_concept
 
@@ -378,7 +382,6 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     allow_empty_identifier = len(self.variadic_template_arguments) == len(self.template_argument_order)
                     # Check if either no variadic template argument has a variadic group identifier or all of them have
                     is_variadic_id_defined: str | None = None
-                    defined_identifiers_to_prevent_duplicates: dict[str, str] = {}  # maps var_ids to their t arg
                     for var_t_arg, var_t_g_id in self.variadic_template_argument_group_identifiers.items():
                         # assertion, not check because this is a key of a JSON object
                         assert isinstance(var_t_arg, str)
@@ -440,10 +443,10 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                 part=PathPart.VALUE,
                             )
                         is_variadic_id_defined = var_t_arg
-                        if var_t_g_id in defined_identifiers_to_prevent_duplicates:
+                        if var_t_g_id in self.defined_variadic_group_identifiers:
                             raise CHSemanticError(
                                 f"Duplicate variadic group identifier {var_t_g_id!r} found at {var_t_arg} and "
-                                f"(at least) at {defined_identifiers_to_prevent_duplicates[var_t_g_id]}",
+                                f"(at least) at {self.defined_variadic_group_identifiers[var_t_g_id]}",
                                 location_id=self.location_id(
                                     HiddenImplementationDefinition.hidden_template_arguments,
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
@@ -451,7 +454,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                 ),
                                 part=PathPart.VALUE,
                             )
-                        defined_identifiers_to_prevent_duplicates[var_t_g_id] = var_t_arg
+                        self.defined_variadic_group_identifiers[var_t_g_id] = var_t_arg
                     if isinstance(is_variadic_id_defined, str):
                         for var_t_arg in self.variadic_template_arguments:
                             if var_t_arg not in self.variadic_template_argument_group_identifiers:
