@@ -526,7 +526,10 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
     def name_with_template_variables(self):
         if not self.is_templatable():
             return self.name
-        return self.name + "<" + ", ".join(self.template_argument_order) + ">"
+        template_arguments_str = ", ".join(
+            [x + ("..." if x in self.variadic_template_arguments else "") for x in self.template_argument_order]
+        )
+        return self.name + "<" + template_arguments_str + ">"
 
     def is_templatable(self):
         return self.template_argument_order != ()
