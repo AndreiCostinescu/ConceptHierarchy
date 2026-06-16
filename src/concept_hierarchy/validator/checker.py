@@ -19,6 +19,13 @@ checker.py — Syntax- and semantic-level validation of a parsed ConceptHierarch
 import os
 from typing import Callable
 
+from concept_hierarchy.data.concept_hierarchy import (
+    ConceptData,
+    ConceptHierarchy,
+    DomainConceptData,
+    FunctionData,
+    ValueDomainData,
+)
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext, VariableContext
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
@@ -107,13 +114,17 @@ class ConceptHierarchyChecker:
         concept_hierarchy_data: ConceptHierarchyModel,
         external_data_resolver: Callable[[str, str], object] | None = None,
     ):
-        self.ch = concept_hierarchy_data
+        self.model = ConceptHierarchy(concept_hierarchy_data)
         if external_data_resolver is None:
             self.ch.external_concept_data_resolver = lambda x, y: read_external_data_content(
                 x, y, self.ch.file, self.ch.path_to_root_dir
             )
         else:
             self.ch.external_concept_data_resolver = external_data_resolver
+
+    @property
+    def ch(self):
+        return self.model.ch
 
     @staticmethod
     def resolve_references(referencing_others, defined_data, reference_type: str):
@@ -307,15 +318,31 @@ class ConceptHierarchyChecker:
     def check_after_parsing_concepts(self):
         # promote to subconcepts the concept definitions
         errors = []
-        for c_name, c in self.ch.concepts.items():
+        for c_name in self.ch.concept_topo_sort:
+            c = self.ch.concepts[c_name]
+            parents_concept_data: list[ConceptData] = []
+            for parent in c.parents:
+                assert parent in self.model.concepts
+                parents_concept_data.append(self.model.concepts[parent])
+            parents_concepts: tuple[ConceptData, ...] = tuple(parents_concept_data)
             try:
                 assert c.is_root == (c.parents == [])
                 if self.ch.is_function(c_name):
                     self.ch.concepts[c_name] = FunctionDefinition.from_node(c)
+                    concept_data = FunctionData(c_name, parents_concepts)
+                    self.model.concepts[c_name] = concept_data
+                    self.model.value_domains[c_name] = concept_data
+                    self.model.functions[c_name] = concept_data
                 elif self.ch.is_value_domain(c_name):
                     self.ch.concepts[c_name] = ValueDomainDefinition.from_node(c)
+                    concept_data = ValueDomainData(c_name, parents_concepts)
+                    self.model.concepts[c_name] = concept_data
+                    self.model.value_domains[c_name] = concept_data
                 elif self.ch.is_domain_concept(c_name):
                     self.ch.concepts[c_name] = DomainConceptDefinition.from_node(c)
+                    concept_data = DomainConceptData(c_name, parents_concepts)
+                    self.model.concepts[c_name] = concept_data
+                    self.model.domain_concepts[c_name] = concept_data
                 else:
                     raise CHSemanticError(
                         f"Found concept {c_name} with parents {c.parents!r} that is neither a "
@@ -555,7 +582,7 @@ class ConceptHierarchyChecker:
             raise CHSemanticError("Processing concept data failed because of the errors below!", causes=errors)
 
     def check_specializations(self):
-        context = ConceptHierarchyContext(self.ch, TemplateContext(), VariableContext())
+        context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
         process_specialization_for_domain_concepts(context)
 
     def check(self):

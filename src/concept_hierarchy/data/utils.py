@@ -35,3 +35,46 @@ def record(errors: list[ConceptHierarchyError], collect_all: bool, err: ConceptH
     errors.append(err)
     if not collect_all:
         raise StopValidation()
+
+
+_UNINITIALIZED = object()
+
+
+def lazy_properties(cls):
+    # All annotated class vars without a class-level default are lazy.
+    # (hasattr returns True for defaults, class methods, etc.)
+    field_names = [name for name in cls.__annotations__ if not hasattr(cls, name)]
+
+    original_init = cls.__init__
+
+    for name in field_names:
+        private_name = f"_{name}"
+
+        def make_property(_private_name, pub_name):
+            def getter(self):
+                val = getattr(self, _private_name, _UNINITIALIZED)
+                if val is _UNINITIALIZED:
+                    raise RuntimeError(f"{pub_name} not initialized")
+                return val
+
+            def setter(self, value):
+                setattr(self, _private_name, value)
+
+            return property(getter, setter)
+
+        def make_is_initialized(_private_name):
+            def is_initialized(self) -> bool:
+                return getattr(self, _private_name, _UNINITIALIZED) is not _UNINITIALIZED
+
+            return is_initialized
+
+        setattr(cls, name, make_property(private_name, name))
+        setattr(cls, f"is_{name}_initialized", make_is_initialized(private_name))
+
+    def new_init(self, *args, **kwargs):
+        for field_name in field_names:
+            setattr(self, f"_{field_name}", _UNINITIALIZED)
+        original_init(self, *args, **kwargs)
+
+    cls.__init__ = new_init
+    return cls
