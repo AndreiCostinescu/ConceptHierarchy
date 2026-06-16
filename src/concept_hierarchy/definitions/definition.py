@@ -195,7 +195,7 @@ class ConceptHierarchyDefinition(ABC):
             check_result.consumed_keywords += (remaining_keywords[0],)
             self._definition_location_cache[consumed_keywords] = current_location_id
             check_result.remaining_keywords = remaining_keywords[1:]
-        if remaining_keywords == ():
+        if check_result.remaining_keywords == ():
             raise FoundLocationId(check_result)
         return check_result
 
