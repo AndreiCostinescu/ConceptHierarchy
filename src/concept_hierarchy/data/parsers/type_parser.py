@@ -288,8 +288,7 @@ class TypeParser(StringParser):
             clean_name = clean_name[:-3]
 
         # ── Template arguments ──────────────────────────────────────────
-        template_argument_values: list[TemplateArgumentValue] = []
-        template_args: tuple | None = None
+        template_arguments: list[TemplateArgumentValue] | None = None
         if self.try_consume("<"):
             entries = self._parse_entry_list(
                 stop_chars=frozenset({">"}), allow_variadic_identifiers=True, allow_template_expansion_operator=False
@@ -298,19 +297,15 @@ class TypeParser(StringParser):
                 self.consume(">")
             except RuntimeError as e:
                 raise SyntaxError(str(e)) from e
-            template_args = ()
+            template_arguments = []
             has_variadic_group_as_entry = False
             has_argument_with_variadic_identifier = False
             for e in entries:
                 if isinstance(e, TemplateArgumentVariadicGroup):
                     has_variadic_group_as_entry = True
-                    template_args += (tuple(x.full_name for x in e.variadic_group),)
-                elif isinstance(e, ParsedType):
+                elif isinstance(e, TemplateArgumentWithVariadicId):
                     has_argument_with_variadic_identifier |= e.has_variadic_identifier
-                    template_args += (e.full_name,)
-                else:
-                    template_args += (e.full_name,)
-                template_argument_values.append(e)
+                template_arguments.append(e)
             if has_variadic_group_as_entry and has_argument_with_variadic_identifier:
                 raise SyntaxError(
                     f"Can not define template argument values combining variadic groups and types with variadic "
@@ -318,8 +313,7 @@ class TypeParser(StringParser):
                 )
 
         # ── Function-call arguments ─────────────────────────────────────
-        sub_func_types: list[ParsedType] = []
-        func_args: tuple | None = None
+        function_arguments: list[ParsedType] | None = None
         if self.try_consume("("):
             entries = self._parse_entry_list_type_only(
                 stop_chars=frozenset({")"}), allow_variadic_identifiers=False, allow_template_expansion_operator=True
@@ -328,29 +322,26 @@ class TypeParser(StringParser):
                 self.consume(")")
             except RuntimeError as e:
                 raise SyntaxError(str(e)) from e
-            func_args = ()
+            function_arguments = []
             for e in entries:
-                func_args += (e.full_name,)
-                sub_func_types.append(e)
+                function_arguments.append(e)
 
         # ── Variadic template expansion operator ────────────────────────
         if self.peek(3) == "..." or (
-            has_variadic_template_expansion and (template_args is not None or func_args is not None)
+            has_variadic_template_expansion and (template_arguments is not None or function_arguments is not None)
         ):
             raise SyntaxError(
                 f"The variadic template expansion cannot be used with function arguments, template arguments or with "
-                f"variadic identifiers! Found: variadic={variadic_id!r}, template_args={template_args!r}, and "
-                f"func_args={func_args!r}!"
+                f"variadic identifiers! Found: variadic={variadic_id!r}, template_args={template_arguments!r}, "
+                f"and func_args={function_arguments!r}!"
             )
 
         return ParsedType(
             variadic_group_identifier=variadic_id,
             name=clean_name,
             has_variadic_template_expansion=has_variadic_template_expansion,
-            template_args=template_args,
-            func_args=func_args,
-            template_argument_values=tuple(template_argument_values),
-            sub_func_types=tuple(sub_func_types),
+            template_arguments=tuple(template_arguments) if template_arguments is not None else template_arguments,
+            function_arguments=tuple(function_arguments) if function_arguments is not None else function_arguments,
         )
 
     def _parse_type_name(self) -> str:

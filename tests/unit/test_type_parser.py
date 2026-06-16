@@ -82,8 +82,8 @@ class TestSimpleNamedTypes:
         assert t.has_variadic_template_expansion is False
         assert t.template_args is None
         assert t.func_args is None
-        assert t.template_argument_values == ()
-        assert t.sub_func_types == ()
+        assert t.template_arguments is None
+        assert t.function_arguments is None
 
     def test_single_lowercase(self):
         t = _p1("mytype")
@@ -169,7 +169,7 @@ class TestTemplateArgs:
         assert t.full_name == "T<>"
         assert t.clean_name == "T"
         assert t.template_args == ()
-        assert t.template_argument_values == ()
+        assert t.template_arguments == ()
 
     def test_empty_template_args_is_templated(self):
         assert _p1("T<>").is_templated is True
@@ -179,15 +179,15 @@ class TestTemplateArgs:
         assert t.full_name == "T<A>"
         assert t.clean_name == "T"
         assert t.template_args == ("A",)
-        assert len(t.template_argument_values) == 1
-        assert t.template_argument_values[0].full_name == "A"
+        assert len(t.template_arguments) == 1
+        assert t.template_arguments[0].full_name == "A"
 
     def test_two_args(self):
         t = _p1("Map<K, V>")
         assert t.full_name == "Map<K, V>"
         assert t.clean_name == "Map"
         assert t.template_args == ("K", "V")
-        assert len(t.template_argument_values) == 2
+        assert len(t.template_arguments) == 2
 
     def test_three_args(self):
         t = _p1("Triple<A, B, C>")
@@ -198,7 +198,7 @@ class TestTemplateArgs:
         assert t.full_name == "Map<List<int>, Set<String>>"
         assert t.clean_name == "Map"
         assert t.template_args == ("List<int>", "Set<String>")
-        inner = t.template_argument_values[0]
+        inner = t.template_arguments[0]
         assert inner.full_name == "List<int>"
         assert inner.clean_name == "List"
         assert isinstance(inner, ParsedType)
@@ -208,10 +208,10 @@ class TestTemplateArgs:
         t = _p1("A<B<C<D>>>")
         assert t.full_name == "A<B<C<D>>>"
         assert t.template_args == ("B<C<D>>",)
-        inner = t.template_argument_values[0]
+        inner = t.template_arguments[0]
         assert isinstance(inner, ParsedType)
         assert inner.template_args == ("C<D>",)
-        inner = inner.template_argument_values[0]
+        inner = inner.template_arguments[0]
         assert isinstance(inner, ParsedType)
         assert inner.template_args == ("D",)
 
@@ -247,19 +247,19 @@ class TestFunctionArgs:
         assert t.full_name == "T()"
         assert t.clean_name == "T"
         assert t.func_args == ()
-        assert t.sub_func_types == ()
+        assert t.function_arguments == ()
 
     def test_single_func_arg(self):
         t = _p1("T(a)")
         assert t.full_name == "T(a)"
         assert t.func_args == ("a",)
-        assert len(t.sub_func_types) == 1
-        assert t.sub_func_types[0].full_name == "a"
+        assert len(t.function_arguments) == 1
+        assert t.function_arguments[0].full_name == "a"
 
     def test_multiple_func_args(self):
         t = _p1("T(a, b, c)")
         assert t.func_args == ("a", "b", "c")
-        assert len(t.sub_func_types) == 3
+        assert len(t.function_arguments) == 3
 
     def test_func_args_none_without_parens(self):
         assert _p1("T").func_args is None
@@ -269,7 +269,7 @@ class TestFunctionArgs:
 
     def test_func_arg_with_expansion_operator(self):
         t = _p1("T(a...)")
-        arg = t.sub_func_types[0]
+        arg = t.function_arguments[0]
         assert arg.full_name == "a..."
         assert arg.clean_name == "a"
         assert arg.has_variadic_template_expansion is True
@@ -279,7 +279,7 @@ class TestFunctionArgs:
         # "..." as a standalone func arg: clean_name="" after stripping "..."
         t = _p1("T(...)")
         assert t.func_args == ("...",)
-        arg = t.sub_func_types[0]
+        arg = t.function_arguments[0]
         assert arg.full_name == "..."
         assert arg.clean_name == ""
         assert arg.has_variadic_template_expansion is True
@@ -287,19 +287,19 @@ class TestFunctionArgs:
     def test_func_arg_with_own_template_args(self):
         t = _p1("T(a<int>)")
         assert t.func_args == ("a<int>",)
-        arg = t.sub_func_types[0]
+        arg = t.function_arguments[0]
         assert arg.clean_name == "a"
         assert arg.template_args == ("int",)
 
     def test_func_arg_number_is_parsed_as_name(self):
         # allow_literals=False for func args; digits are not stop-chars
         t = _p1("T(42)")
-        arg = t.sub_func_types[0]
+        arg = t.function_arguments[0]
         assert arg.full_name == "42"
 
     def test_func_arg_bool_is_parsed_as_name(self):
         t = _p1("T(true)")
-        arg = t.sub_func_types[0]
+        arg = t.function_arguments[0]
         assert arg.full_name == "true"
 
 
@@ -312,7 +312,7 @@ class TestVariadicGroups:
     def test_empty_group(self):
         t = _p1("T<[]>")
         assert t.template_args == ((),)
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         assert grp.variadic_group == ()
         assert grp.full_name == "[]"
@@ -321,7 +321,7 @@ class TestVariadicGroups:
     def test_single_element_group(self):
         t = _p1("T<[A]>")
         assert t.template_args == (("A",),)
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         assert len(grp.variadic_group) == 1
         assert grp.variadic_group[0].full_name == "A"
@@ -329,7 +329,7 @@ class TestVariadicGroups:
     def test_two_element_group(self):
         t = _p1("T<[A, B]>")
         assert t.template_args == (("A", "B"),)
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert grp.full_name == "[A, B]"
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         assert len(grp.variadic_group) == 2
@@ -345,7 +345,7 @@ class TestVariadicGroups:
 
     def test_group_element_with_expansion(self):
         t = _p1("T<[A...]>")
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         elem = grp.variadic_group[0]
         assert elem.has_variadic_template_expansion is True
@@ -354,7 +354,7 @@ class TestVariadicGroups:
 
     def test_group_element_with_own_template_args(self):
         t = _p1("T<[List<int>]>")
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         elem = grp.variadic_group[0]
         assert elem.full_name == "List<int>"
@@ -362,12 +362,12 @@ class TestVariadicGroups:
 
     def test_group_is_variadic_group_true(self):
         t = _p1("T<[A]>")
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
 
     def test_group_clean_name_is_empty(self):
         t = _p1("T<[A, B]>")
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert grp.clean_name == ""
 
 
@@ -379,7 +379,7 @@ class TestVariadicGroups:
 class TestVariadicIdentifiers:
     def test_dollar_prefix(self):
         t = _p1("Map<$T>")
-        arg = t.template_argument_values[0]
+        arg = t.template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.variadic_group_identifier == "$"
         assert arg.clean_name == "T"
@@ -387,23 +387,23 @@ class TestVariadicIdentifiers:
 
     def test_bang_prefix(self):
         t = _p1("Map<!T>")
-        arg = t.template_argument_values[0]
+        arg = t.template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.variadic_group_identifier == "!"
         assert arg.full_name == "!T"
 
     def test_bang_dollar_combined(self):
         t = _p1("Map<!$T>")
-        arg = t.template_argument_values[0]
+        arg = t.template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.variadic_group_identifier == "!$"
         assert arg.full_name == "!$T"
 
     def test_two_var_id_args(self):
         t = _p1("Map<$A, !B>")
-        t_arg1 = t.template_argument_values[0]
+        t_arg1 = t.template_arguments[0]
         assert isinstance(t_arg1, ParsedType)
-        t_arg2 = t.template_argument_values[1]
+        t_arg2 = t.template_arguments[1]
         assert isinstance(t_arg2, ParsedType)
         assert t_arg1.variadic_group_identifier == "$"
         assert t_arg2.variadic_group_identifier == "!"
@@ -411,9 +411,9 @@ class TestVariadicIdentifiers:
     def test_plain_and_var_id_mix_is_valid(self):
         # "var_id mode" allows a plain named type alongside var_id types
         t = _p1("Map<A, $B>")
-        t_arg1 = t.template_argument_values[0]
+        t_arg1 = t.template_arguments[0]
         assert isinstance(t_arg1, ParsedType)
-        t_arg2 = t.template_argument_values[1]
+        t_arg2 = t.template_arguments[1]
         assert isinstance(t_arg2, ParsedType)
         assert t_arg1.variadic_group_identifier is None
         assert t_arg2.variadic_group_identifier == "$"
@@ -421,13 +421,13 @@ class TestVariadicIdentifiers:
 
     def test_has_variadic_identifier_true(self):
         t = _p1("Map<$T>")
-        arg = t.template_argument_values[0]
+        arg = t.template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.has_variadic_identifier is True
 
     def test_has_variadic_identifier_false_for_plain(self):
         t = _p1("Map<T>")
-        arg = t.template_argument_values[0]
+        arg = t.template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.has_variadic_identifier is False
 
@@ -437,26 +437,26 @@ class TestVariadicIdentifiers:
 
     def test_var_id_on_literal_values(self):
         t = _p1('Map<!1, $2, !$!3.14, !"stringLiteral">')
-        assert len(t.template_argument_values) == 4
-        arg = t.template_argument_values[0]
+        assert len(t.template_arguments) == 4
+        arg = t.template_arguments[0]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.has_variadic_identifier is True
         assert arg.variadic_group_identifier == "!"
         assert arg.literal_type == "int"
         assert arg.full_name == "!1"
-        arg = t.template_argument_values[1]
+        arg = t.template_arguments[1]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.has_variadic_identifier is True
         assert arg.variadic_group_identifier == "$"
         assert arg.literal_type == "int"
         assert arg.full_name == "$2"
-        arg = t.template_argument_values[2]
+        arg = t.template_arguments[2]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.has_variadic_identifier is True
         assert arg.variadic_group_identifier == "!$!"
         assert arg.literal_type == "float"
         assert arg.full_name == "!$!3.14"
-        arg = t.template_argument_values[3]
+        arg = t.template_arguments[3]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.has_variadic_identifier is True
         assert arg.variadic_group_identifier == "!"
@@ -471,14 +471,14 @@ class TestVariadicIdentifiers:
 
 class TestVariadicExpansion:
     def test_expansion_in_func_arg(self):
-        arg = _p1("T(a...)").sub_func_types[0]
+        arg = _p1("T(a...)").function_arguments[0]
         assert arg.has_variadic_template_expansion is True
         assert arg.clean_name == "a"
         assert arg.full_name == "a..."
 
     def test_expansion_in_variadic_group_element(self):
         t = _p1("T<[a...]>")
-        arg = t.template_argument_values[0]
+        arg = t.template_arguments[0]
         assert isinstance(arg, TemplateArgumentVariadicGroup)
         elem = arg.variadic_group[0]
         assert elem.has_variadic_template_expansion is True
@@ -486,13 +486,13 @@ class TestVariadicExpansion:
 
     def test_four_dots_is_not_expansion(self):
         # "A...." ends with "..." but also ends with "...." → not expansion
-        arg = _p1("T(A....)").sub_func_types[0]
+        arg = _p1("T(A....)").function_arguments[0]
         assert arg.has_variadic_template_expansion is False
         assert arg.full_name == "A...."
         assert arg.clean_name == "A...."
 
     def test_five_dots_is_not_expansion(self):
-        arg = _p1("T(A.....)").sub_func_types[0]
+        arg = _p1("T(A.....)").function_arguments[0]
         assert arg.has_variadic_template_expansion is False
         assert arg.clean_name == "A....."
 
@@ -554,14 +554,14 @@ class TestVariadicExpansion:
 
 class TestBoolLiterals:
     def test_true_literal_fields(self):
-        arg = _p1("T<true>").template_argument_values[0]
+        arg = _p1("T<true>").template_arguments[0]
         assert arg.full_name == "true"
         assert arg.clean_name == "true"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "bool"
 
     def test_false_literal_fields(self):
-        arg = _p1("T<false>").template_argument_values[0]
+        arg = _p1("T<false>").template_arguments[0]
         assert arg.full_name == "false"
         assert arg.clean_name == "false"
         assert isinstance(arg, TemplateArgumentLiteral)
@@ -570,42 +570,42 @@ class TestBoolLiterals:
     def test_true_and_false_together(self):
         t = _p1("T<true, false>")
         assert t.template_args == ("true", "false")
-        t_arg1 = t.template_argument_values[0]
+        t_arg1 = t.template_arguments[0]
         assert isinstance(t_arg1, TemplateArgumentLiteral)
-        t_arg2 = t.template_argument_values[1]
+        t_arg2 = t.template_arguments[1]
         assert isinstance(t_arg2, TemplateArgumentLiteral)
         assert t_arg1.literal_type == "bool"
         assert t_arg2.literal_type == "bool"
 
     def test_true_prefix_is_not_bool__word_boundary(self):
         # "trueType" starts with "true" but the word-boundary check sees 'T'
-        arg = _p1("T<trueType>").template_argument_values[0]
+        arg = _p1("T<trueType>").template_arguments[0]
         assert arg.full_name == "trueType"
         assert isinstance(arg, ParsedType)
 
     def test_false_prefix_is_not_bool(self):
-        arg = _p1("T<falsehood>").template_argument_values[0]
+        arg = _p1("T<falsehood>").template_arguments[0]
         assert arg.full_name == "falsehood"
         assert isinstance(arg, ParsedType)
 
     def test_true_underscore_suffix_is_not_bool(self):
-        arg = _p1("T<true_val>").template_argument_values[0]
+        arg = _p1("T<true_val>").template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.full_name == "true_val"
 
     def test_true_digit_suffix_is_not_bool(self):
-        arg = _p1("T<true1>").template_argument_values[0]
+        arg = _p1("T<true1>").template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.full_name == "true1"
 
     def test_truefalse_is_single_named_type(self):
-        arg = _p1("T<truefalse>").template_argument_values[0]
+        arg = _p1("T<truefalse>").template_arguments[0]
         assert isinstance(arg, ParsedType)
         assert arg.full_name == "truefalse"
 
     def test_bool_in_func_args_parses_as_named_type(self):
         # allow_literals=False for func args: "true" becomes a plain name
-        arg = _p1("T(true)").sub_func_types[0]
+        arg = _p1("T(true)").function_arguments[0]
         assert arg.full_name == "true"
         assert isinstance(arg, ParsedType)
 
@@ -621,64 +621,64 @@ class TestBoolLiterals:
 
 class TestNumberLiterals:
     def test_zero_int(self):
-        arg = _p1("T<0>").template_argument_values[0]
+        arg = _p1("T<0>").template_arguments[0]
         assert arg.full_name == "0"
         assert arg.clean_name == "0"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "int"
 
     def test_positive_int(self):
-        arg = _p1("T<42>").template_argument_values[0]
+        arg = _p1("T<42>").template_arguments[0]
         assert arg.full_name == "42"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "int"
 
     def test_negative_int(self):
-        arg = _p1("T<-1>").template_argument_values[0]
+        arg = _p1("T<-1>").template_arguments[0]
         assert arg.full_name == "-1"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "int"
 
     def test_float(self):
-        arg = _p1("T<3.14>").template_argument_values[0]
+        arg = _p1("T<3.14>").template_arguments[0]
         assert arg.full_name == "3.14"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "float"
 
     def test_negative_float(self):
-        arg = _p1("T<-3.14>").template_argument_values[0]
+        arg = _p1("T<-3.14>").template_arguments[0]
         assert arg.full_name == "-3.14"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "float"
 
     def test_zero_float(self):
-        arg = _p1("T<0.0>").template_argument_values[0]
+        arg = _p1("T<0.0>").template_arguments[0]
         assert arg.full_name == "0.0"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "float"
 
     def test_negative_zero_float(self):
-        arg = _p1("T<-0.0>").template_argument_values[0]
+        arg = _p1("T<-0.0>").template_arguments[0]
         assert arg.full_name == "-0.0"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "float"
 
     def test_large_int(self):
-        arg = _p1("T<1234567890>").template_argument_values[0]
+        arg = _p1("T<1234567890>").template_arguments[0]
         assert arg.full_name == "1234567890"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "int"
 
     def test_dot_only_is_float_with_no_decimal_digits(self):
         # "1." is consumed as "1" + "." → literal_type float
-        arg = _p1("T<1.>").template_argument_values[0]
+        arg = _p1("T<1.>").template_arguments[0]
         assert arg.full_name == "1."
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "float"
 
     def test_multiple_numbers(self):
         t = _p1("T<1, 2, 3>")
-        for i, sub in enumerate(t.template_argument_values):
+        for i, sub in enumerate(t.template_arguments):
             assert sub.full_name == str(i + 1)
             assert isinstance(sub, TemplateArgumentLiteral)
             assert sub.literal_type == "int"
@@ -700,7 +700,7 @@ class TestNumberLiterals:
 
     def test_number_in_func_args_parsed_as_name(self):
         # allow_literals=False; digits are not stop-chars → "42" is a name
-        arg = _p1("T(42)").sub_func_types[0]
+        arg = _p1("T(42)").function_arguments[0]
         assert arg.full_name == "42"
         assert isinstance(arg, ParsedType)
 
@@ -724,26 +724,26 @@ class TestStringLiterals:
     # ── Basic cases ─────────────────────────────────────────────────────────
 
     def test_simple_string_fields(self):
-        arg = _p1('T<"hello">').template_argument_values[0]
+        arg = _p1('T<"hello">').template_arguments[0]
         assert arg.full_name == '"hello"'
         assert arg.clean_name == "hello"
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "string"
 
     def test_empty_string(self):
-        arg = _p1('T<"">').template_argument_values[0]
+        arg = _p1('T<"">').template_arguments[0]
         assert arg.full_name == '""'
         assert arg.clean_name == ""
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "string"
 
     def test_string_with_space(self):
-        arg = _p1('T<"hello world">').template_argument_values[0]
+        arg = _p1('T<"hello world">').template_arguments[0]
         assert arg.clean_name == "hello world"
         assert arg.full_name == '"hello world"'
 
     def test_string_with_digits(self):
-        arg = _p1('T<"abc123">').template_argument_values[0]
+        arg = _p1('T<"abc123">').template_arguments[0]
         assert arg.clean_name == "abc123"
 
     def test_string_in_template_args_tuple(self):
@@ -752,7 +752,7 @@ class TestStringLiterals:
 
     def test_full_name_is_canonical_json(self):
         # full_name must equal json.dumps(clean_name) for any string literal
-        arg = _p1('T<"hello">').template_argument_values[0]
+        arg = _p1('T<"hello">').template_arguments[0]
         assert arg.full_name == json.dumps(arg.clean_name)
 
     # ── Backslash escaping ───────────────────────────────────────────────────
@@ -761,21 +761,21 @@ class TestStringLiterals:
         # Parser input contains "\\" (two backslash chars) → decoded: one backslash
         #   r'T<"\\">' raw string = T < " \ \ " >
         backslash = "\\"
-        arg = _p1(r'T<"\\">').template_argument_values[0]
+        arg = _p1(r'T<"\\">').template_arguments[0]
         assert arg.clean_name == backslash
         assert arg.full_name == json.dumps(backslash)  # '"\\\\"'
 
     def test_double_backslash(self):
         # r'T<"\\\\">' has four backslash chars inside → decoded: two backslashes
         two_backslashes = "\\\\"
-        arg = _p1(r'T<"\\\\">').template_argument_values[0]
+        arg = _p1(r'T<"\\\\">').template_arguments[0]
         assert arg.clean_name == two_backslashes
         assert arg.full_name == json.dumps(two_backslashes)
 
     def test_backslash_before_other_char(self):
         # "\n" escape → newline (tested separately); here we ensure the general
         # mechanism holds: backslash pairs are consumed by \\.  in the regex
-        arg = _p1(r'T<"\n">').template_argument_values[0]
+        arg = _p1(r'T<"\n">').template_arguments[0]
         assert arg.clean_name == "\n"
         assert arg.full_name == json.dumps("\n")  # '"\\n"'
 
@@ -790,62 +790,62 @@ class TestStringLiterals:
     def test_escaped_quote_alone(self):
         # r'T<"\"">': chars after T< are: " \ " "
         # → one escaped double-quote inside → decoded: "
-        arg = _p1(r'T<"\"">').template_argument_values[0]
+        arg = _p1(r'T<"\"">').template_arguments[0]
         assert arg.clean_name == '"'
         assert arg.full_name == json.dumps('"')  # '"\""'
 
     def test_embedded_quotes_say_hi(self):
         # r'T<"say \"hi\"">': parser sees: "say \"hi\""
-        arg = _p1(r'T<"say \"hi\"">').template_argument_values[0]
+        arg = _p1(r'T<"say \"hi\"">').template_arguments[0]
         assert arg.clean_name == 'say "hi"'
         assert arg.full_name == json.dumps('say "hi"')
 
     def test_only_quotes_inside_string(self):
         # r'T<"\"\"">': decoded: "" (two double-quote chars)
-        arg = _p1(r'T<"\"\"">').template_argument_values[0]
+        arg = _p1(r'T<"\"\"">').template_arguments[0]
         assert arg.clean_name == '""'
         assert arg.full_name == json.dumps('""')
 
     def test_quote_at_end_of_string(self):
-        arg = _p1(r'T<"hello\"">').template_argument_values[0]
+        arg = _p1(r'T<"hello\"">').template_arguments[0]
         assert arg.clean_name == 'hello"'
         assert arg.full_name == json.dumps('hello"')
 
     def test_quote_at_start_of_string(self):
-        arg = _p1(r'T<"\"hello">').template_argument_values[0]
+        arg = _p1(r'T<"\"hello">').template_arguments[0]
         assert arg.clean_name == '"hello'
         assert arg.full_name == json.dumps('"hello')
 
     # ── Standard JSON escape sequences ──────────────────────────────────────
 
     def test_newline_escape(self):
-        arg = _p1(r'T<"\n">').template_argument_values[0]
+        arg = _p1(r'T<"\n">').template_arguments[0]
         assert arg.clean_name == "\n"
         assert arg.full_name == '"\\n"'
 
     def test_tab_escape(self):
-        arg = _p1(r'T<"\t">').template_argument_values[0]
+        arg = _p1(r'T<"\t">').template_arguments[0]
         assert arg.clean_name == "\t"
         assert arg.full_name == '"\\t"'
 
     def test_carriage_return_escape(self):
-        arg = _p1(r'T<"\r">').template_argument_values[0]
+        arg = _p1(r'T<"\r">').template_arguments[0]
         assert arg.clean_name == "\r"
         assert arg.full_name == '"\\r"'
 
     def test_backspace_escape(self):
-        arg = _p1(r'T<"\b">').template_argument_values[0]
+        arg = _p1(r'T<"\b">').template_arguments[0]
         assert arg.clean_name == "\b"
         assert arg.full_name == '"\\b"'
 
     def test_form_feed_escape(self):
-        arg = _p1(r'T<"\f">').template_argument_values[0]
+        arg = _p1(r'T<"\f">').template_arguments[0]
         assert arg.clean_name == "\f"
         assert arg.full_name == '"\\f"'
 
     def test_forward_slash_escape(self):
         # JSON allows \/ as an alternative encoding for /
-        arg = _p1(r'T<"\/">').template_argument_values[0]
+        arg = _p1(r'T<"\/">').template_arguments[0]
         assert arg.clean_name == "/"
         # json.dumps("/") does NOT escape slashes in Python's stdlib
         assert arg.full_name == json.dumps("/")
@@ -854,30 +854,30 @@ class TestStringLiterals:
 
     def test_unicode_escape_ascii(self):
         # \u0041 = 'A'
-        arg = _p1(r'T<"\u0041">').template_argument_values[0]
+        arg = _p1(r'T<"\u0041">').template_arguments[0]
         assert arg.clean_name == "A"
         assert arg.full_name == json.dumps("A")  # '"A"'
 
     def test_unicode_escape_latin(self):
         # \u00e9 = é
-        arg = _p1(r'T<"\u00e9">').template_argument_values[0]
+        arg = _p1(r'T<"\u00e9">').template_arguments[0]
         assert arg.clean_name == "\u00e9"
 
     def test_unicode_escape_cjk(self):
         # \u4e2d = 中
-        arg = _p1(r'T<"\u4e2d">').template_argument_values[0]
+        arg = _p1(r'T<"\u4e2d">').template_arguments[0]
         assert arg.clean_name == "\u4e2d"
 
     def test_unicode_escape_for_quote(self):
         # \u0022 is the Unicode code point for double-quote
-        arg = _p1(r'T<"\u0022">').template_argument_values[0]
+        arg = _p1(r'T<"\u0022">').template_arguments[0]
         assert arg.clean_name == '"'
         # canonical encoding uses \" not \u0022
         assert arg.full_name == json.dumps('"')
 
     def test_unicode_zero(self):
         # \u0000 = null character (below #x0020; must be escaped in JSON)
-        arg = _p1(r'T<"\u0000">').template_argument_values[0]
+        arg = _p1(r'T<"\u0000">').template_arguments[0]
         assert arg.clean_name == "\u0000"
         assert arg.full_name == json.dumps("\u0000")
 
@@ -885,31 +885,31 @@ class TestStringLiterals:
 
     def test_two_string_literals(self):
         t = _p1('T<"hello", "world">')
-        assert t.template_argument_values[0].clean_name == "hello"
-        assert t.template_argument_values[1].clean_name == "world"
+        assert t.template_arguments[0].clean_name == "hello"
+        assert t.template_arguments[1].clean_name == "world"
         assert t.template_args == ('"hello"', '"world"')
 
     def test_string_mixed_with_other_literal_types(self):
         t = _p1('T<42, "hello", true>')
-        arg = t.template_argument_values[0]
+        arg = t.template_arguments[0]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "int"
-        arg = t.template_argument_values[1]
+        arg = t.template_arguments[1]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "string"
-        arg = t.template_argument_values[2]
+        arg = t.template_arguments[2]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "bool"
 
     def test_string_with_backslash_and_quote_combined(self):
         # r'T<"a\\\"b">': input chars after T< are: " a \ \ \ " b "
         # \\  → one backslash;  \"  → one quote  → decoded: a\"b
-        arg = _p1(r'T<"a\\\"b">').template_argument_values[0]
+        arg = _p1(r'T<"a\\\"b">').template_arguments[0]
         assert arg.clean_name == 'a\\"b'  # a + backslash + " + b
         assert arg.full_name == json.dumps('a\\"b')
 
     def test_all_basic_escapes_in_one_string(self):
-        arg = _p1(r'T<"\n\t\r\b\f\\\"">').template_argument_values[0]
+        arg = _p1(r'T<"\n\t\r\b\f\\\"">').template_arguments[0]
         expected = '\n\t\r\b\f\\"'
         assert arg.clean_name == expected
         assert arg.full_name == json.dumps(expected)
@@ -961,7 +961,7 @@ class TestStringLiterals:
 class TestLiteralsInVariadicGroups:
     def test_bool_in_group(self):
         t = _p1("T<[true, false]>")
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         assert grp.variadic_group[0].literal_type == "bool"
         assert grp.variadic_group[0].full_name == "true"
@@ -970,21 +970,21 @@ class TestLiteralsInVariadicGroups:
 
     def test_int_in_group(self):
         t = _p1("T<[1, 2]>")
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         assert grp.variadic_group[0].literal_type == "int"
         assert grp.variadic_group[1].literal_type == "int"
 
     def test_float_in_group(self):
         t = _p1("T<[3.14, -1.0]>")
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         assert grp.variadic_group[0].literal_type == "float"
         assert grp.variadic_group[1].literal_type == "float"
 
     def test_string_in_group(self):
         t = _p1('T<["hello", A]>')
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         s = grp.variadic_group[0]
         assert s.literal_type == "string"
@@ -995,14 +995,14 @@ class TestLiteralsInVariadicGroups:
 
     def test_string_with_backslash_in_group(self):
         # r'T<["\\"]>': string literal containing one backslash
-        grp = _p1(r'T<["\\"]>').template_argument_values[0]
+        grp = _p1(r'T<["\\"]>').template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         arg = grp.variadic_group[0]
         assert arg.literal_type == "string"
         assert arg.clean_name == "\\"
 
     def test_string_with_embedded_quote_in_group(self):
-        grp = _p1(r'T<["\""]>').template_argument_values[0]
+        grp = _p1(r'T<["\""]>').template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         arg = grp.variadic_group[0]
         assert arg.literal_type == "string"
@@ -1010,7 +1010,7 @@ class TestLiteralsInVariadicGroups:
 
     def test_mixed_literals_and_named_type(self):
         t = _p1('T<[42, "hi", true, A]>')
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
         elems = grp.variadic_group
         arg = elems[0]
@@ -1034,7 +1034,7 @@ class TestLiteralsInVariadicGroups:
         # The group's full_name uses each element's full_name, so string
         # literals appear with their surrounding quotes.
         t = _p1('T<[42, "hi"]>')
-        grp = t.template_argument_values[0]
+        grp = t.template_arguments[0]
         assert grp.full_name == '[42, "hi"]'
 
     def test_template_args_tuple_for_group_with_literals(self):
@@ -1053,22 +1053,22 @@ class TestNestedTypes:
         t = _p1("A<B<C<D>>>")
         assert t.full_name == "A<B<C<D>>>"
         assert t.template_args == ("B<C<D>>",)
-        b = t.template_argument_values[0]
+        b = t.template_arguments[0]
         assert isinstance(b, ParsedType)
         assert b.template_args == ("C<D>",)
-        c = b.template_argument_values[0]
+        c = b.template_arguments[0]
         assert isinstance(c, ParsedType)
         assert c.template_args == ("D",)
 
     def test_nested_with_literals(self):
         t = _p1('Outer<Inner<42, "hi">>')
-        inner = t.template_argument_values[0]
+        inner = t.template_arguments[0]
         assert inner.clean_name == "Inner"
         assert isinstance(inner, ParsedType)
-        arg = inner.template_argument_values[0]
+        arg = inner.template_arguments[0]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "int"
-        arg = inner.template_argument_values[1]
+        arg = inner.template_arguments[1]
         assert isinstance(arg, TemplateArgumentLiteral)
         assert arg.literal_type == "string"
         assert arg.clean_name == "hi"
@@ -1088,10 +1088,10 @@ class TestNestedTypes:
 
     def test_two_groups_and_literals(self):
         t = _p1('T<[1, 2], ["a", "b"]>')
-        assert len(t.template_argument_values) == 2
-        g0 = t.template_argument_values[0]
+        assert len(t.template_arguments) == 2
+        g0 = t.template_arguments[0]
         assert isinstance(g0, TemplateArgumentVariadicGroup)
-        g1 = t.template_argument_values[1]
+        g1 = t.template_arguments[1]
         assert isinstance(g1, TemplateArgumentVariadicGroup)
         assert g0.variadic_group[0].literal_type == "int"
         assert g1.variadic_group[0].literal_type == "string"
@@ -1140,7 +1140,7 @@ class TestRegistry:
         assert reg["T(a, b)"] == ("T", None, ("a", "b"))
 
     def test_int_literal_registry_key(self):
-        arg = _p1("T<42>").template_argument_values[0]
+        arg = _p1("T<42>").template_arguments[0]
         assert "42" in arg.registry
         # key = full_name; value[0] = clean_name; for ints they are the same
         assert arg.registry["42"][0] == "42"
@@ -1148,13 +1148,13 @@ class TestRegistry:
         assert arg.registry["42"][2] is None
 
     def test_bool_literal_registry_key(self):
-        arg = _p1("T<true>").template_argument_values[0]
+        arg = _p1("T<true>").template_arguments[0]
         assert "true" in arg.registry
         assert arg.registry["true"][0] == "true"
 
     def test_string_literal_registry_key_is_quoted(self):
         # The registry key for a string literal is the json.dumps form (with quotes)
-        arg = _p1('T<"hello">').template_argument_values[0]
+        arg = _p1('T<"hello">').template_arguments[0]
         assert '"hello"' in arg.registry
         assert arg.registry['"hello"'][0] == "hello"  # clean_name (decoded)
         assert arg.registry['"hello"'][1] is None
@@ -1162,7 +1162,7 @@ class TestRegistry:
 
     def test_string_literal_with_embedded_quote_registry_key(self):
         # key must be the canonical json.dumps form
-        arg = _p1(r'T<"say \"hi\"">').template_argument_values[0]
+        arg = _p1(r'T<"say \"hi\"">').template_arguments[0]
         expected_key = json.dumps('say "hi"')  # '"say \\"hi\\""'
         assert expected_key in arg.registry
         assert arg.registry[expected_key][0] == 'say "hi"'
@@ -1170,7 +1170,7 @@ class TestRegistry:
     def test_registry_key_not_named_type_for_string(self):
         # A named type "hello" and string literal "hello" must be distinguishable;
         # the literal's key is '"hello"' (with quotes), not 'hello'
-        arg = _p1('T<"hello">').template_argument_values[0]
+        arg = _p1('T<"hello">').template_arguments[0]
         assert "hello" not in arg.registry  # without quotes → absent
         assert '"hello"' in arg.registry  # with quotes → present
 
@@ -1468,15 +1468,15 @@ class TestParsedTypeProperties:
         assert _p1("T").has_arguments is False
 
     def test_is_literal_for_bool_in_sub_types(self):
-        arg = _p1("T<true>").template_argument_values[0]
+        arg = _p1("T<true>").template_arguments[0]
         assert isinstance(arg, TemplateArgumentLiteral)
 
     def test_is_literal_for_int_in_sub_types(self):
-        arg = _p1("T<42>").template_argument_values[0]
+        arg = _p1("T<42>").template_arguments[0]
         assert isinstance(arg, TemplateArgumentLiteral)
 
     def test_is_literal_for_string_in_sub_types(self):
-        arg = _p1('T<"hi">').template_argument_values[0]
+        arg = _p1('T<"hi">').template_arguments[0]
         assert isinstance(arg, TemplateArgumentLiteral)
 
 
@@ -1491,13 +1491,13 @@ class TestIsVariadicGroupProperty:
         assert isinstance(t, ParsedType)
 
     def test_is_variadic_group_true_for_actual_group(self):
-        grp = _p1("T<[A, B]>").template_argument_values[0]
+        grp = _p1("T<[A, B]>").template_arguments[0]
         assert isinstance(grp, TemplateArgumentVariadicGroup)
 
     def test_is_variadic_group_false_for_expansion_type(self):
-        arg = _p1("T(a...)").sub_func_types[0]
+        arg = _p1("T(a...)").function_arguments[0]
         assert isinstance(arg, ParsedType)
 
     def test_is_variadic_group_false_for_empty_string_literal(self):
-        arg = _p1('T<"">').template_argument_values[0]
+        arg = _p1('T<"">').template_arguments[0]
         assert isinstance(arg, TemplateArgumentLiteral)

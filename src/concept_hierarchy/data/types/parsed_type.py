@@ -41,7 +41,7 @@ class TemplateArgumentValue(ABC):
     keyed by ``full_name``, mapped to ``(clean_name, template_args, function_args)``. 
     Variadic groups are registered under their tuple key.
     """
-    _registry: frozendict | None
+    _registry: frozendict | None = None
 
     def __init__(self):
         # use object.__setattr__() to bypass the frozen restriction from subclasses!
@@ -138,7 +138,7 @@ class TemplateArgumentLiteral(TemplateArgumentWithVariadicId):
 
 @dataclass(frozen=True)
 class TemplateArgumentVariadicGroup(TemplateArgumentValue):
-    variadic_group: tuple[TemplateArgumentLiteral | ParsedType, ...]
+    variadic_group: tuple[ParsedType | TemplateArgumentLiteral, ...]
 
     def __post_init__(self):
         super().__init__()  # Initialize parent cache fields
@@ -172,8 +172,17 @@ class TemplateArgumentVariadicGroup(TemplateArgumentValue):
         return self._registry
 
 
+class ParsedTypeCache:
+    _t_args: tuple[str | tuple[str, ...], ...] | None = None
+    _f_args: tuple[str, ...] | None = None
+
+    def __init__(self):
+        object.__setattr__(self, "_t_args", None)
+        object.__setattr__(self, "_f_args", None)
+
+
 @dataclass(frozen=True)
-class ParsedType(TemplateArgumentWithVariadicId):
+class ParsedType(TemplateArgumentWithVariadicId, ParsedTypeCache):
     """
     Fully parsed representation of a type in a type expression.
 
@@ -196,25 +205,19 @@ class ParsedType(TemplateArgumentWithVariadicId):
     Can not be used when the type has template or function arguments or a variadic group identifier.
     """
 
-    template_args: tuple[str | tuple[str, ...], ...] | None
+    template_arguments: tuple[TemplateArgumentValue, ...] | None
     """
-    Full names of template arguments. 
+    Parsed template argument value. 
     ``None`` when no ``<…>`` was written; ``()`` when ``<>`` was written but empty.
     This must precede function arguments! And can not be used when `has_variadic_template_expansion` is True.
     """
 
-    func_args: tuple[str, ...] | None
-    """
-    Full names of function-call arguments.  
-    ``None`` when no ``(…)`` was written; ``()`` when ``()`` was written but empty.
-    This must come after template arguments! And can not be used when `has_variadic_template_expansion` is True.
-    """
-
-    template_argument_values: tuple[TemplateArgumentValue, ...]
-    """Parsed template argument values (same order as ``template_args``)."""
-
-    sub_func_types: tuple[ParsedType, ...]
+    function_arguments: tuple[ParsedType, ...] | None
     """Parsed function arguments (same order as ``func_args``)."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        ParsedTypeCache.__init__(self)
 
     @property
     def full_name(self) -> str:
@@ -226,13 +229,13 @@ class ParsedType(TemplateArgumentWithVariadicId):
         """
         if self._full_name is None:
             t_args_str, f_args_str = "", ""
-            if self.template_args is not None:
+            if self.is_templated:
                 t_args_str = (
                     "<"
                     + ", ".join((x if isinstance(x, str) else ("[" + ", ".join(x) + "]")) for x in self.template_args)
                     + ">"
                 )
-            if self.func_args is not None:
+            if self.has_arguments:
                 f_args_str = "(" + ", ".join(self.func_args) + ")"
             val = self.name + ("..." if self.has_variadic_template_expansion else "") + t_args_str + f_args_str
             if self.has_variadic_identifier:
@@ -249,7 +252,7 @@ class ParsedType(TemplateArgumentWithVariadicId):
         """Construct the ``type_composition`` tree."""
         if self._type_composition is None:
             sub_comp: tuple = ()
-            for sub in self.template_argument_values:
+            for sub in self.template_arguments:
                 sub_comp += sub.type_composition
             object.__setattr__(self, "_type_composition", ((self.full_name, self.clean_name, sub_comp),))
         return self._type_composition
@@ -258,9 +261,9 @@ class ParsedType(TemplateArgumentWithVariadicId):
     def registry(self) -> frozendict:
         if self._registry is None:
             registry: dict = {}
-            for sub in self.template_argument_values:
+            for sub in self.template_arguments or ():
                 registry.update(sub.registry)
-            for sub in self.sub_func_types:
+            for sub in self.function_arguments or ():
                 registry.update(sub.registry)
             registry[self.full_name] = (self.clean_name, self.template_args, self.func_args)
             object.__setattr__(self, "_registry", frozendict(registry))
@@ -268,12 +271,38 @@ class ParsedType(TemplateArgumentWithVariadicId):
 
     @property
     def is_templated(self) -> bool:
-        if (self.template_args is None) and (self.template_argument_values != ()):
-            raise RuntimeError(f"If this is not a templated type, then sub_types must be empty! Got {self!r}")
-        return self.template_args is not None
+        return self.template_arguments is not None
 
     @property
     def has_arguments(self) -> bool:
-        if (self.func_args is None) and (self.sub_func_types != ()):
-            raise RuntimeError(f"If this is not a templated type, then sub_func_types must be empty! Got {self!r}")
-        return self.func_args is not None
+        return self.function_arguments is not None
+
+    def get_t_values(self) -> tuple[TemplateArgumentValue, ...]:
+        if not self.is_templated:
+            raise RuntimeError(f"There are no template values for {self.full_name}")
+        assert self.template_arguments is not None
+        return self.template_arguments
+
+    def get_f_args(self) -> tuple[ParsedType, ...]:
+        if self.function_arguments is None:
+            raise RuntimeError(f"There are no function arguments for {self.full_name}")
+        assert self.function_arguments is not None
+        return self.function_arguments
+
+    @property
+    def template_args(self) -> tuple[str | tuple[str, ...], ...] | None:
+        if self.template_arguments is not None and self._t_args is None:
+            res = []
+            for arg in self.template_arguments:
+                if isinstance(arg, TemplateArgumentVariadicGroup):
+                    res.append(tuple([x.full_name for x in arg.variadic_group]))
+                else:
+                    res.append(arg.full_name)
+            object.__setattr__(self, "_t_args", tuple(res))
+        return self._t_args
+
+    @property
+    def func_args(self) -> tuple[str, ...] | None:
+        if self.function_arguments is not None and self._f_args is None:
+            object.__setattr__(self, "_f_args", tuple([x.full_name for x in self.function_arguments]))
+        return self._f_args

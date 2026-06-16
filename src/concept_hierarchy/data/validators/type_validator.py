@@ -40,24 +40,17 @@ def validate_type(t: ParsedType, validator: TypeValidator, location_id: Location
         location_id = []
 
     validated_template_arguments: list[TemplateArgumentValue] = []
-    new_t_args: list[str | tuple[str, ...]] = []
-    for t_index, t_arg in enumerate(t.template_argument_values):
+    for t_index, t_arg in enumerate(t.template_arguments):
         new_location_id = location_id + [f"{t.full_name} template argument {t_index}"]
         res = validate_template_argument_value(t_arg, validator, new_location_id)
         validated_template_arguments.append(res)
-        if isinstance(t_arg, TemplateArgumentVariadicGroup):
-            new_t_args.append(tuple(x.full_name for x in t_arg.variadic_group))
-        else:
-            new_t_args.append(t_arg.full_name)
 
     new_t = ParsedType(
         t.name,
         t.variadic_group_identifier,
         t.has_variadic_template_expansion,
-        tuple(new_t_args),
-        t.func_args,
         tuple(validated_template_arguments),
-        t.sub_func_types,
+        t.function_arguments,
     )
     validator.validate_type(new_t, location_id)
     return validator.make_canonic(new_t)
