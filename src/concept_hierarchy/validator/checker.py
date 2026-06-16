@@ -186,7 +186,7 @@ class ConceptHierarchyChecker:
         concepts_referencing_others: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
         concept_location_id: LocationId = LocationId()
-        if self.ch.file is not None:
+        if self.ch.file:
             concept_location_id.append(self.ch.file)
         concept_location_id.append(ConceptHierarchyModel.model_concepts)
         for concept_name, concept_def in concept_definition.items():  # type: str, object
@@ -214,7 +214,7 @@ class ConceptHierarchyChecker:
         instances_referencing_others: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
         instances_location_id: LocationId = LocationId()
-        if self.ch.file is not None:
+        if self.ch.file:
             instances_location_id.append(self.ch.file)
         instances_location_id.append(ConceptHierarchyModel.model_instances)
         for variable_name, variable_def in instance_definition.items():  # type: str, object
