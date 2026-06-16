@@ -50,6 +50,9 @@ from concept_hierarchy.utils import (
 from concept_hierarchy.validator.domain_concept_specialization_checks import (
     process_specialization_for_domain_concepts,
 )
+from concept_hierarchy.validator.value_domain_template_constraint_checks import (
+    check_value_domain_template_constraint_formulae,
+)
 
 
 class ConceptHierarchyChecker:
@@ -587,10 +590,15 @@ class ConceptHierarchyChecker:
         context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
         process_specialization_for_domain_concepts(context)
 
+    def check_types(self):
+        context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
+        check_value_domain_template_constraint_formulae(context)
+
     def check(self):
         self.check_structure()
         self.check_after_parsing_concepts()
         self.check_specializations()
+        self.check_types()
 
 
 def check_model(model: ConceptHierarchyModel) -> None:
