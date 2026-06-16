@@ -53,11 +53,11 @@ class HierarchyCheckType(Enum):
 
 class TemplateConstraintArgumentValidator(ABC):
     @abstractmethod
-    def type_check(self, a: ParsedType, b: ParsedType, check_type: HierarchyCheckType) -> bool:
+    def type_check(self, a_type: ParsedType, b_name: str, check_type: HierarchyCheckType) -> bool:
         pass
 
     @abstractmethod
-    def create_substitution_for(self, parent_type: ParsedType, sub_type: ParsedType) -> list[TemplateArgumentValue]:
+    def create_substitution_for(self, parent_type_name: str, sub_type: ParsedType) -> list[TemplateArgumentValue]:
         """
         (_, t_arg_value_clean, _, t_args_of_t_arg) = process_value_domain(template_argument_value)[0]
         t_arg_vd = ValueDomain.all_value_domains[t_arg_value_clean]
@@ -258,7 +258,7 @@ def _validate_type(
             )
             record(errors, collect_all, err)
         assert isinstance(t_arg, ParsedType)
-        if not context.type_check(t_arg, formula.literal_type, hierarchy_check_type):
+        if not context.type_check(t_arg, formula.literal, hierarchy_check_type):
             err = CHSemanticError(
                 f"{arg_str} does not satisfy the constraint {formula!r}",
                 location_id=location_id + [f"{formula} <-> {t_arg.full_name}"],
@@ -271,7 +271,7 @@ def _validate_type(
         # It is not the template arguments of this value (template_argument_value) that must be checked,
         #  but the substitution value of the template arguments of literal_type that must match the constraints!
         literal_type_substituted_template_args: list[TemplateArgumentValue] = context.create_substitution_for(
-            formula.literal_type, t_arg
+            formula.literal, t_arg
         )
         if len(literal_type_substituted_template_args) != len(formula.literal_template_formulae):
             raise RuntimeError(
