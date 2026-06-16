@@ -212,16 +212,16 @@ class _ConstraintParser(StringParser):
         if is_ascendant:
             if self.peek() == ".":
                 raise CHSyntaxError(
-                    '"^{0}." is an invalid constraint formula! Choose either "^{0}" to mean the ascendants of {0}, '
-                    '"{0}." to mean only {0}, or "^{0}*" to mean the ascendants including abstract ones.'
-                    "".format(ch_type),
+                    '"^{0}." is an invalid constraint formula! Choose either\n\t"^{0}" to mean the ascendants of {0},'
+                    '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants including abstract ones.'
+                    "".format(ch_type.full_name),
                     location_id=self.location_id,
                 )
             if self.peek(2) == "*.":
                 raise CHSyntaxError(
-                    '"^{0}." is an invalid constraint formula! Choose either "^{0}" to mean the ascendants of {0}, '
-                    '"{0}." to mean only {0}, or "^{0}*" to mean the ascendants including abstract ones.'
-                    "".format(ch_type),
+                    '"^{0}." is an invalid constraint formula! Choose either\n\t"^{0}" to mean the ascendants of {0},'
+                    '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants including abstract ones.'
+                    "".format(ch_type.full_name),
                     location_id=self.location_id,
                 )
             elif self.peek() == "*":
@@ -232,9 +232,9 @@ class _ConstraintParser(StringParser):
         else:
             if self.peek(2) in ["*.", ".*"]:
                 raise CHSyntaxError(
-                    '"{0}.*" and "{0}*." are invalid constraint formulae! Choose either "{0}" to mean the descendants '
-                    'of {0}, "{0}." to mean only {0}, or "{0}*" to mean the descendants including abstract ones.'
-                    "".format(ch_type),
+                    '"{0}.*" and "{0}*." are invalid constraint formulae! Choose either\n\t"{0}" to mean the '
+                    'descendants of {0},\n\t"{0}." to mean only {0}, or\n\t"{0}*" to mean the descendants including '
+                    "abstract ones.".format(ch_type.full_name),
                     location_id=self.location_id,
                 )
             elif self.peek() == "*":
