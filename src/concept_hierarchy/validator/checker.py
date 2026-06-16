@@ -367,8 +367,9 @@ class ConceptHierarchyChecker:
                             if full_key in c.substitution_of_template_arguments:
                                 extra_t_subst_keys.remove(full_key)
                                 continue
-                            if parent_t_arg in c.substitution_of_template_arguments:
-                                extra_t_subst_keys.remove((None, parent_t_arg))
+                            short_key = (None, parent_t_arg)
+                            if short_key in c.substitution_of_template_arguments:
+                                extra_t_subst_keys.remove(short_key)
                                 matched_parents_of_shorthand_syntax[parent_t_arg] = parent
                                 continue
                             raise CHSemanticError(
