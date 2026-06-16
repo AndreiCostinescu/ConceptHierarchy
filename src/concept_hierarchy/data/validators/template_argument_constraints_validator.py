@@ -38,7 +38,7 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentValue,
     TemplateArgumentVariadicGroup,
 )
-from concept_hierarchy.data.utils import record
+from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
@@ -93,7 +93,7 @@ def validate_template_argument(
     try:
         check_location_id = location_id + [f"{formula!r} <-> {template_argument_value.full_name}"]
         _delegate_constraint_check(formula, template_argument_value, context, check_location_id, errors, collect_all)
-    except StopIteration:
+    except StopValidation:
         pass
     return errors
 
@@ -138,7 +138,7 @@ def _validate_and(
             _delegate_constraint_check(
                 sub_f, template_argument_value, context, new_location_id, sub_errors, collect_all
             )
-        except StopIteration:
+        except StopValidation:
             pass
         if sub_errors:
             success = False
@@ -172,7 +172,7 @@ def _validate_or(
             _delegate_constraint_check(
                 sub_f, template_argument_value, context, new_location_id, sub_errors, collect_all
             )
-        except StopIteration:
+        except StopValidation:
             pass
         if sub_errors:
             or_errors.append(sub_errors)
@@ -204,7 +204,7 @@ def _validate_not(
         _delegate_constraint_check(
             formula.sub_formula, template_argument_value, context, new_location_id, sub_errors, collect_all
         )
-    except StopIteration:
+    except StopValidation:
         pass
     if not sub_errors:
         err = CHSemanticError(f"Not formula {formula!r} was satisfied!", location_id=location_id)
@@ -289,7 +289,7 @@ def _validate_type(
                 _delegate_constraint_check(
                     t_arg_constraint, t_arg_value, context, new_location_id, t_arg_errors, collect_all
                 )
-            except StopIteration:
+            except StopValidation:
                 pass
             if t_arg_errors:
                 all_t_arg_errors.append(t_arg_errors)
