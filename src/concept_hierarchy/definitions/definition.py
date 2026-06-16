@@ -127,6 +127,30 @@ class ConceptHierarchyDefinition(ABC):
     def location_id(self, *location_ids: PathSegment) -> LocationId:
         return self.definition_location() + [*location_ids]
 
+    def has_location_of(self, *keywords: str) -> bool:
+        """
+        THIS FUNCTION SHOULD ONLY BE CALLED AFTER THE STRUCTURAL CHECKS OF THE CONCEPTS HAVE PASSED!
+        Do not use this function during the structural checks of the ConceptHierarchyDefinition subclasses!
+
+        This function determines whether a concept-specific location of a piece of data
+        is specified in the definition of this concept.
+        This is because data is not always at a fixed location in the Concept Hierarchy.
+        For example, shorthand notations of Function argument types, shorthand template order definition, external data.
+
+        This function returns whether the location of the requested data in the concept's definition was specified
+        (so whether it is defined in this concept).
+        """
+        if keywords in self._definition_location_cache:
+            return True
+        try:
+            location_of_res = self.location_of_impl(*keywords)
+        except StopLocationOfCheck as e:
+            location_of_res = e.data
+        if location_of_res.remaining_keywords != ():
+            return False
+        self._definition_location_cache[keywords] = location_of_res.current_location_id
+        return True
+
     def location_of(self, *keywords: str) -> LocationId:
         """
         THIS FUNCTION SHOULD ONLY BE CALLED AFTER THE STRUCTURAL CHECKS OF THE CONCEPTS HAVE PASSED!

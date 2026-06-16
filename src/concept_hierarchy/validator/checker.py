@@ -372,6 +372,25 @@ class ConceptHierarchyChecker:
                                 extra_t_subst_keys.remove(short_key)
                                 matched_parents_of_shorthand_syntax[parent_t_arg] = parent
                                 continue
+                            if not c.has_location_of(HiddenImplementationDefinition.hidden_template_arguments):
+                                raise CHSemanticError(
+                                    f'Missing "{HiddenImplementationDefinition.hidden_template_arguments}" definition'
+                                    f' in {c_name}, because it must define a substitution for "{parent}:{parent_t_arg}"'
+                                    f"!",
+                                    location_id=c.location_of(ConceptDefinition.concept_definition_data),
+                                    part=PathPart.VALUE,
+                                )
+                            elif not c.has_location_of(
+                                HiddenImplementationDefinition.hidden_template_arguments_substitutions
+                            ):
+                                raise CHSemanticError(
+                                    f"Missing "
+                                    f'"{HiddenImplementationDefinition.hidden_template_arguments_substitutions}" '
+                                    f"definition in {c_name}, because it must define a substitution for "
+                                    f'"{parent}:{parent_t_arg}"!',
+                                    location_id=c.location_of(ConceptDefinition.concept_definition_data),
+                                    part=PathPart.VALUE,
+                                )
                             raise CHSemanticError(
                                 f"Parent template argument {parent_t_arg} of {parent} is not specialized in {c_name}! "
                                 f'The specialization syntax is "<ParentConceptName>:<ParentTemplateArgumentName>".',
