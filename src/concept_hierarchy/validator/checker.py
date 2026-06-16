@@ -19,6 +19,8 @@ checker.py — Syntax- and semantic-level validation of a parsed ConceptHierarch
 import os
 from typing import Callable
 
+from frozendict import frozendict
+
 from concept_hierarchy.data.concept_hierarchy import (
     ConceptData,
     ConceptHierarchy,
@@ -320,11 +322,11 @@ class ConceptHierarchyChecker:
         errors = []
         for c_name in self.ch.concept_topo_sort:
             c = self.ch.concepts[c_name]
-            parents_concept_data: list[ConceptData] = []
+            parents_concept_data: dict[str, ConceptData] = {}
             for parent in c.parents:
                 assert parent in self.model.concepts
-                parents_concept_data.append(self.model.concepts[parent])
-            parents_concepts: tuple[ConceptData, ...] = tuple(parents_concept_data)
+                parents_concept_data[parent] = self.model.concepts[parent]
+            parents_concepts = frozendict(parents_concept_data)
             try:
                 assert c.is_root == (c.parents == [])
                 if self.ch.is_function(c_name):

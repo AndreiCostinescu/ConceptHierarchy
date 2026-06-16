@@ -29,7 +29,7 @@ class ConceptHierarchyData:
 
 
 class ConceptData(ConceptHierarchyData):
-    def __init__(self, name: str, parents: tuple[ConceptData, ...]):
+    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name)
         self.parents = parents
 
@@ -41,7 +41,7 @@ class DomainConceptData(ConceptData):
     property_constraints: frozendict[str, object]  # replace object with Expression
     function_types: frozendict[str, ParsedType]
 
-    def __init__(self, name: str, parents: tuple[ConceptData, ...]):
+    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 
 
@@ -52,17 +52,17 @@ class TypeData(ConceptData):
     parent_template_variable_substitution: frozendict[tuple[str, str], TemplateArgumentValue]
     instantiable: bool
 
-    def __init__(self, name: str, parents: tuple[ConceptData, ...]):
+    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 
 
 class ValueDomainData(TypeData):
-    def __init__(self, name: str, parents: tuple[ConceptData, ...]):
+    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 
 
 class FunctionData(ValueDomainData):
-    def __init__(self, name: str, parents: tuple[ConceptData, ...]):
+    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 
 
