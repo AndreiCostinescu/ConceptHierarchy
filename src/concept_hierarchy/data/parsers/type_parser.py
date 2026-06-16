@@ -27,6 +27,7 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentLiteral,
     TemplateArgumentValue,
     TemplateArgumentVariadicGroup,
+    TemplateArgumentWithVariadicId,
 )
 from concept_hierarchy.utils import is_integer
 
@@ -37,19 +38,18 @@ class TypeParser(StringParser):
 
     with_exp = with expansion operator
     with_grp = with variadic group
-    with_var = with variadic identifier in types
+    with_var = with variadic identifier in types or literals
 
     Grammar::
 
         domain              ::= (named_type (',' named_type)* | ε) EOF
         named_type          ::=         name  type_extra
         named_type_with_exp ::=         name (type_extra | '...')
-        named_type_with_var ::= var_id? name  type_extra
         type_extra          ::= ('<' (entry_list_with_grp | entry_list_with_var) '>')? ('(' entry_list_with_exp ')')?
         group               ::= '[' (literal | named_type_with_exp) (', ' (literal | named_type_with_exp))* ']' | '[]'
         entry_list_with_grp ::= ((group | literal | named_type) (',' (group | literal | named_type))*) | ε
         entry_list_with_exp ::= (named_type_with_exp (',' named_type_with_exp)*) | ε
-        entry_list_with_var ::= ((literal | named_type_with_var) (',' (literal | named_type_with_var))*) | ε
+        entry_list_with_var ::= (var_id? (literal | named_type) (',' var_id? (literal | named_type))*) | ε
         var_id              ::= [!$]+
         name                ::= [non-delimiter, non-whitespace, non-variadic, non-quote characters]+
         literal             ::= 'true' | 'false' | number | '"' character* '"'
@@ -136,7 +136,9 @@ class TypeParser(StringParser):
                 break
             pos_before_entry_parse = self.pos
             entry = self._parse_entry(allow_variadic_groups=allow_variadic_groups, allow_literals=allow_literals)
-            if not allow_variadic_identifiers and (isinstance(entry, ParsedType) and entry.has_variadic_identifier):
+            if not allow_variadic_identifiers and (
+                isinstance(entry, TemplateArgumentWithVariadicId) and entry.has_variadic_identifier
+            ):
                 raise SyntaxError(
                     f"Variadic group identifiers are only allowed in template arguments! Found at position "
                     f"{pos_before_entry_parse} of {self.text!r}"
@@ -162,10 +164,12 @@ class TypeParser(StringParser):
 
         # _VARIADIC_CHARS is a frozenset, so "" (EOF peek) is NOT a member —
         # unlike the string form where "" in "!$" is True.
-        variadic = ""
+        variadic_id = ""
         while not self.eof() and self.text[self.pos] in TypeParser._VARIADIC_CHARS:
-            variadic += self.text[self.pos]
+            variadic_id += self.text[self.pos]
             self.pos += 1
+        if variadic_id == "":
+            variadic_id = None
 
         self.skip_whitespace()
 
@@ -174,18 +178,16 @@ class TypeParser(StringParser):
                 raise SyntaxError(
                     f"Variadic groups are only allowed in template arguments! Found at {self.pos} of {self.text!r}"
                 )
-            if variadic:
+            if variadic_id:
                 raise SyntaxError(
-                    f"Variadic group identifier {variadic!r} before a bracket group at position {self.pos}."
+                    f"Variadic group identifier {variadic_id!r} before a bracket group at position {self.pos}."
                 )
             return self._parse_variadic_group()
 
-        # Literals are only recognised when no variadic prefix was consumed, because variadicId prefixes only namedType,
-        # never literal (grammar: templateArgWithVar ::= literal | (variadicId? namedType)).
-        if allow_literals and not variadic and self._at_literal():
-            return self._parse_literal_type()
+        if allow_literals and self._at_literal():
+            return self._parse_literal_type(variadic_id)
 
-        return self._parse_named_type(variadic)
+        return self._parse_named_type(variadic_id)
 
     def _at_literal(self) -> bool:
         """
@@ -209,7 +211,7 @@ class TypeParser(StringParser):
                     return True
         return False
 
-    def _parse_literal_type(self) -> TemplateArgumentLiteral:
+    def _parse_literal_type(self, variadic_id: str | None) -> TemplateArgumentLiteral:
         """
         Parse a literal value and wrap it in a ``TemplateArgumentLiteral``.
 
@@ -240,6 +242,7 @@ class TypeParser(StringParser):
             literal_type = "int" if is_integer(clean_name) else "float"
 
         return TemplateArgumentLiteral(
+            variadic_group_identifier=variadic_id,
             literal_value=clean_name,
             literal_type=literal_type,
         )
@@ -265,7 +268,7 @@ class TypeParser(StringParser):
             variadic_group = tuple(entries)
         return TemplateArgumentVariadicGroup(variadic_group=variadic_group)
 
-    def _parse_named_type(self, variadic: str) -> ParsedType:
+    def _parse_named_type(self, variadic_id: str | None) -> ParsedType:
         """
         named_type ::= (var_id)? name (type_extra | '...')
         type_extra ::= ('<' (entry_list_with_grp | entry_list_with_var) '>')? ('(' entry_list_with_exp ')')?
@@ -278,9 +281,9 @@ class TypeParser(StringParser):
         self.skip_whitespace()
 
         if has_variadic_template_expansion:
-            if variadic:
+            if variadic_id:
                 raise SyntaxError(
-                    f"The variadic template expansion cannot be used with variadic identifiers (here: {variadic})!"
+                    f"The variadic template expansion cannot be used with variadic identifiers (here: {variadic_id})!"
                 )
             clean_name = clean_name[:-3]
 
@@ -336,13 +339,13 @@ class TypeParser(StringParser):
         ):
             raise SyntaxError(
                 f"The variadic template expansion cannot be used with function arguments, template arguments or with "
-                f"variadic identifiers! Found: variadic={variadic!r}, template_args={template_args!r}, and "
+                f"variadic identifiers! Found: variadic={variadic_id!r}, template_args={template_args!r}, and "
                 f"func_args={func_args!r}!"
             )
 
         return ParsedType(
+            variadic_group_identifier=variadic_id,
             name=clean_name,
-            variadic_group_identifier=variadic,
             has_variadic_template_expansion=has_variadic_template_expansion,
             template_args=template_args,
             func_args=func_args,

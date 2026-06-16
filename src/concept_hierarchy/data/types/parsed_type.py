@@ -71,7 +71,20 @@ class TemplateArgumentValue(ABC):
 
 
 @dataclass(frozen=True)
-class TemplateArgumentLiteral(TemplateArgumentValue):
+class TemplateArgumentWithVariadicId(TemplateArgumentValue, ABC):
+    variadic_group_identifier: str | None
+    """
+    Variadic prefix characters, e.g. ``""``, ``"!"``, ``"$"``, ``"!$"``.
+    Can only be used in template arguments, not in function arguments, or variadic group elements.
+    """
+
+    @property
+    def has_variadic_identifier(self) -> bool:
+        return self.variadic_group_identifier is not None
+
+
+@dataclass(frozen=True)
+class TemplateArgumentLiteral(TemplateArgumentWithVariadicId):
     literal_value: str
 
     literal_type: str
@@ -153,7 +166,7 @@ class TemplateArgumentVariadicGroup(TemplateArgumentValue):
 
 
 @dataclass(frozen=True)
-class ParsedType(TemplateArgumentValue):
+class ParsedType(TemplateArgumentWithVariadicId):
     """
     Fully parsed representation of a type in a type expression.
 
@@ -168,12 +181,6 @@ class ParsedType(TemplateArgumentValue):
     """
     The base name of the type without template and function arguments, variadic identifiers, 
     and without the variadic expansion operator,
-    """
-
-    variadic_group_identifier: str
-    """
-    Variadic prefix characters, e.g. ``""``, ``"!"``, ``"$"``, ``"!$"``.
-    Can only be used in template arguments, not in function arguments, or variadic group elements.
     """
 
     has_variadic_template_expansion: bool
@@ -275,7 +282,3 @@ class ParsedType(TemplateArgumentValue):
         if (self.func_args is None) and (self.sub_func_types != ()):
             raise RuntimeError(f"If this is not a templated type, then sub_func_types must be empty! Got {self!r}")
         return self.func_args is not None
-
-    @property
-    def has_variadic_identifier(self) -> bool:
-        return self.variadic_group_identifier != ""
