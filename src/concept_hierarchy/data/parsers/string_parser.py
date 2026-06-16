@@ -74,8 +74,8 @@ class StringParser:
 
         The returned raw_value can include the surrounding double-quote characters.
         If surround_result_with_quotes is True, the returned value will be
-            "hello"       â†’  raw_value = '"hello"'
-            "say \\"hi\\"" â†’  raw_value = '"say \\"hi\\""'
+            "hello"         ->  raw_value = '"hello"'
+            "say \\"hi\\""  ->  raw_value = '"say \\"hi\\""'
         """
         if self.peek() != '"':
             raise SyntaxError(f"Expected '\"' at position {self.pos}; got {self.remaining()[:10]!r}")
@@ -121,10 +121,10 @@ class StringParser:
         detection to is_integer / is_number so that the exact same rules apply
         here as everywhere else in the system.
 
-            "3"     â†’  int     "3"
-            "-1"    â†’  int     "-1"
-            "3.14"  â†’  float   "3.14"
-            "3.0"   â†’  float   "3.0"
+            "3"     ->  int     "3"
+            "-1"    ->  int     "-1"
+            "3.14"  ->  float   "3.14"
+            "3.0"   ->  float   "3.0"
         """
         start = self.pos
         if self.peek() == "-":
