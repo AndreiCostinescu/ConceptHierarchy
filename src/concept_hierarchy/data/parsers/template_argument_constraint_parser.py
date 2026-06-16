@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from concept_hierarchy.data.parsers.string_parser import StringParser
-from concept_hierarchy.data.parsers.type_parser import ParsedType, TypeParser
+from concept_hierarchy.data.parsers.type_parser import TypeParser
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     LiteralValueConstraintFormula,
     NonTypeTemplateConstraintFormula,
@@ -207,46 +207,50 @@ class _ConstraintParser(StringParser):
         if is_ascendant:
             self.pos += 1  # consume '^'
 
-        ch_type, t_arg_formulae = self._parse_literal_name()
+        ch_type_name, t_arg_formulae = self._parse_literal_name()
 
         if is_ascendant:
             if self.peek() == ".":
                 raise CHSyntaxError(
                     '"^{0}." is an invalid constraint formula! Choose either\n\t"^{0}" to mean the ascendants of {0},'
                     '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants including abstract ones.'
-                    "".format(ch_type.full_name),
+                    "".format(ch_type_name),
                     location_id=self.location_id,
                 )
             if self.peek(2) == "*.":
                 raise CHSyntaxError(
                     '"^{0}." is an invalid constraint formula! Choose either\n\t"^{0}" to mean the ascendants of {0},'
                     '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants including abstract ones.'
-                    "".format(ch_type.full_name),
+                    "".format(ch_type_name),
                     location_id=self.location_id,
                 )
             elif self.peek() == "*":
                 self.pos += 1
-                return TemplateConstraintAbstractAscendants(ch_type, t_arg_formulae, self.validator, self.location_id)
+                return TemplateConstraintAbstractAscendants(
+                    ch_type_name, t_arg_formulae, self.validator, self.location_id
+                )
             else:
-                return TemplateConstraintAscendants(ch_type, t_arg_formulae, self.validator, self.location_id)
+                return TemplateConstraintAscendants(ch_type_name, t_arg_formulae, self.validator, self.location_id)
         else:
             if self.peek(2) in ["*.", ".*"]:
                 raise CHSyntaxError(
                     '"{0}.*" and "{0}*." are invalid constraint formulae! Choose either\n\t"{0}" to mean the '
                     'descendants of {0},\n\t"{0}." to mean only {0}, or\n\t"{0}*" to mean the descendants including '
-                    "abstract ones.".format(ch_type.full_name),
+                    "abstract ones.".format(ch_type_name),
                     location_id=self.location_id,
                 )
             elif self.peek() == "*":
                 self.pos += 1
-                return TemplateConstraintAbstractDescendants(ch_type, t_arg_formulae, self.validator, self.location_id)
+                return TemplateConstraintAbstractDescendants(
+                    ch_type_name, t_arg_formulae, self.validator, self.location_id
+                )
             elif self.peek() == ".":
                 self.pos += 1
-                return TemplateConstraintSelf(ch_type, t_arg_formulae, self.validator, self.location_id)
+                return TemplateConstraintSelf(ch_type_name, t_arg_formulae, self.validator, self.location_id)
             else:
-                return TemplateConstraintDescendants(ch_type, t_arg_formulae, self.validator, self.location_id)
+                return TemplateConstraintDescendants(ch_type_name, t_arg_formulae, self.validator, self.location_id)
 
-    def _parse_literal_name(self) -> tuple[ParsedType, tuple[TemplateConstraintFormula, ...] | None]:
+    def _parse_literal_name(self) -> tuple[str, tuple[TemplateConstraintFormula, ...] | None]:
         """
         Parse an upperCaseName with an optional '<' template-constraint-args '>'.
 
@@ -275,6 +279,11 @@ class _ConstraintParser(StringParser):
         type_parse_res = TypeParser(self.text[start : self.pos]).parse()
         assert len(type_parse_res) == 1
         ch_type = type_parse_res[0]
+        if ch_type.full_name != ch_type.clean_name:
+            raise RuntimeError(
+                f"Error in processing constraints: expected a single type, but mismatch between clean "
+                f"{ch_type.clean_name!r} and and full_name {ch_type.full_name!r}!"
+            )
 
         template_arg_formulae: list[TemplateConstraintFormula] | None = None
 
@@ -289,4 +298,4 @@ class _ConstraintParser(StringParser):
                     template_arg_formulae.append(self.parse_constraint())
             self.consume(">")
 
-        return ch_type, None if template_arg_formulae is None else tuple(template_arg_formulae)
+        return ch_type.clean_name, None if template_arg_formulae is None else tuple(template_arg_formulae)

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from concept_hierarchy.data.parsers.type_parser import ParsedType
 from concept_hierarchy.errors import LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
@@ -25,69 +24,16 @@ class TemplateConstraintFormulaValidator(ABC):
     @abstractmethod
     def validate(
         self,
-        ch_value_domain: ParsedType,
+        ch_type_name: str,
         template_constraint_arguments: tuple[TemplateConstraintFormula, ...] | None,
         location_id: LocationId,
     ):
-        """
-        has_specification_of_template_constraints = template_constraint_arguments is not None
-        # don't allow constraints like "T<ValueDomain>" where T is a template variable!
-        if ch_value_domain.full_name in self.other_template_variables and has_specification_of_template_constraints:
-            raise CHSemanticError(
-                "Can not define a constraint literal value that is a template variable ({0}) and also "
-                "specify constraints on template arguments: {0}<{1}>".format(
-                    ch_value_domain, ", ".join(str(t_constraint) for t_constraint in template_constraint_arguments)
-                ),
-                location_id=location_id,
-            )
-        # Check that either no template_constraint_formulae are specified
-        #  or the same number of formulae as the literal has template arguments!
-        elif (
-            ch_value_domain.full_name not in self.other_template_variables and has_specification_of_template_constraints
-        ):
-            assert self.ch.is_value_domain(ch_value_domain.full_name)
-            v = self.ch.concepts[ch_value_domain.full_name]
-            # assert isinstance(v, HiddenImplementationDefinition)
-            if not v.is_templatable() and has_specification_of_template_constraints:
-                t_arg_constraints_str = ", ".join(str(t_constraint) for t_constraint in template_constraint_arguments)
-                literal_str = ch_value_domain.full_name + (
-                    ("<" + t_arg_constraints_str + ">") if t_arg_constraints_str else ""
-                )
-                raise CHSemanticError(
-                    f"Can not define a constraint literal value {ch_value_domain} that is a non-template ValueDomain "
-                    f"with template arguments: {literal_str}!",
-                    location_id=location_id,
-                )
-            if has_specification_of_template_constraints and len(template_constraint_arguments) != len(
-                v.template_order
-            ):
-                t_arg_constraints_str = ", ".join(str(t_constraint) for t_constraint in template_constraint_arguments)
-                raise CHSemanticError(
-                    f"The number {len(template_constraint_arguments)} of template argument constraints "
-                    f"{t_arg_constraints_str} on literal {ch_value_domain.full_name} "
-                    f"does not match the number of template arguments in the ValueDomain's definition: "
-                    f"{v.name_with_template()}",
-                    location_id=location_id,
-                )
-        """
         pass
 
     @abstractmethod
     def should_be_ch_type_or_template_variable(
-        self, ch_value_domain: ParsedType, location_id: LocationId
+        self, ch_type_name: str, location_id: LocationId
     ) -> TemplateConstraintFormula | None:
-        """
-        if self.ch.is_concept(ch_value_domain):
-            return None
-        elif ch_value_domain.full_name not in self.other_template_variables:
-            raise CHSemanticError(
-                f"Determined {ch_value_domain} as a template variable, but it is not defined in the variable context "
-                f"{self.other_template_variables}",
-                location_id=location_id,
-            )
-        else:
-            return self.other_template_variables[ch_value_domain.full_name]
-        """
         pass
 
 
@@ -200,22 +146,19 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
 class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
     def __init__(
         self,
-        literal: ParsedType,
+        literal: str,
         literal_template_formulae: tuple[TemplateConstraintFormula, ...] | None,
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
         super().__init__(location_id)
-        self.literal_type: ParsedType = literal
-        self.literal = self.literal_type.full_name
-        # self.literal should be a concept/template argument; not a template-instantiated type!
-        assert self.literal_type.clean_name == self.literal, self.literal
+        self.literal = literal
         self.has_specification_of_template_constraints = literal_template_formulae is not None
         self.literal_template_formulae: tuple[TemplateConstraintFormula, ...] = literal_template_formulae or ()
 
         # validate self.literal type
         validator.validate(
-            self.literal_type,
+            self.literal,
             self.literal_template_formulae if self.has_specification_of_template_constraints else None,
             self.location_id,
         )
@@ -242,7 +185,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
 class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
-        literal: ParsedType,
+        literal: str,
         literal_template_formulae: tuple[TemplateConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
@@ -256,7 +199,7 @@ class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
 class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
-        literal: ParsedType,
+        literal: str,
         literal_template_formulae: tuple[TemplateConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
@@ -270,7 +213,7 @@ class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator)
 class TemplateConstraintSelf(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
-        literal: ParsedType,
+        literal: str,
         literal_template_formulae: tuple[TemplateConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
@@ -284,7 +227,7 @@ class TemplateConstraintSelf(TemplateConstraintHierarchyOperator):
 class TemplateConstraintAscendants(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
-        literal: ParsedType,
+        literal: str,
         literal_template_formulae: tuple[TemplateConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
@@ -298,7 +241,7 @@ class TemplateConstraintAscendants(TemplateConstraintHierarchyOperator):
 class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
-        literal: ParsedType,
+        literal: str,
         literal_template_formulae: tuple[TemplateConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
