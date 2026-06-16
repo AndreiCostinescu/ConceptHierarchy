@@ -173,7 +173,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
         return self.literal
 
     def process_variables(self, validator: TemplateConstraintFormulaValidator):
-        validate_res = validator.should_be_ch_type_or_template_variable(self.literal_type, self.location_id)
+        validate_res = validator.should_be_ch_type_or_template_variable(self.literal, self.location_id)
         if validate_res is None:
             if self.has_specification_of_template_constraints:
                 for f in self.literal_template_formulae:
