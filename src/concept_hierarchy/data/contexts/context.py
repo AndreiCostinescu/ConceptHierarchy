@@ -18,6 +18,7 @@ from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext
 from concept_hierarchy.data.parsers.type_parser import ParsedType
+from concept_hierarchy.models import ConceptHierarchyModel
 
 
 class ConceptHierarchyContext:
@@ -32,7 +33,7 @@ class ConceptHierarchyContext:
         self.variable_context = variable_context
 
     @property
-    def ch(self):
+    def ch(self) -> ConceptHierarchyModel:
         return self.model.ch
 
     def add_new_template_variable(self, template_variable: str, is_variadic: bool) -> ConceptHierarchyContext:

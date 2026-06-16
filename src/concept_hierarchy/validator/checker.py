@@ -123,7 +123,7 @@ class ConceptHierarchyChecker:
             self.ch.external_concept_data_resolver = external_data_resolver
 
     @property
-    def ch(self):
+    def ch(self) -> ConceptHierarchyModel:
         return self.model.ch
 
     @staticmethod
