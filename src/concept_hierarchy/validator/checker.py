@@ -20,9 +20,6 @@ import os
 from typing import Callable
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext, VariableContext
-from concept_hierarchy.data.validators.domain_concept_specialization_validation import (
-    process_specialization_for_domain_concepts,
-)
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
@@ -40,6 +37,9 @@ from concept_hierarchy.utils import (
     sanitize_relative_path,
     tab,
     topological_sort,
+)
+from concept_hierarchy.validator.domain_concept_specialization_checks import (
+    process_specialization_for_domain_concepts,
 )
 
 
