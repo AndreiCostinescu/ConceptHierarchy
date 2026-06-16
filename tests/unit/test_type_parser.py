@@ -78,7 +78,7 @@ class TestSimpleNamedTypes:
         t = _p1("MyType")
         assert t.full_name == "MyType"
         assert t.clean_name == "MyType"
-        assert t.variadic_group_identifier == ""
+        assert t.variadic_group_identifier is None
         assert t.has_variadic_template_expansion is False
         assert t.template_args is None
         assert t.func_args is None
@@ -415,7 +415,7 @@ class TestVariadicIdentifiers:
         assert isinstance(t_arg1, ParsedType)
         t_arg2 = t.template_argument_values[1]
         assert isinstance(t_arg2, ParsedType)
-        assert t_arg1.variadic_group_identifier == ""
+        assert t_arg1.variadic_group_identifier is None
         assert t_arg2.variadic_group_identifier == "$"
         assert t.template_args == ("A", "$B")
 
@@ -434,6 +434,34 @@ class TestVariadicIdentifiers:
     def test_var_id_full_name_includes_prefix(self):
         t = _p1("F<$A, !B>")
         assert t.template_args == ("$A", "!B")
+
+    def test_var_id_on_literal_values(self):
+        t = _p1('Map<!1, $2, !$!3.14, !"stringLiteral">')
+        assert len(t.template_argument_values) == 4
+        arg = t.template_argument_values[0]
+        assert isinstance(arg, TemplateArgumentLiteral)
+        assert arg.has_variadic_identifier is True
+        assert arg.variadic_group_identifier == "!"
+        assert arg.literal_type == "int"
+        assert arg.full_name == "!1"
+        arg = t.template_argument_values[1]
+        assert isinstance(arg, TemplateArgumentLiteral)
+        assert arg.has_variadic_identifier is True
+        assert arg.variadic_group_identifier == "$"
+        assert arg.literal_type == "int"
+        assert arg.full_name == "$2"
+        arg = t.template_argument_values[2]
+        assert isinstance(arg, TemplateArgumentLiteral)
+        assert arg.has_variadic_identifier is True
+        assert arg.variadic_group_identifier == "!$!"
+        assert arg.literal_type == "float"
+        assert arg.full_name == "!$!3.14"
+        arg = t.template_argument_values[3]
+        assert isinstance(arg, TemplateArgumentLiteral)
+        assert arg.has_variadic_identifier is True
+        assert arg.variadic_group_identifier == "!"
+        assert arg.literal_type == "string"
+        assert arg.full_name == '!"stringLiteral"'
 
 
 # ─────────────────────────────────────────────────────────────────────────────

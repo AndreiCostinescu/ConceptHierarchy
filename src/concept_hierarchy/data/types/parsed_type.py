@@ -78,6 +78,13 @@ class TemplateArgumentWithVariadicId(TemplateArgumentValue, ABC):
     Can only be used in template arguments, not in function arguments, or variadic group elements.
     """
 
+    def __post_init__(self):
+        """
+        Dataclass-specific method (interpreted by dataclass) for doing stuff
+        after the dataclass __init__ method is called.
+        """
+        super().__init__()  # Initialize parent cache fields
+
     @property
     def has_variadic_identifier(self) -> bool:
         return self.variadic_group_identifier is not None
@@ -99,17 +106,17 @@ class TemplateArgumentLiteral(TemplateArgumentWithVariadicId):
     it contains the **decoded** json-string value
     """
 
-    def __post_init__(self):
-        super().__init__()  # Initialize parent cache fields
-
     @property
     def full_name(self) -> str:
         """Re-encode canonically with json.dumps so that embedded quotes are properly escaped in full_name."""
         if self._full_name is None:
             if self.literal_type == "string":
-                object.__setattr__(self, "_full_name", json.dumps(self.literal_value))
+                val = json.dumps(self.literal_value)
             else:
-                object.__setattr__(self, "_full_name", self.literal_value)
+                val = self.literal_value
+            if self.has_variadic_identifier:
+                val = self.variadic_group_identifier + val
+            object.__setattr__(self, "_full_name", val)
         return self._full_name
 
     @property
@@ -209,13 +216,6 @@ class ParsedType(TemplateArgumentWithVariadicId):
     sub_func_types: tuple[ParsedType, ...]
     """Parsed function arguments (same order as ``func_args``)."""
 
-    def __post_init__(self):
-        """
-        Dataclass-specific method (interpreted by dataclass) for doing stuff
-        after the dataclass __init__ method is called.
-        """
-        super().__init__()  # Initialize parent cache fields
-
     @property
     def full_name(self) -> str:
         """
@@ -234,15 +234,10 @@ class ParsedType(TemplateArgumentWithVariadicId):
                 )
             if self.func_args is not None:
                 f_args_str = "(" + ", ".join(self.func_args) + ")"
-            object.__setattr__(
-                self,
-                "_full_name",
-                self.variadic_group_identifier
-                + self.name
-                + ("..." if self.has_variadic_template_expansion else "")
-                + t_args_str
-                + f_args_str,
-            )
+            val = self.name + ("..." if self.has_variadic_template_expansion else "") + t_args_str + f_args_str
+            if self.has_variadic_identifier:
+                val = self.variadic_group_identifier + val
+            object.__setattr__(self, "_full_name", val)
         return self._full_name
 
     @property
