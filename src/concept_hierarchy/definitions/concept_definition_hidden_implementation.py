@@ -314,7 +314,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         # assertion, not check because this is a key of a JSON object
                         assert isinstance(subst_key, str)
                         split_res = subst_key.split(":")
-                        colon_count = len(split_res)
+                        colon_count = len(split_res) - 1
                         if colon_count > 1:
                             raise CHSyntaxError(
                                 f"The substitution identifier of a parent {self.definition_type()} template arguments "
