@@ -187,7 +187,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 raise CHSyntaxError(
                     f"Template argument names must be JSON uppercase-starting strings (ending in '...' "
                     f"if variadic), not {t_arg!r} at {self.definition_type()} {self.name}!",
-                    self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
+                    location_id=self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
                 )
             is_variadic = t_arg.endswith("...")
             t_arg_clean = t_arg if not is_variadic else t_arg[:-3]
@@ -195,7 +195,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 raise CHSyntaxError(
                     f"Template argument names must be JSON uppercase-starting strings (ending in '...' "
                     f"if variadic), not {t_arg!r} at {self.definition_type()} {self.name}!",
-                    self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
+                    location_id=self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
                 )
             self.template_argument_order += (t_arg_clean,)
             if is_variadic:
@@ -212,14 +212,14 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s implementation file must be a JSON string, not "
                     f"{self.implementation!r} for the {self.definition_type()} {self.name}",
-                    self.location_id(HiddenImplementationDefinition.hidden_implementation),
+                    location_id=self.location_id(HiddenImplementationDefinition.hidden_implementation),
                     part=PathPart.VALUE,
                 )
             elif "." in self.implementation:
                 raise CHSemanticError(
                     f"Do not define the file extensions for the {self.definition_type()} implementation file! "
                     f"Found {self.implementation!r} for the {self.definition_type()} {self.name}",
-                    self.location_id(HiddenImplementationDefinition.hidden_implementation),
+                    location_id=self.location_id(HiddenImplementationDefinition.hidden_implementation),
                     part=PathPart.VALUE,
                 )
 
@@ -231,7 +231,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s abstract marker must be a JSON boolean, not "
                     f"{self.abstract!r} for the {self.definition_type()} {self.name}",
-                    self.location_id(HiddenImplementationDefinition.hidden_abstract),
+                    location_id=self.location_id(HiddenImplementationDefinition.hidden_abstract),
                     part=PathPart.VALUE,
                 )
         else:
@@ -247,7 +247,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s template arguments must be a JSON array or "
                     f"object, not {self.template_arguments!r} for the {self.definition_type()} {self.name}",
-                    self.location_id(HiddenImplementationDefinition.hidden_template_arguments),
+                    location_id=self.location_id(HiddenImplementationDefinition.hidden_template_arguments),
                     part=PathPart.VALUE,
                 )
             elif isinstance(self.template_arguments, list):
@@ -268,7 +268,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             f'"{HiddenImplementationDefinition.hidden_template_arguments_order}" keyword) as a JSON '
                             f"array of strings!\n\tGot "
                             f"{template_structure_data[HiddenImplementationDefinition.hidden_template_arguments_order]!r}",
-                            self.location_id(
+                            location_id=self.location_id(
                                 HiddenImplementationDefinition.hidden_template_arguments,
                                 HiddenImplementationDefinition.hidden_template_arguments_order,
                             ),
@@ -288,7 +288,22 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         f" be a JSON object mapping template argument identifiers (i.e. "
                         f'"DirectParentName:NameOrDirectParentTemplateArgument") as JSON strings to the substitution '
                         f"formula also specified as JSON strings.\n\tGot {self.substitution_of_template_arguments!r}",
-                        self.location_id(
+                        location_id=self.location_id(
+                            HiddenImplementationDefinition.hidden_template_arguments,
+                            HiddenImplementationDefinition.hidden_template_arguments_substitutions,
+                        ),
+                        part=PathPart.VALUE,
+                    )
+                elif (
+                    HiddenImplementationDefinition.hidden_template_arguments_substitutions in template_structure_data
+                    and substitution_data == {}
+                ):
+                    raise CHSyntaxError(
+                        f'Defined empty "{HiddenImplementationDefinition.hidden_template_arguments_substitutions}" in'
+                        f" concept {self.name}.\n\tThis is not allowed: either specify substitutions or remove the "
+                        f'definition of the keyword from "{HiddenImplementationDefinition.hidden_template_arguments}"'
+                        f" altogether.",
+                        location_id=self.location_id(
                             HiddenImplementationDefinition.hidden_template_arguments,
                             HiddenImplementationDefinition.hidden_template_arguments_substitutions,
                         ),
@@ -304,7 +319,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             raise CHSyntaxError(
                                 f"The substitution identifier of a parent {self.definition_type()} template arguments "
                                 f'must be "DirectParentName:NameOrDirectParentTemplateArgument".\n\tGot {subst_key!r}',
-                                self.location_id(
+                                location_id=self.location_id(
                                     HiddenImplementationDefinition.hidden_template_arguments,
                                     HiddenImplementationDefinition.hidden_template_arguments_substitutions,
                                     subst_key,
@@ -324,7 +339,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         f"template argument (based on missing "
                         f'"{HiddenImplementationDefinition.hidden_template_arguments_order}" keyword in the '
                         f"definition of {self.name})",
-                        self.location_id(
+                        location_id=self.location_id(
                             HiddenImplementationDefinition.hidden_template_arguments,
                             HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                         ),
@@ -338,7 +353,22 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         f"The definition of variadic group identifiers must be a JSON object mapping variadic template "
                         f"argument names to a JSON string identifier containing only the characters '!' and '$' "
                         f"(or empty).\n\tGot {self.variadic_template_argument_group_identifiers!r}",
-                        self.location_id(
+                        location_id=self.location_id(
+                            HiddenImplementationDefinition.hidden_template_arguments,
+                            HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
+                        ),
+                        part=PathPart.VALUE,
+                    )
+                elif (
+                    HiddenImplementationDefinition.hidden_template_arguments_variadic_ids in template_structure_data
+                    and self.variadic_template_argument_group_identifiers == {}
+                ):
+                    raise CHSyntaxError(
+                        f'Defined empty "{HiddenImplementationDefinition.hidden_template_arguments_variadic_ids}" in'
+                        f" concept {self.name}.\n\tThis is not allowed: either specify variadic group ids or remove the"
+                        f' definition of the keyword from "{HiddenImplementationDefinition.hidden_template_arguments}"'
+                        f" altogether.",
+                        location_id=self.location_id(
                             HiddenImplementationDefinition.hidden_template_arguments,
                             HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                         ),
@@ -355,7 +385,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             raise CHSyntaxError(
                                 f"The key entry in the variadic group identifiers JSON must be a variadic template "
                                 f"argument without its '...' variadic identifier!\n\tGot {var_t_arg!r}",
-                                self.location_id(
+                                location_id=self.location_id(
                                     HiddenImplementationDefinition.hidden_template_arguments,
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
@@ -365,7 +395,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         elif var_t_arg not in self.template_argument_constraints:
                             raise CHSemanticError(
                                 f"{var_t_arg!r} is not a template argument of {self.name}!",
-                                self.location_id(
+                                location_id=self.location_id(
                                     HiddenImplementationDefinition.hidden_template_arguments,
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
@@ -375,7 +405,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         elif var_t_arg not in self.variadic_template_arguments:
                             raise CHSemanticError(
                                 f"{var_t_arg!r} is not a variadic template argument of {self.name}!",
-                                self.location_id(
+                                location_id=self.location_id(
                                     HiddenImplementationDefinition.hidden_template_arguments,
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
@@ -390,7 +420,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                                 f"Valid variadic group identifiers contain only the characters "
                                 f"{HiddenImplementationDefinition.variadic_group_identifier_character_enumeration}."
                                 f"\n\tGot invalid {var_t_g_id!r}!",
-                                self.location_id(
+                                location_id=self.location_id(
                                     HiddenImplementationDefinition.hidden_template_arguments,
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
@@ -401,7 +431,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             raise CHSemanticError(
                                 f"The empty variadic group identifier is only allowed when the {self.definition_type()}"
                                 f" defines only variadic template arguments. This is not the case for {self.name}",
-                                self.location_id(
+                                location_id=self.location_id(
                                     HiddenImplementationDefinition.hidden_template_arguments,
                                     HiddenImplementationDefinition.hidden_template_arguments_variadic_ids,
                                     var_t_arg,
@@ -431,14 +461,16 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         raise CHSemanticError(
                             f"Can't define a constraint for {t_arg!r} which is not a template argument of {self.name}. "
                             f"\n\tIt only has these template arguments: {self.template_argument_order!r}",
-                            self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg),
+                            location_id=self.location_id(
+                                HiddenImplementationDefinition.hidden_template_arguments, t_arg
+                            ),
                             part=PathPart.KEY,
                         )
                     if not isinstance(t_arg_constraint, str):
                         raise CHSyntaxError(
                             f"The definition of a {self.definition_type()} template argument constraint formulae must "
                             f"be a JSON string, got {t_arg_constraint!r}",
-                            self.location_id(
+                            location_id=self.location_id(
                                 HiddenImplementationDefinition.hidden_template_arguments, t_arg_constraint
                             ),
                             part=PathPart.VALUE,
@@ -452,7 +484,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
             extra_keys = data_keys - self.implementation_related_keys
             raise CHSyntaxError(
                 f"Found extra keys {extra_keys!r} in the {self.definition_type()} data definition of {self.name}",
-                self.location_id(),
+                location_id=self.location_id(),
                 part=PathPart.VALUE,
             )
 
