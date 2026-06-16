@@ -416,10 +416,11 @@ class ConceptHierarchyChecker:
                     # ensure there are no extra keys specified in the substitution definition
                     if len(extra_t_subst_keys) > 0:
                         extra_keys_str = ", ".join(
-                            (f"{p}:" if p is not None else "") + p_t_arg for p, p_t_arg in extra_t_subst_keys
+                            '"' + (f"{p}:" if p is not None else "") + p_t_arg + '"'
+                            for p, p_t_arg in extra_t_subst_keys
                         )
                         raise CHSemanticError(
-                            f"Extra keys {extra_keys_str} in template substitution definition of {c_name} must be "
+                            f"Extra key(s) {extra_keys_str} in template substitution definition of {c_name} must be "
                             f"removed!",
                             location_id=c.location_of(
                                 HiddenImplementationDefinition.hidden_template_arguments_substitutions
