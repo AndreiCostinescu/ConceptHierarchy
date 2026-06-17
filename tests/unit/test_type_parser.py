@@ -78,7 +78,7 @@ class TestSimpleNamedTypes:
         t = _p1("MyType")
         assert t.full_name == "MyType"
         assert t.clean_name == "MyType"
-        assert t.variadic_group_identifier is None
+        assert t.has_variadic_identifier is False
         assert t.has_variadic_template_expansion is False
         assert t.template_args is None
         assert t.func_args is None
@@ -415,7 +415,7 @@ class TestVariadicIdentifiers:
         assert isinstance(t_arg1, ParsedType)
         t_arg2 = t.template_arguments[1]
         assert isinstance(t_arg2, ParsedType)
-        assert t_arg1.variadic_group_identifier is None
+        assert t_arg1.has_variadic_identifier is False
         assert t_arg2.variadic_group_identifier == "$"
         assert t.template_args == ("A", "$B")
 
