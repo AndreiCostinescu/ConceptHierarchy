@@ -21,21 +21,16 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TypeAlias
 
 from frozendict import frozendict
 
 VARIADIC_GROUP_IDENTIFIER_CHARACTERS = "!$"
 
 
-TypeComposition: TypeAlias = tuple[tuple[str | None, str | None, tuple], ...]
-
-
 class TemplateArgumentValue(ABC):
     """Fully parsed representation of a template argument value in a type expression."""
 
     _full_name: str | None
-    _type_composition: TypeComposition | None = None
     """
     All types encountered while parsing this template argument value (including sub-types and sub-function-types), 
     keyed by ``full_name``, mapped to ``(clean_name, template_args, function_args)``. 
@@ -46,7 +41,6 @@ class TemplateArgumentValue(ABC):
     def __init__(self):
         # use object.__setattr__() to bypass the frozen restriction from subclasses!
         object.__setattr__(self, "_full_name", None)
-        object.__setattr__(self, "_type_composition", None)
         object.__setattr__(self, "_registry", None)
 
     @property
@@ -57,11 +51,6 @@ class TemplateArgumentValue(ABC):
     @property
     @abstractmethod
     def clean_name(self) -> str:
-        pass
-
-    @property
-    @abstractmethod
-    def type_composition(self) -> TypeComposition:
         pass
 
     @property
@@ -124,12 +113,6 @@ class TemplateArgumentLiteral(TemplateArgumentWithVariadicId):
         return self.literal_value
 
     @property
-    def type_composition(self) -> TypeComposition:
-        if self._type_composition is None:
-            object.__setattr__(self, "type_composition", ((self.full_name, self.clean_name, ()),))
-        return self._type_composition
-
-    @property
     def registry(self) -> frozendict:
         if self._registry is None:
             object.__setattr__(self, "_registry", frozendict({self.full_name: (self.clean_name, None, None)}))
@@ -152,15 +135,6 @@ class TemplateArgumentVariadicGroup(TemplateArgumentValue):
     @property
     def clean_name(self) -> str:
         return ""
-
-    @property
-    def type_composition(self) -> TypeComposition:
-        if self._type_composition:
-            sub_comp: tuple = ()
-            for sub in self.variadic_group:
-                sub_comp += sub.type_composition
-            object.__setattr__(self, "_type_composition", ((None, None, sub_comp),))
-        return self._type_composition
 
     @property
     def registry(self) -> frozendict:
@@ -246,16 +220,6 @@ class ParsedType(TemplateArgumentWithVariadicId, ParsedTypeCache):
     @property
     def clean_name(self) -> str:
         return self.name
-
-    @property
-    def type_composition(self) -> TypeComposition:
-        """Construct the ``type_composition`` tree."""
-        if self._type_composition is None:
-            sub_comp: tuple = ()
-            for sub in self.template_arguments:
-                sub_comp += sub.type_composition
-            object.__setattr__(self, "_type_composition", ((self.full_name, self.clean_name, sub_comp),))
-        return self._type_composition
 
     @property
     def registry(self) -> frozendict:
