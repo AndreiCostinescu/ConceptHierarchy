@@ -31,31 +31,13 @@ class TemplateConstraintFormulaValidator(ABC):
     ):
         pass
 
-    @abstractmethod
-    def should_be_ch_type_or_template_variable(
-        self, ch_type_name: str, location_id: LocationId
-    ) -> TemplateConstraintFormula | None:
-        pass
-
 
 class TemplateConstraintFormula(ABC):
     def __init__(self, location_id: LocationId):
-        """
-        ``used_variables`` collects all the types that are matched to a template variable from the template variable
-        context in which this template argument constraint formula is specified.
-        """
-        self.used_variables: dict[str, TemplateConstraintFormula] = {}
         self.location_id = location_id
 
     def __str__(self):
         return self.__repr__()
-
-    @abstractmethod
-    def process_variables(self, validator: TemplateConstraintFormulaValidator):
-        pass
-
-    def depends_on_variables(self) -> bool:
-        return len(self.used_variables) > 0
 
 
 class TypeTemplateConstraintFormula(TemplateConstraintFormula, ABC):
@@ -64,12 +46,7 @@ class TypeTemplateConstraintFormula(TemplateConstraintFormula, ABC):
 
 
 class TemplateConstraintAnd(TypeTemplateConstraintFormula):
-    def __init__(
-        self,
-        sub_formulae: list[TemplateConstraintFormula],
-        validator: TemplateConstraintFormulaValidator,
-        location_id: LocationId,
-    ):
+    def __init__(self, sub_formulae: list[TemplateConstraintFormula], location_id: LocationId):
         super().__init__(location_id)
         # make tuple to be immutable
         self.sub_formulae: tuple[TemplateConstraintFormula] = tuple(sub_formulae or ())  # handle None case by 'or'
@@ -79,24 +56,13 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
                     f"At {self.location_id}, the formula {f} is not a TypeTemplateConstraintFormula, "
                     "which is required by TemplateConstraintAnd!"
                 )
-        self.process_variables(validator)
 
     def __repr__(self):
         return "And(" + ", ".join([repr(f) for f in self.sub_formulae]) + ")"
 
-    def process_variables(self, validator: TemplateConstraintFormulaValidator):
-        for f in self.sub_formulae:
-            f.process_variables(validator)
-            self.used_variables.update(f.used_variables)
-
 
 class TemplateConstraintOr(TypeTemplateConstraintFormula):
-    def __init__(
-        self,
-        sub_formulae: list[TemplateConstraintFormula],
-        validator: TemplateConstraintFormulaValidator,
-        location_id: LocationId,
-    ):
+    def __init__(self, sub_formulae: list[TemplateConstraintFormula], location_id: LocationId):
         super().__init__(location_id)
         # make tuple to be immutable
         self.sub_formulae: tuple[TemplateConstraintFormula, ...] = tuple(sub_formulae or ())  # handle None case by 'or'
@@ -106,24 +72,13 @@ class TemplateConstraintOr(TypeTemplateConstraintFormula):
                     f"At {self.location_id}, the formula {f} is not a TypeTemplateConstraintFormula, "
                     "which is required by TemplateConstraintOr!"
                 )
-        self.process_variables(validator)
 
     def __repr__(self):
         return "Or(" + ", ".join([repr(f) for f in self.sub_formulae]) + ")"
 
-    def process_variables(self, validator: TemplateConstraintFormulaValidator):
-        for f in self.sub_formulae:
-            f.process_variables(validator)
-            self.used_variables.update(f.used_variables)
-
 
 class TemplateConstraintNot(TypeTemplateConstraintFormula):
-    def __init__(
-        self,
-        sub_formula: TemplateConstraintFormula,
-        validator: TemplateConstraintFormulaValidator,
-        location_id: LocationId,
-    ):
+    def __init__(self, sub_formula: TemplateConstraintFormula, location_id: LocationId):
         super().__init__(location_id)
         self.sub_formula: TemplateConstraintFormula = sub_formula
         if not isinstance(self.sub_formula, TypeTemplateConstraintFormula):
@@ -131,14 +86,9 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
                 f"At {self.location_id}, the formula {self.sub_formula} is not a TypeTemplateConstraintFormula, "
                 "which is required by TemplateConstraintNot!"
             )
-        self.process_variables(validator)
 
     def __repr__(self):
         return "Not(" + repr(self.sub_formula) + ")"
-
-    def process_variables(self, validator: TemplateConstraintFormulaValidator):
-        self.sub_formula.process_variables(validator)
-        self.used_variables.update(self.sub_formula.used_variables)
 
 
 class HierarchyCheckType(Enum):
@@ -182,15 +132,6 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
         if res:
             return self.literal + "<" + res + ">"
         return self.literal
-
-    def process_variables(self, validator: TemplateConstraintFormulaValidator):
-        validate_res = validator.should_be_ch_type_or_template_variable(self.literal, self.location_id)
-        if validate_res is None:
-            if self.has_specification_of_template_constraints:
-                for f in self.literal_template_formulae:
-                    self.used_variables.update(f.used_variables)
-        else:
-            self.used_variables[self.literal] = validate_res
 
 
 class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
@@ -277,9 +218,6 @@ class NonTypeTemplateConstraintFormula(TemplateConstraintFormula):
     def __repr__(self):
         return "Literal:" + self.constraint_type
 
-    def process_variables(self, _: dict[str, TemplateConstraintFormula]):
-        return  # NonTypeTemplateConstraintFormulae do not have variables
-
 
 class LiteralValueConstraintFormula(TemplateConstraintFormula):
     """
@@ -330,6 +268,3 @@ class LiteralValueConstraintFormula(TemplateConstraintFormula):
 
     def __repr__(self) -> str:
         return self.raw_value
-
-    def process_variables(self, _: dict[str, TemplateConstraintFormula]):
-        return  # literal values never contain template variables

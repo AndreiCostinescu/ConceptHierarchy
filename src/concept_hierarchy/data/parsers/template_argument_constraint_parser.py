@@ -147,19 +147,19 @@ class _ConstraintParser(StringParser):
         self.consume("And(")
         args = self._parse_constraint_list()
         self.consume(")")
-        return TemplateConstraintAnd(args, self.validator, self.location_id)
+        return TemplateConstraintAnd(args, self.location_id)
 
     def _parse_or(self) -> TemplateConstraintOr:
         self.consume("Or(")
         args = self._parse_constraint_list()
         self.consume(")")
-        return TemplateConstraintOr(args, self.validator, self.location_id)
+        return TemplateConstraintOr(args, self.location_id)
 
     def _parse_not(self) -> TemplateConstraintNot:
         self.consume("Not(")
         arg = self.parse_constraint()
         self.consume(")")
-        return TemplateConstraintNot(arg, self.validator, self.location_id)
+        return TemplateConstraintNot(arg, self.location_id)
 
     def _parse_constraint_list(self) -> list[TemplateConstraintFormula]:
         """One or more constraints separated by ', '."""
