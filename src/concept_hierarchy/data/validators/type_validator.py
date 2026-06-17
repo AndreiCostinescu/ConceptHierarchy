@@ -19,7 +19,21 @@ from dataclasses import dataclass
 
 from frozendict import frozendict
 
+from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormula
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ConceptHierarchyTemplateArgument,
+    ExpandedVariadicTemplateVariable,
+    Instantiated,
+    InstantiatedType,
+    InstantiatedVariadicGroup,
+    LiteralValue,
+    NonVariadicTemplateVariable,
+    TemplateDependent,
+    TemplateDependentType,
+    TemplateDependentVariadicGroup,
+    VariadicTemplateVariable,
+)
 from concept_hierarchy.data.types.parsed_type import (
     ParsedType,
     TemplateArgumentLiteral,
@@ -72,11 +86,16 @@ class TypeValidator(ABC):
         pass
 
     @abstractmethod
+    def get_template_variable_data_of(self, ch_type) -> tuple[bool, TemplateConstraintFormula]:
+        pass
+
+    @abstractmethod
     def template_argument_value_satisfies_constraint(
         self,
         t_constraint: TemplateConstraintFormula,
-        t_arg_value: TemplateArgumentValue,
+        t_arg_value: ConceptHierarchyTemplateArgument,
         location_id: LocationId,
+        collect_all_errors: bool,
     ) -> list[ConceptHierarchyError]:
         pass
 
@@ -87,24 +106,15 @@ def validate_template_argument_values_of_type(
     location_id: LocationId,
     template_argument_order: tuple[str, ...],
     variadic_template_arguments: set[str],
-    template_argument_constraints: frozendict[str, TemplateConstraintFormula],
 ) -> ParsedType:
     if not ch_type.is_templated:
         return ch_type
     assert len(ch_type.template_arguments) == len(template_argument_order)
     new_template_arguments = []
     for t_arg, t_arg_name in zip(ch_type.template_arguments, template_argument_order):
-        new_location_id = location_id + [f"{ch_type.clean_name} template argument {t_arg.full_name}"]
         is_variadic_template_argument = t_arg_name in variadic_template_arguments
-
+        new_location_id = location_id + [f"{ch_type.clean_name} template argument {t_arg.full_name}"]
         t_arg_valid = validate_template_argument_value(t_arg, validator, new_location_id, is_variadic_template_argument)
-        t_arg_constraint = template_argument_constraints[t_arg_name]
-        errors = validator.template_argument_value_satisfies_constraint(t_arg_constraint, t_arg_valid, new_location_id)
-        if errors:
-            raise CHSemanticError(
-                f"Type validation failed for {ch_type.full_name}! Template argument constraints not satisfied!",
-                causes=errors,
-            )
         new_template_arguments.append(t_arg_valid)
     return ParsedType(
         variadic_group_identifier=ch_type.variadic_group_identifier,
@@ -249,7 +259,6 @@ def validate_type_and_parse_to_variadic_groups(
         location_id,
         template_data.template_argument_order,
         template_data.variadic_arguments,
-        template_data.constraints,
     )
 
 
@@ -414,3 +423,111 @@ def validate_template_argument_value(
                 validate_type(group_elem, validator, new_location_id, can_expand_variadic_template_arguments=True)
             )
     return TemplateArgumentVariadicGroup(tuple(validated_variadic_group))
+
+
+def convert_items(
+    items: tuple[TemplateArgumentValue, ...], validator: TypeValidator
+) -> tuple[tuple[ConceptHierarchyTemplateArgument, ...], bool, TemplateContext]:
+    converted_items: list[ConceptHierarchyTemplateArgument] = []
+    has_template_dependent_items = False
+    merged_template_context = TemplateContext()
+    for item in items:
+        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(item, validator)
+        merged_template_context = merged_template_context.add_context(converted_item.template_context)
+        if isinstance(converted_item, TemplateDependent):
+            has_template_dependent_items = True
+        else:
+            assert isinstance(converted_item, Instantiated)
+        converted_items.append(converted_item)
+    return tuple(converted_items), has_template_dependent_items, merged_template_context
+
+
+def convert_template_argument_to_concept_hierarchy_template_argument(
+    t_arg: TemplateArgumentValue, validator: TypeValidator
+) -> ConceptHierarchyTemplateArgument:
+    if isinstance(t_arg, TemplateArgumentLiteral):
+        return LiteralValue(t_arg.clean_name, TemplateContext(), t_arg.literal_type)
+    if isinstance(t_arg, ParsedType):
+        if not validator.is_concept(t_arg):
+            assert validator.is_template_variable(t_arg)
+
+            template_context = TemplateContext({t_arg.clean_name: validator.get_template_variable_data_of(t_arg)})
+
+            if validator.is_variadic_template_variable(t_arg):
+                if t_arg.has_variadic_template_expansion:
+                    return ExpandedVariadicTemplateVariable(t_arg.clean_name, template_context)
+                else:
+                    return VariadicTemplateVariable(t_arg.clean_name, template_context)
+            else:
+                assert not t_arg.has_variadic_template_expansion
+                return NonVariadicTemplateVariable(t_arg.clean_name, template_context)
+        assert not t_arg.has_variadic_template_expansion
+        # check if all the template arguments are instantiated or not
+        if not t_arg.is_templated:
+            return InstantiatedType(t_arg, TemplateContext(), ())
+        converted_template_arguments, has_template_dependent_template_arguments, merged_template_context = (
+            convert_items(t_arg.template_arguments, validator)
+        )
+        if has_template_dependent_template_arguments:
+            return TemplateDependentType(t_arg.clean_name, merged_template_context, converted_template_arguments)
+        assert merged_template_context.empty
+        return InstantiatedType(t_arg.clean_name, merged_template_context, converted_template_arguments)
+    assert isinstance(t_arg, TemplateArgumentVariadicGroup)
+    converted_group_elements, has_template_dependent_group_elements, merged_template_context = convert_items(
+        t_arg.variadic_group, validator
+    )
+    if has_template_dependent_group_elements:
+        return TemplateDependentVariadicGroup(t_arg.clean_name, merged_template_context, converted_group_elements)
+    assert merged_template_context.empty
+    return InstantiatedVariadicGroup(t_arg.clean_name, merged_template_context, converted_group_elements)
+
+
+def validate_template_argument_constraints_in_instantiated_type(
+    ch_type: InstantiatedType,
+    validator: TypeValidator,
+    location_id: LocationId,
+    type_template_data: TypeTemplateData,
+    *,
+    collect_all_errors: bool = False,
+) -> list[ConceptHierarchyError]:
+    errors = []
+    for t_arg, t_arg_name in zip(ch_type.template_arguments, type_template_data.template_argument_order):
+        t_arg_constraint = type_template_data.constraints[t_arg_name]
+        new_location_id = location_id + [f"{ch_type.clean_name} template argument {t_arg.full_name}"]
+        sub_errors = validator.template_argument_value_satisfies_constraint(
+            t_arg_constraint, t_arg, new_location_id, collect_all_errors
+        )
+        if sub_errors:
+            errors.extend(sub_errors)
+            if not collect_all_errors:
+                break
+    return errors
+
+
+def validate_template_argument_constraints(
+    ch_type: ConceptHierarchyTemplateArgument,
+    validator: TypeValidator,
+    location_id: LocationId,
+    *,
+    collect_all_errors: bool = False,
+) -> list[ConceptHierarchyError]:
+    if isinstance(ch_type, (LiteralValue, TemplateDependent)):
+        return []
+    assert isinstance(ch_type, Instantiated)
+    if isinstance(ch_type, InstantiatedVariadicGroup):
+        errors = []
+        for group_elem in ch_type.variadic_group:
+            new_location_id = location_id + [group_elem.full_name]
+            sub_errors = validate_template_argument_constraints(
+                group_elem, validator, new_location_id, collect_all_errors=collect_all_errors
+            )
+            if sub_errors:
+                errors.extend(sub_errors)
+                if not collect_all_errors:
+                    break
+        return errors
+    assert isinstance(ch_type, InstantiatedType)
+    type_template_data = validator.get_template_data_of(ch_type.clean_name)
+    return validate_template_argument_constraints_in_instantiated_type(
+        ch_type, validator, location_id, type_template_data, collect_all_errors=collect_all_errors
+    )

@@ -27,12 +27,14 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TemplateConstraintNot,
     TemplateConstraintOr,
 )
-from concept_hierarchy.data.types.parsed_type import (
-    ParsedType,
-    TemplateArgumentLiteral,
-    TemplateArgumentValue,
-    TemplateArgumentVariadicGroup,
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ConceptHierarchyTemplateArgument,
+    ConceptHierarchyType,
+    ConceptHierarchyVariadicGroup,
+    LiteralValue,
+    TemplateVariable,
 )
+from concept_hierarchy.data.types.parsed_type import TemplateArgumentLiteral
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
@@ -40,11 +42,13 @@ from concept_hierarchy.utils import Reference, is_integer, is_number
 
 class TemplateConstraintArgumentValidator(ABC):
     @abstractmethod
-    def type_check(self, a_type: ParsedType, b_name: str, check_type: HierarchyCheckType) -> bool:
+    def type_check(self, a_type: ConceptHierarchyType, b_name: str, check_type: HierarchyCheckType) -> bool:
         pass
 
     @abstractmethod
-    def create_substitution_for(self, parent_type_name: str, sub_type: ParsedType) -> list[TemplateArgumentValue]:
+    def create_substitution_for(
+        self, parent_type_name: str, sub_type: ConceptHierarchyType
+    ) -> list[ConceptHierarchyTemplateArgument] | None:
         """
         (_, t_arg_value_clean, _, t_args_of_t_arg) = process_value_domain(template_argument_value)[0]
         t_arg_vd = ValueDomain.all_value_domains[t_arg_value_clean]
@@ -68,18 +72,20 @@ class TemplateConstraintArgumentValidator(ABC):
 
 def validate_template_argument_value_against_constraint(
     formula: TemplateConstraintFormula,
-    template_argument_value: TemplateArgumentValue,
+    template_argument_value: ConceptHierarchyTemplateArgument,
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId = None,
     *,
-    collect_all: bool = False,
+    collect_all_errors: bool = False,
 ) -> list[ConceptHierarchyError]:
     if location_id is None:
         location_id = []
     errors: list[ConceptHierarchyError] = []
     try:
         check_location_id = location_id + [f"{formula!r} <-> {template_argument_value.full_name}"]
-        _delegate_constraint_check(formula, template_argument_value, validator, check_location_id, errors, collect_all)
+        _delegate_constraint_check(
+            formula, template_argument_value, validator, check_location_id, errors, collect_all_errors
+        )
     except StopValidation:
         pass
     return errors
@@ -87,34 +93,34 @@ def validate_template_argument_value_against_constraint(
 
 def _delegate_constraint_check(
     formula: TemplateConstraintFormula,
-    template_argument_value: TemplateArgumentValue,
+    template_argument_value: ConceptHierarchyTemplateArgument,
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
-    collect_all: bool = False,
+    collect_all_errors: bool = False,
 ):
     match formula:
         case TemplateConstraintAnd():
-            _validate_and(formula, template_argument_value, validator, location_id, errors, collect_all)
+            _validate_and(formula, template_argument_value, validator, location_id, errors, collect_all_errors)
         case TemplateConstraintOr():
-            _validate_or(formula, template_argument_value, validator, location_id, errors, collect_all)
+            _validate_or(formula, template_argument_value, validator, location_id, errors, collect_all_errors)
         case TemplateConstraintNot():
-            _validate_not(formula, template_argument_value, validator, location_id, errors, collect_all)
+            _validate_not(formula, template_argument_value, validator, location_id, errors, collect_all_errors)
         case TemplateConstraintHierarchyOperator():
-            _validate_type(formula, template_argument_value, validator, location_id, errors, collect_all)
+            _validate_type(formula, template_argument_value, validator, location_id, errors, collect_all_errors)
         case LiteralValueConstraintFormula() | NonTypeTemplateConstraintFormula():
-            _validate_literal(formula, template_argument_value, location_id, errors, collect_all)
+            _validate_literal(formula, template_argument_value, location_id, errors, collect_all_errors)
         case _:
             raise ValueError(f"Unknown formula type: {type(formula)!r}")
 
 
 def _validate_and(
     formula: TemplateConstraintAnd,
-    template_argument_value: TemplateArgumentValue,
+    template_argument_value: ConceptHierarchyTemplateArgument,
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ):
     success = True
     and_errors: list[list[ConceptHierarchyError]] = []
@@ -123,14 +129,14 @@ def _validate_and(
         try:
             new_location_id = location_id + [f"{sub_f!r} <-> {template_argument_value.full_name}"]
             _delegate_constraint_check(
-                sub_f, template_argument_value, validator, new_location_id, sub_errors, collect_all
+                sub_f, template_argument_value, validator, new_location_id, sub_errors, collect_all_errors
             )
         except StopValidation:
             pass
         if sub_errors:
             success = False
             and_errors.append(sub_errors)
-            if not collect_all:
+            if not collect_all_errors:
                 break
     if not success:
         err = CHSemanticError(
@@ -139,16 +145,16 @@ def _validate_and(
         )
         for and_error in and_errors:
             err.causes.extend(and_error)
-        record(errors, collect_all, err)
+        record(errors, collect_all_errors, err)
 
 
 def _validate_or(
     formula: TemplateConstraintOr,
-    template_argument_value: TemplateArgumentValue,
+    template_argument_value: ConceptHierarchyTemplateArgument,
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ):
     success = False
     or_errors: list[list[ConceptHierarchyError]] = []
@@ -157,7 +163,7 @@ def _validate_or(
         try:
             new_location_id = location_id + [f"{sub_f!r} <-> {template_argument_value.full_name}"]
             _delegate_constraint_check(
-                sub_f, template_argument_value, validator, new_location_id, sub_errors, collect_all
+                sub_f, template_argument_value, validator, new_location_id, sub_errors, collect_all_errors
             )
         except StopValidation:
             pass
@@ -165,7 +171,7 @@ def _validate_or(
             or_errors.append(sub_errors)
         else:
             success = True
-            if not collect_all:
+            if not collect_all_errors:
                 break
     if not success:
         err = CHSemanticError(
@@ -174,37 +180,37 @@ def _validate_or(
         )
         for or_error in or_errors:
             err.causes.extend(or_error)
-        record(errors, collect_all, err)
+        record(errors, collect_all_errors, err)
 
 
 def _validate_not(
     formula: TemplateConstraintNot,
-    template_argument_value: TemplateArgumentValue,
+    template_argument_value: ConceptHierarchyTemplateArgument,
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ):
     sub_errors = []
     try:
         new_location_id = location_id + [f"{formula.sub_formula} <-> {template_argument_value.full_name}"]
         _delegate_constraint_check(
-            formula.sub_formula, template_argument_value, validator, new_location_id, sub_errors, collect_all
+            formula.sub_formula, template_argument_value, validator, new_location_id, sub_errors, collect_all_errors
         )
     except StopValidation:
         pass
     if not sub_errors:
         err = CHSemanticError(f"Not formula {formula!r} was satisfied!", location_id=location_id)
-        record(errors, collect_all, err)
+        record(errors, collect_all_errors, err)
 
 
 def _create_iteration_data(
-    template_argument_value: TemplateArgumentValue,
-) -> tuple[tuple[ParsedType | TemplateArgumentLiteral, ...], bool]:
-    if not isinstance(template_argument_value, TemplateArgumentVariadicGroup):
+    template_argument_value: ConceptHierarchyTemplateArgument,
+) -> tuple[tuple[ConceptHierarchyType | LiteralValue | TemplateVariable, ...], bool]:
+    if not isinstance(template_argument_value, ConceptHierarchyVariadicGroup):
         is_variadic = False
-        assert isinstance(template_argument_value, (ParsedType, TemplateArgumentLiteral))
-        to_check: tuple[ParsedType | TemplateArgumentLiteral, ...] = (template_argument_value,)
+        assert isinstance(template_argument_value, (ConceptHierarchyType, LiteralValue, TemplateVariable))
+        to_check: tuple[ConceptHierarchyType | LiteralValue | TemplateVariable, ...] = (template_argument_value,)
     else:
         is_variadic = True
         to_check = template_argument_value.variadic_group
@@ -213,11 +219,11 @@ def _create_iteration_data(
 
 def _validate_type(
     formula: TemplateConstraintHierarchyOperator,
-    template_argument_value: TemplateArgumentValue,
+    template_argument_value: ConceptHierarchyTemplateArgument,
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ):
     to_check, is_variadic = _create_iteration_data(template_argument_value)
     for index, t_arg in enumerate(to_check):
@@ -225,27 +231,32 @@ def _validate_type(
             arg_str = f"Argument {index + 1} of {template_argument_value.full_name!r}"
         else:
             arg_str = f"{t_arg.full_name!r}"
-        if isinstance(t_arg, TemplateArgumentLiteral):
+        if isinstance(t_arg, LiteralValue):
             err = CHSemanticError(
                 f"{arg_str} is a literal value, which can not match the type constraint {formula!r}",
                 location_id=location_id,
             )
-            record(errors, collect_all, err)
-        assert isinstance(t_arg, ParsedType)
+            record(errors, collect_all_errors, err)
+            continue
+        assert isinstance(t_arg, (ConceptHierarchyType, TemplateVariable))
+        if isinstance(t_arg, TemplateVariable):
+            t_arg.add_constraint(formula)
+            continue
+        assert isinstance(t_arg, ConceptHierarchyType)
         if not validator.type_check(t_arg, formula.literal, formula.hierarchy_op):
             err = CHSemanticError(
                 f"{arg_str} does not satisfy the constraint {formula!r}: type checking failed!",
                 location_id=location_id,
             )
-            record(errors, collect_all, err)
+            record(errors, collect_all_errors, err)
             continue
         if not formula.has_specification_of_template_constraints:
             continue
         # Check the template argument constraints of the literal_type
         # It is not the template arguments of this value (template_argument_value) that must be checked,
         #  but the substitution value of the template arguments of literal_type that must match the constraints!
-        literal_type_substituted_template_args: list[TemplateArgumentValue] = validator.create_substitution_for(
-            formula.literal, t_arg
+        literal_type_substituted_template_args: list[ConceptHierarchyTemplateArgument] = (
+            validator.create_substitution_for(formula.literal, t_arg)
         )
         if len(literal_type_substituted_template_args) != len(formula.literal_template_formulae):
             raise RuntimeError(
@@ -261,13 +272,13 @@ def _validate_type(
             try:
                 new_location_id = location_id + [f"{t_arg_constraint!r} <-> {t_arg_value.full_name}"]
                 _delegate_constraint_check(
-                    t_arg_constraint, t_arg_value, validator, new_location_id, t_arg_errors, collect_all
+                    t_arg_constraint, t_arg_value, validator, new_location_id, t_arg_errors, collect_all_errors
                 )
             except StopValidation:
                 pass
             if t_arg_errors:
                 all_t_arg_errors.append(t_arg_errors)
-                if not collect_all:
+                if not collect_all_errors:
                     break
         if all_t_arg_errors:
             err = CHSemanticError(
@@ -277,7 +288,7 @@ def _validate_type(
             )
             for t_arg_error in all_t_arg_errors:
                 err.causes.extend(t_arg_error)
-            record(errors, collect_all, err)
+            record(errors, collect_all_errors, err)
 
 
 def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: TemplateArgumentLiteral) -> bool:
@@ -311,10 +322,10 @@ def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: Template
 
 def _validate_literal(
     formula: NonTypeTemplateConstraintFormula | LiteralValueConstraintFormula,
-    template_argument_value: TemplateArgumentValue,
+    template_argument_value: ConceptHierarchyTemplateArgument,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ):
     f_check: Callable[
         [NonTypeTemplateConstraintFormula | LiteralValueConstraintFormula, TemplateArgumentLiteral], bool
@@ -325,16 +336,20 @@ def _validate_literal(
             arg_str = f"Argument {index + 1} of {template_argument_value.full_name!r}"
         else:
             arg_str = f"{t_arg.full_name!r}"
-        if isinstance(t_arg, ParsedType):
+        if isinstance(t_arg, ConceptHierarchyType):
             err = CHSemanticError(
                 f"{arg_str} is a type value, which can not match the non-type constraint {formula!r}",
                 location_id=location_id,
             )
-            record(errors, collect_all, err)
+            record(errors, collect_all_errors, err)
+            continue
+        if isinstance(t_arg, TemplateVariable):
+            t_arg.add_constraint(formula)
+            continue
         assert isinstance(t_arg, TemplateArgumentLiteral)
         if not f_check(formula, t_arg):
             err = CHSemanticError(
                 f"{arg_str} does not satisfy the constraint {formula!r}",
                 location_id=location_id,
             )
-            record(errors, collect_all, err)
+            record(errors, collect_all_errors, err)
