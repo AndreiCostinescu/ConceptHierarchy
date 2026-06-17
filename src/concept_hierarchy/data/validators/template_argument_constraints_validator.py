@@ -15,22 +15,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from enum import Enum
 from typing import Callable
 
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+    HierarchyCheckType,
     LiteralValueConstraintFormula,
     NonTypeTemplateConstraintFormula,
-    TemplateConstraintAbstractAscendants,
-    TemplateConstraintAbstractDescendants,
     TemplateConstraintAnd,
-    TemplateConstraintAscendants,
-    TemplateConstraintDescendants,
     TemplateConstraintFormula,
     TemplateConstraintHierarchyOperator,
     TemplateConstraintNot,
     TemplateConstraintOr,
-    TemplateConstraintSelf,
 )
 from concept_hierarchy.data.types.parsed_type import (
     ParsedType,
@@ -41,14 +36,6 @@ from concept_hierarchy.data.types.parsed_type import (
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
-
-
-class HierarchyCheckType(Enum):
-    DESCENDANTS_OF = (0,)
-    ABSTRACT_DESCENDANTS_OF = (1,)
-    ASCENDANTS_OF = (2,)
-    ABSTRACT_ASCENDANTS_OF = (3,)
-    SELF = 4
 
 
 class TemplateConstraintArgumentValidator(ABC):
@@ -232,19 +219,6 @@ def _validate_type(
     errors: list[ConceptHierarchyError],
     collect_all: bool,
 ):
-    match formula:
-        case TemplateConstraintSelf():
-            hierarchy_check_type = HierarchyCheckType.SELF
-        case TemplateConstraintDescendants():
-            hierarchy_check_type = HierarchyCheckType.DESCENDANTS_OF
-        case TemplateConstraintAbstractDescendants():
-            hierarchy_check_type = HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
-        case TemplateConstraintAscendants():
-            hierarchy_check_type = HierarchyCheckType.ASCENDANTS_OF
-        case TemplateConstraintAbstractAscendants():
-            hierarchy_check_type = HierarchyCheckType.ABSTRACT_ASCENDANTS_OF
-        case _:
-            raise ValueError(f"Unknown formula type: {type(formula)!r}")
     to_check, is_variadic = _create_iteration_data(template_argument_value)
     for index, t_arg in enumerate(to_check):
         if is_variadic:
@@ -258,7 +232,7 @@ def _validate_type(
             )
             record(errors, collect_all, err)
         assert isinstance(t_arg, ParsedType)
-        if not validator.type_check(t_arg, formula.literal, hierarchy_check_type):
+        if not validator.type_check(t_arg, formula.literal, formula.hierarchy_op):
             err = CHSemanticError(
                 f"{arg_str} does not satisfy the constraint {formula!r}: type checking failed!",
                 location_id=location_id,

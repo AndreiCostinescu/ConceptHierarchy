@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from enum import Enum
 
 from concept_hierarchy.errors import LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
@@ -140,6 +141,14 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
         self.used_variables.update(self.sub_formula.used_variables)
 
 
+class HierarchyCheckType(Enum):
+    DESCENDANTS_OF = (0,)
+    ABSTRACT_DESCENDANTS_OF = (1,)
+    ASCENDANTS_OF = (2,)
+    ABSTRACT_ASCENDANTS_OF = (3,)
+    SELF = 4
+
+
 # The literal is just the concept name: context.ch.is_concept(self.literal)
 # If the concept is a template ValueDomain, and it doesn't have any template restrictions,
 #  then it accepts all template-instantiations
@@ -150,11 +159,13 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
         literal_template_formulae: tuple[TemplateConstraintFormula, ...] | None,
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
+        hierarchy_op: HierarchyCheckType,
     ):
         super().__init__(location_id)
         self.literal = literal
         self.has_specification_of_template_constraints = literal_template_formulae is not None
         self.literal_template_formulae: tuple[TemplateConstraintFormula, ...] = literal_template_formulae or ()
+        self.hierarchy_op: HierarchyCheckType = hierarchy_op
 
         # validate self.literal type
         validator.validate(
@@ -190,7 +201,7 @@ class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
-        super().__init__(literal, literal_template_formulae, validator, location_id)
+        super().__init__(literal, literal_template_formulae, validator, location_id, HierarchyCheckType.DESCENDANTS_OF)
 
     def __repr__(self):
         return self.print_literal()
@@ -204,7 +215,9 @@ class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator)
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
-        super().__init__(literal, literal_template_formulae, validator, location_id)
+        super().__init__(
+            literal, literal_template_formulae, validator, location_id, HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+        )
 
     def __repr__(self):
         return self.print_literal() + "*"
@@ -218,7 +231,7 @@ class TemplateConstraintSelf(TemplateConstraintHierarchyOperator):
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
-        super().__init__(literal, literal_template_formulae, validator, location_id)
+        super().__init__(literal, literal_template_formulae, validator, location_id, HierarchyCheckType.SELF)
 
     def __repr__(self):
         return self.print_literal() + "."
@@ -232,7 +245,7 @@ class TemplateConstraintAscendants(TemplateConstraintHierarchyOperator):
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
-        super().__init__(literal, literal_template_formulae, validator, location_id)
+        super().__init__(literal, literal_template_formulae, validator, location_id, HierarchyCheckType.ASCENDANTS_OF)
 
     def __repr__(self):
         return "^" + self.print_literal()
@@ -246,7 +259,9 @@ class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
-        super().__init__(literal, literal_template_formulae, validator, location_id)
+        super().__init__(
+            literal, literal_template_formulae, validator, location_id, HierarchyCheckType.ABSTRACT_ASCENDANTS_OF
+        )
 
     def __repr__(self):
         return "^" + self.print_literal() + "*"
