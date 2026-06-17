@@ -25,15 +25,15 @@ from concept_hierarchy.errors import ConceptHierarchyError
 
 class StopValidation(Exception):
     """Raised internally to unwind the recursive validators as soon as the
-    first error is found, when ``collect_all=False`` (fail-fast mode)."""
+    first error is found, when ``collect_all_errors=False`` (fail-fast mode)."""
 
 
-def record(errors: list[ConceptHierarchyError], collect_all: bool, err: ConceptHierarchyError) -> None:
+def record(errors: list[ConceptHierarchyError], collect_all_errors: bool, err: ConceptHierarchyError) -> None:
     """
     Append ``err`` to ``errors`` and, in fail-fast mode, immediately stop validation by raising :class:`StopValidation`.
     """
     errors.append(err)
-    if not collect_all:
+    if not collect_all_errors:
         raise StopValidation()
 
 

@@ -108,7 +108,7 @@ class CHSchemaContext(ABC):
 # Public entry point
 # ---------------------------------------------------------------------------
 def parse_schema(
-    schema: object, context: CHSchemaContext, location_id: LocationId = None, collect_all: bool = True
+    schema: object, context: CHSchemaContext, location_id: LocationId = None, collect_all_errors: bool = True
 ) -> tuple[CHSchemaNode | None, list[ConceptHierarchyError]]:
     """Parse and validate ``schema``.
 
@@ -117,7 +117,7 @@ def parse_schema(
             (using the shorthand notations described in the module docstring, plus full draft-07).
         context: Used to validate custom type names (see :class:`~ch_schema.context.CHSchemaContext`).
         location_id: The location in a Concept Hierarchy where the schema is defined (and parsed)
-        collect_all: If ``True`` (default), collect every error found. If ``False``, stop at the first error.
+        collect_all_errors: If ``True`` (default), collect every error found. If ``False``, stop at the first error.
 
     Returns:
         A tuple ``(node, errors)``. ``node`` is the parsed AST (or ``None`` if parsing failed catastrophically before
@@ -132,9 +132,9 @@ def parse_schema(
     try:
         if location_id is None:
             location_id = []
-        node = _build_node(schema, location_id, context, errors, collect_all)
-        _resolve_local_refs(node, errors, collect_all)
-        _check_meta_schema(node, errors, collect_all)
+        node = _build_node(schema, location_id, context, errors, collect_all_errors)
+        _resolve_local_refs(node, errors, collect_all_errors)
+        _check_meta_schema(node, errors, collect_all_errors)
     except StopValidation:
         pass
     return node, errors
@@ -151,7 +151,11 @@ def _expand_string_shorthand(raw: str) -> dict:
 
 
 def _expand_array_shorthand(
-    raw: list, location_id: LocationId, context: CHSchemaContext, errors: list[ConceptHierarchyError], collect_all: bool
+    raw: list,
+    location_id: LocationId,
+    context: CHSchemaContext,
+    errors: list[ConceptHierarchyError],
+    collect_all_errors: bool,
 ) -> dict | bool:
     valid_shape = (
         len(raw) == 2
@@ -162,7 +166,7 @@ def _expand_array_shorthand(
     if not valid_shape:
         record(
             errors,
-            collect_all,
+            collect_all_errors,
             CHSyntaxError(
                 'Array shorthand must be of the form [<Concept Hierarchy type name>, "Reference"|"NoRef"]',
                 location_id,
@@ -171,7 +175,7 @@ def _expand_array_shorthand(
         if isinstance(raw[0], list):
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSyntaxError(
                     f'Concept Hierarchy types are not allowed inside a multi-type "type" array (got {raw[0]!r}); use '
                     f"the single-type shorthand or object form for a Concept Hierarchy type\n(+ define a Variant<T...> "
@@ -187,7 +191,7 @@ def _expand_array_shorthand(
     if type_name in BUILTIN_TYPES:
         record(
             errors,
-            collect_all,
+            collect_all_errors,
             CHSyntaxError(
                 f"A reference kind ({ref_kind!r}) can only be given for Concept Hierarchy types, not for the builtin "
                 f"type {type_name!r}",
@@ -207,7 +211,7 @@ def _build_node(
     location_id: LocationId,
     context: CHSchemaContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> CHSchemaNode:
     if isinstance(raw, bool):
         node = CHSchemaNode(location_id=location_id, raw=raw, canonical=raw)
@@ -218,13 +222,13 @@ def _build_node(
     if isinstance(raw, str):
         canonical: dict | bool = _expand_string_shorthand(raw)
     elif isinstance(raw, list):
-        canonical = _expand_array_shorthand(raw, location_id, context, errors, collect_all)
+        canonical = _expand_array_shorthand(raw, location_id, context, errors, collect_all_errors)
     elif isinstance(raw, dict):
         canonical = raw
     else:
         record(
             errors,
-            collect_all,
+            collect_all_errors,
             CHSyntaxError(
                 f"A schema must be a boolean (accepts all or nothing), a string (type shorthand), an array "
                 f"(Concept Hierarchy type shorthand), or an object; got {type(raw).__name__} at {raw!r}",
@@ -239,7 +243,7 @@ def _build_node(
         node.shallow_canonical = canonical
         return node
 
-    return _build_object_node(raw, canonical, location_id, context, errors, collect_all)
+    return _build_object_node(raw, canonical, location_id, context, errors, collect_all_errors)
 
 
 def _build_object_node(
@@ -248,7 +252,7 @@ def _build_object_node(
     location_id: LocationId,
     context: CHSchemaContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> CHSchemaNode:
     node = CHSchemaNode(location_id=location_id, raw=raw, canonical=canonical)
     work = dict(canonical)  # local working copy we can pop() from
@@ -268,7 +272,7 @@ def _build_object_node(
                 any_invalid = True
                 record(
                     errors,
-                    collect_all,
+                    collect_all_errors,
                     CHSyntaxError(
                         f'Concept Hierarchy types are not allowed inside a multi-type "type" array (got {t!r}); use the'
                         f" single-type shorthand or object form for a Concept Hierarchy type\n(+ define a Variant<T...>"
@@ -286,10 +290,10 @@ def _build_object_node(
                 work.pop("type", None)
 
     if is_custom:
-        _finish_custom_type_node(node, type_value, work, location_id, context, errors, collect_all)
+        _finish_custom_type_node(node, type_value, work, location_id, context, errors, collect_all_errors)
         return node
 
-    return _finish_builtin_node(node, work, location_id, context, errors, collect_all)
+    return _finish_builtin_node(node, work, location_id, context, errors, collect_all_errors)
 
 
 def _finish_custom_type_node(
@@ -299,20 +303,20 @@ def _finish_custom_type_node(
     location_id: LocationId,
     context: CHSchemaContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> None:
     node.is_custom_type = True
     node.custom_type_name = type_name
 
     err = context.check_custom_type(type_name, location_id + ["type"])
     if err is not None:
-        record(errors, collect_all, err)
+        record(errors, collect_all_errors, err)
 
     ref = work.get("referenceType", "NoRef")
     if "referenceType" in work and work["referenceType"] not in context.argument_reference_types:
         record(
             errors,
-            collect_all,
+            collect_all_errors,
             CHSyntaxError(
                 f'"referenceType" must be "Reference" or "NoRef", got {work["referenceType"]!r}',
                 location_id + ["referenceType"],
@@ -331,7 +335,7 @@ def _finish_custom_type_node(
         if key not in CUSTOM_TYPE_EXTRA_KEYS:
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSyntaxError(
                     f"Key {key!r} is not allowed on a Concept Hierarchy type schema "
                     f"(only {sorted(CUSTOM_TYPE_EXTRA_KEYS)} are allowed)",
@@ -352,12 +356,12 @@ def _finish_builtin_node(
     location_id: LocationId,
     context: CHSchemaContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> CHSchemaNode:
     if "referenceType" in work:
         record(
             errors,
-            collect_all,
+            collect_all_errors,
             CHSyntaxError(
                 '"referenceType" is only allowed on custom-type schemas (i.e. when "type" is a single Concept Hierarchy'
                 " type)",
@@ -369,7 +373,7 @@ def _finish_builtin_node(
     # "default" is a normal draft-07 annotation keyword here; leave it in extra_keywords untouched.
 
     def child(value: object, *suffix: PathSegment) -> CHSchemaNode:
-        return _build_node(value, location_id + list(suffix), context, errors, collect_all)
+        return _build_node(value, location_id + list(suffix), context, errors, collect_all_errors)
 
     # --- object structure -------------------------------------------------
     if "properties" in work:
@@ -380,7 +384,7 @@ def _finish_builtin_node(
         else:
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSyntaxError('"properties" must be an object', location_id + ["properties"]),
             )
 
@@ -392,7 +396,7 @@ def _finish_builtin_node(
         else:
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSyntaxError('"patternProperties" must be an object', location_id + ["patternProperties"]),
             )
 
@@ -412,7 +416,9 @@ def _finish_builtin_node(
             node.required = req
         else:
             record(
-                errors, collect_all, CHSyntaxError('"required" must be an array of strings', location_id + ["required"])
+                errors,
+                collect_all_errors,
+                CHSyntaxError('"required" must be an array of strings', location_id + ["required"]),
             )
 
     if "dependencies" in work:
@@ -429,7 +435,7 @@ def _finish_builtin_node(
         else:
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSyntaxError('"dependencies" must be an object', location_id + ["dependencies"]),
             )
 
@@ -460,7 +466,7 @@ def _finish_builtin_node(
             else:
                 record(
                     errors,
-                    collect_all,
+                    collect_all_errors,
                     CHSyntaxError(f'"{keyword}" must be an array of schemas', location_id + [keyword]),
                 )
 
@@ -479,7 +485,9 @@ def _finish_builtin_node(
                 for key, sub in defs.items():
                     node.definitions[key] = child(sub, keyword, key)
             else:
-                record(errors, collect_all, CHSyntaxError(f'"{keyword}" must be an object', location_id + [keyword]))
+                record(
+                    errors, collect_all_errors, CHSyntaxError(f'"{keyword}" must be an object', location_id + [keyword])
+                )
 
     if "$ref" in work:
         ref_val = work.pop("$ref")
@@ -488,7 +496,7 @@ def _finish_builtin_node(
         else:
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSyntaxError('"$ref" must be a string', location_id + ["$ref"]),
             )
 
@@ -572,7 +580,7 @@ def _build_safe_canonical(node: CHSchemaNode) -> dict:
 # ---------------------------------------------------------------------------
 # $ref resolution (local "#/definitions/..." and "#/$defs/..." only)
 # ---------------------------------------------------------------------------
-def _resolve_local_refs(root: CHSchemaNode, errors: list[ConceptHierarchyError], collect_all: bool) -> None:
+def _resolve_local_refs(root: CHSchemaNode, errors: list[ConceptHierarchyError], collect_all_errors: bool) -> None:
     defs_by_name = {}
     for n in root.walk():
         for key, child in n.definitions.items():
@@ -587,7 +595,7 @@ def _resolve_local_refs(root: CHSchemaNode, errors: list[ConceptHierarchyError],
         else:
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSyntaxError(
                     f"Cannot resolve $ref {n.ref_string!r} (only local references of the form "
                     f'"#/definitions/<name>" or "#/$defs/<name>" are supported)',
@@ -599,7 +607,7 @@ def _resolve_local_refs(root: CHSchemaNode, errors: list[ConceptHierarchyError],
 # ---------------------------------------------------------------------------
 # draft-07 meta-schema check
 # ---------------------------------------------------------------------------
-def _check_meta_schema(root: CHSchemaNode, errors: list[ConceptHierarchyError], collect_all: bool) -> None:
+def _check_meta_schema(root: CHSchemaNode, errors: list[ConceptHierarchyError], collect_all_errors: bool) -> None:
     """Validate ``root.safe_canonical`` against the draft-07 meta-schema.
 
     Because shorthand expansion never changes the *path* of a node (it only ever turns the value found at a given path
@@ -609,4 +617,7 @@ def _check_meta_schema(root: CHSchemaNode, errors: list[ConceptHierarchyError], 
     """
     meta_validator = Draft7Validator(Draft7Validator.META_SCHEMA)
     for err in meta_validator.iter_errors(root.safe_canonical):
-        record(errors, collect_all, CHSyntaxError(err.message, list(err.path)))
+        print(type(err))
+        print(err.path)
+        assert False
+        record(errors, collect_all_errors, CHSyntaxError(err.message, list(err.path)))

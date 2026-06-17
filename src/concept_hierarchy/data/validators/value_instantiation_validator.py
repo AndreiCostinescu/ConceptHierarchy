@@ -98,7 +98,11 @@ class CHValueContext(ABC):
 
 
 def validate_value(
-    value: object, node: CHSchemaNode, context: CHValueContext, location_id: LocationId = None, collect_all: bool = True
+    value: object,
+    node: CHSchemaNode,
+    context: CHValueContext,
+    location_id: LocationId = None,
+    collect_all_errors: bool = True,
 ) -> list[ConceptHierarchyError]:
     """Validate ``value`` against the schema represented by ``node``.
 
@@ -108,7 +112,7 @@ def validate_value(
             this on a schema that came back with no errors from ``parse_schema``.)
         context: Used to validate values found at custom-type nodes; see :class:`~ch_schema.context.CHValueContext`.
         location_id: The starting location in a Concept Hierarchy where the check starts
-        collect_all: If ``True`` (default), collect every error found. If ``False``, stop at the first error.
+        collect_all_errors: If ``True`` (default), collect every error found. If ``False``, stop at the first error.
 
     Returns:
         A list of :class:`~ch_schema.errors.CHSemanticError` (and, in principle,
@@ -119,7 +123,7 @@ def validate_value(
         location_id = []
     errors: list[ConceptHierarchyError] = []
     try:
-        _validate(node, value, True, location_id, context, errors, collect_all)
+        _validate(node, value, True, location_id, context, errors, collect_all_errors)
     except StopValidation:
         pass
     return errors
@@ -133,7 +137,7 @@ def _validate(
     value_path: LocationId,
     context: CHValueContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> None:
     # An absent optional value has nothing to check here.
     # (`required` is handled by the parent object node, which knows the property name.)
@@ -142,13 +146,15 @@ def _validate(
 
     # --- $ref: delegate entirely (draft-07 ignores siblings of $ref) ----
     if node.ref_resolved is not None:
-        _validate(node.ref_resolved, value, present, value_path, context, errors, collect_all)
+        _validate(node.ref_resolved, value, present, value_path, context, errors, collect_all_errors)
         return
 
     # --- boolean schema --------------------------------------------------
     if node.is_boolean_schema():
         if node.canonical is False:
-            record(errors, collect_all, CHSemanticError("no value is allowed here (schema is `false`)", value_path))
+            record(
+                errors, collect_all_errors, CHSemanticError("no value is allowed here (schema is `false`)", value_path)
+            )
         return
 
     # --- custom type: delegate to the value context ----------------------
@@ -156,14 +162,14 @@ def _validate(
         default_expr = node.default_expr if node.has_default else MISSING
         err = context.check_value(node.custom_type_name, node.ref, default_expr, value, value_path)
         if err is not None:
-            record(errors, collect_all, err)
+            record(errors, collect_all_errors, err)
         return
 
     # --- this node's own keywords (type, enum, const, numeric/string/array
     # size constraints, format, ...) -------------------------------------
     validator = Draft7Validator(node.shallow_canonical)
     for e in validator.iter_errors(value):
-        record(errors, collect_all, CHSemanticError(e.message, value_path + list(e.absolute_path)))
+        record(errors, collect_all_errors, CHSemanticError(e.message, value_path + list(e.absolute_path)))
 
     # --- required ----------------------------------------------------------
     if node.required and isinstance(value, dict):
@@ -171,41 +177,41 @@ def _validate(
             if key not in value:
                 record(
                     errors,
-                    collect_all,
+                    collect_all_errors,
                     CHSemanticError("required property is missing", value_path + [key], part=PathPart.KEY),
                 )
 
     # --- object structure --------------------------------------------------
     if isinstance(value, dict):
-        _validate_object(node, value, value_path, context, errors, collect_all)
+        _validate_object(node, value, value_path, context, errors, collect_all_errors)
 
     # --- array structure --------------------------------------------------
     if isinstance(value, list):
-        _validate_array(node, value, value_path, context, errors, collect_all)
+        _validate_array(node, value, value_path, context, errors, collect_all_errors)
 
     # --- composition --------------------------------------------------------
     if node.all_of:
         for sub in node.all_of:
-            _validate(sub, value, True, value_path, context, errors, collect_all)
+            _validate(sub, value, True, value_path, context, errors, collect_all_errors)
 
     if node.any_of:
-        _validate_any_of(node, value, value_path, context, errors, collect_all)
+        _validate_any_of(node, value, value_path, context, errors, collect_all_errors)
 
     if node.one_of:
-        _validate_one_of(node, value, value_path, context, errors, collect_all)
+        _validate_one_of(node, value, value_path, context, errors, collect_all_errors)
 
     if node.not_ is not None:
         tmp: list[ConceptHierarchyError] = []
         _validate(node.not_, value, True, value_path, context, tmp, True)
         if not tmp:
-            record(errors, collect_all, CHSemanticError("Value must not match the schema in 'not'", value_path))
+            record(errors, collect_all_errors, CHSemanticError("Value must not match the schema in 'not'", value_path))
 
     if node.if_ is not None:
         tmp = []
         _validate(node.if_, value, True, value_path, context, tmp, True)
         branch = node.then_ if not tmp else node.else_
         if branch is not None:
-            _validate(branch, value, True, value_path, context, errors, collect_all)
+            _validate(branch, value, True, value_path, context, errors, collect_all_errors)
 
 
 # ---------------------------------------------------------------------------
@@ -215,20 +221,20 @@ def _validate_object(
     value_path: LocationId,
     context: CHValueContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> None:
     matched_keys = set()
 
     for key, child in node.properties.items():
         matched_keys.add(key)
-        _validate(child, value.get(key), key in value, value_path + [key], context, errors, collect_all)
+        _validate(child, value.get(key), key in value, value_path + [key], context, errors, collect_all_errors)
 
     for pattern, child in node.pattern_properties.items():
         regex = re.compile(pattern)
         for key in value:
             if regex.search(key):
                 matched_keys.add(key)
-                _validate(child, value[key], True, value_path + [key], context, errors, collect_all)
+                _validate(child, value[key], True, value_path + [key], context, errors, collect_all_errors)
 
     if node.additional_properties is not None:
         for key in value:
@@ -237,14 +243,20 @@ def _validate_object(
             if node.additional_properties is False:
                 record(
                     errors,
-                    collect_all,
+                    collect_all_errors,
                     CHSemanticError("Additional property is not allowed", value_path + [key], part=PathPart.KEY),
                 )
             elif node.additional_properties is True:
                 pass
             else:
                 _validate(
-                    node.additional_properties, value[key], True, value_path + [key], context, errors, collect_all
+                    node.additional_properties,
+                    value[key],
+                    True,
+                    value_path + [key],
+                    context,
+                    errors,
+                    collect_all_errors,
                 )
 
     if node.property_names is not None:
@@ -259,14 +271,16 @@ def _validate_object(
                 )
                 if err is not None:
                     err.part = PathPart.KEY
-                    record(errors, collect_all, err)
+                    record(errors, collect_all_errors, err)
             else:
                 for e in pn_validator.iter_errors(key):
-                    record(errors, collect_all, CHSemanticError(e.message, value_path + [key], part=PathPart.KEY))
+                    record(
+                        errors, collect_all_errors, CHSemanticError(e.message, value_path + [key], part=PathPart.KEY)
+                    )
 
     for key, child in node.dependent_schemas.items():
         if key in value:
-            _validate(child, value, True, value_path, context, errors, collect_all)
+            _validate(child, value, True, value_path, context, errors, collect_all_errors)
 
 
 def _validate_array(
@@ -275,22 +289,24 @@ def _validate_array(
     value_path: LocationId,
     context: CHValueContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> None:
     if isinstance(node.items, list):
         for i, item in enumerate(value):
             if i < len(node.items):
-                _validate(node.items[i], item, True, value_path + [i], context, errors, collect_all)
+                _validate(node.items[i], item, True, value_path + [i], context, errors, collect_all_errors)
             elif node.additional_items is not None:
                 if node.additional_items is False:
-                    record(errors, collect_all, CHSemanticError("Additional item is not allowed", value_path + [i]))
+                    record(
+                        errors, collect_all_errors, CHSemanticError("Additional item is not allowed", value_path + [i])
+                    )
                 elif node.additional_items is True:
                     pass
                 else:
-                    _validate(node.additional_items, item, True, value_path + [i], context, errors, collect_all)
+                    _validate(node.additional_items, item, True, value_path + [i], context, errors, collect_all_errors)
     elif node.items is not None:
         for i, item in enumerate(value):
-            _validate(node.items, item, True, value_path + [i], context, errors, collect_all)
+            _validate(node.items, item, True, value_path + [i], context, errors, collect_all_errors)
 
     if node.contains is not None:
         found = False
@@ -303,7 +319,7 @@ def _validate_array(
         if not found:
             record(
                 errors,
-                collect_all,
+                collect_all_errors,
                 CHSemanticError("Array does not contain any element matching the 'contains' schema", value_path),
             )
 
@@ -314,7 +330,7 @@ def _validate_any_of(
     value_path: LocationId,
     context: CHValueContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> None:
     branch_errors: list[list[ConceptHierarchyError]] = []
     for sub in node.any_of:
@@ -327,7 +343,7 @@ def _validate_any_of(
     err = CHSemanticError("Value does not match any schema in 'anyOf'", value_path)
     for be in branch_errors:
         err.causes.extend(be)
-    record(errors, collect_all, err)
+    record(errors, collect_all_errors, err)
 
 
 def _validate_one_of(
@@ -336,7 +352,7 @@ def _validate_one_of(
     value_path: LocationId,
     context: CHValueContext,
     errors: list[ConceptHierarchyError],
-    collect_all: bool,
+    collect_all_errors: bool,
 ) -> None:
     branch_errors: list[list[ConceptHierarchyError]] = []
     matches = 0
@@ -358,4 +374,4 @@ def _validate_one_of(
     err = CHSemanticError(message, value_path)
     for be in branch_errors:
         err.causes.extend(be)
-    record(errors, collect_all, err)
+    record(errors, collect_all_errors, err)
