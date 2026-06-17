@@ -399,7 +399,9 @@ class ConceptHierarchyChecker:
                                 continue
                             short_key = (None, parent_t_arg)
                             if short_key in c.substitution_of_template_arguments:
-                                extra_t_subst_keys.remove(short_key)
+                                # use .discard instead or .remove because if there is an ambiguous specialization,
+                                # .remove will be called multiple times on the same element, which will raise an error.
+                                extra_t_subst_keys.discard(short_key)
                                 matched_parents_of_shorthand_syntax[parent_t_arg] = parent
                                 continue
                             if not c.has_location_of(HiddenImplementationDefinition.hidden_template_arguments):
@@ -431,7 +433,10 @@ class ConceptHierarchyChecker:
                             )
                     # ensure that shorthand-syntax specified substitution arguments are unambiguous
                     for t_arg_name, parents_defining_t_arg in template_arguments_to_substitute.items():
-                        if len(parents_defining_t_arg) > 1 and t_arg_name in c.substitution_of_template_arguments:
+                        if (
+                            len(parents_defining_t_arg) > 1
+                            and (None, t_arg_name) in c.substitution_of_template_arguments
+                        ):
                             raise CHSemanticError(
                                 f"The substitution specification of template argument {t_arg_name} is ambiguous in "
                                 f"{c_name} because the parent concepts {parents_defining_t_arg} define the template "
