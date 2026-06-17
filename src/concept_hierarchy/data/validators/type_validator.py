@@ -21,46 +21,119 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentLiteral,
     TemplateArgumentValue,
     TemplateArgumentVariadicGroup,
+    TemplateArgumentWithVariadicId,
 )
-from concept_hierarchy.errors import LocationId
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 
 
 class TypeValidator(ABC):
     @abstractmethod
-    def validate_type(self, ch_type: ParsedType, location_id: LocationId):
+    def validate_type_and_parse_to_variadic_groups(self, ch_type: ParsedType, location_id: LocationId) -> ParsedType:
+        """
+        Validates:
+         - that the number of template arguments are correctly defined,
+         - that the variadic identifiers are correctly used in template argument values,
+         - transforms the representation from using variadic identifiers to using only variadic groups
+         - verifies that the constraints on template values are satisfied
+        """
         pass
 
     @abstractmethod
-    def make_canonic(self, ch_type: ParsedType) -> ParsedType:
+    def is_template_variable(self, ch_type: ParsedType) -> bool:
+        pass
+
+    @abstractmethod
+    def is_variadic_template_variable(self, ch_type: ParsedType) -> bool:
         pass
 
 
-def validate_type(t: ParsedType, validator: TypeValidator, location_id: LocationId | None) -> ParsedType:
+def validate_type(
+    t: ParsedType,
+    validator: TypeValidator,
+    location_id: LocationId | None,
+    *,
+    can_expand_variadic_template_arguments: bool = False,
+) -> ParsedType:
     if location_id is None:
         location_id = []
 
-    validated_template_arguments: list[TemplateArgumentValue] = []
-    for t_index, t_arg in enumerate(t.template_arguments):
-        new_location_id = location_id + [f"{t.full_name} template argument {t_index}"]
-        res = validate_template_argument_value(t_arg, validator, new_location_id)
-        validated_template_arguments.append(res)
+    # If it is a template variable, check
+    # - whether variadic values are allowed,
+    # - whether a variadic template variable is expanded,
+    # - whether a non-variadic template variable is expanded,
+    # - whether it is allowed to expand a variadic template variable (can expand_variadic_template_arguments), etc.
+    if validator.is_template_variable(t):
+        if validator.is_variadic_template_variable(t):
+            if t.has_variadic_template_expansion and not can_expand_variadic_template_arguments:
+                raise CHSemanticError(
+                    f"Use of the variadic expansion operator is not allowed at this location! Got {t.full_name}",
+                    location_id=location_id,
+                )
+        elif t.has_variadic_template_expansion:
+            raise CHSemanticError(
+                f"Used the variadic expansion operator '...' on the non variadic template variable {t.clean_name}",
+                location_id=location_id,
+            )
+        # defined template arguments on a template variable!
+        if t.is_templated:
+            raise CHSemanticError(
+                f"Can not define template arguments on a template argument in the current version of the "
+                f"Concept Hierarchy!\nFound {t.full_name}",
+                location_id=location_id,
+            )
+        return t
 
-    new_t = ParsedType(
-        t.name,
-        t.variadic_group_identifier,
-        t.has_variadic_template_expansion,
-        tuple(validated_template_arguments),
-        t.function_arguments,
-    )
-    validator.validate_type(new_t, location_id)
-    return validator.make_canonic(new_t)
+    # Bring to canonic form:
+    #   Use only variadic groups (no more ParsedTypes with variadic identifiers)
+    #   Make sure that mixed syntax with the empty variadic identifier is NOT used
+    #   Make sure that there are a correct amount of template arguments specified in the template-instantiation
+    # And validate sub-template arguments
+    #   this has to happen from inside the validator because only it knows
+    #   whether the template argument type is a variadic argument or not
+    return validator.validate_type_and_parse_to_variadic_groups(t, location_id)
 
 
 def validate_template_argument_value(
-    t: TemplateArgumentValue, validator: TypeValidator, location_id: LocationId | None
+    t: TemplateArgumentValue,
+    validator: TypeValidator,
+    location_id: LocationId | None,
+    is_used_as_a_variadic_argument: bool,
 ) -> TemplateArgumentValue:
     if location_id is None:
         location_id = []
+
+    if isinstance(t, TemplateArgumentWithVariadicId) and t.has_variadic_identifier:
+        raise CHSyntaxError(
+            f"Variadic identifiers should not have been used in this context! Found {t.variadic_group_identifier} at "
+            f"{t.full_name}!",
+            location_id=location_id,
+        )
+    if is_used_as_a_variadic_argument:
+        if isinstance(t, TemplateArgumentLiteral):
+            raise CHSemanticError(
+                f"The literal value {t.full_name!r} can not be used as a variadic template argument value!",
+                location_id=location_id,
+            )
+        elif isinstance(t, ParsedType):
+            if not validator.is_variadic_template_variable(t):
+                if validator.is_template_variable(t):
+                    raise CHSemanticError(
+                        f"The non-variadic template variable {t.full_name!r} can not be used as a variadic template "
+                        f"argument value!",
+                        location_id=location_id,
+                    )
+                raise CHSemanticError(
+                    f"The type value {t.full_name!r} can not be used as a variadic template argument value!",
+                    location_id=location_id,
+                )
+            elif t.has_variadic_template_expansion:
+                raise
+    elif isinstance(t, TemplateArgumentVariadicGroup):
+        raise CHSemanticError(
+            f"The variadic group {t.full_name!r} can not be used as a non-variadic template argument value!",
+            location_id=location_id,
+        )
+
     if isinstance(t, TemplateArgumentLiteral):
         return t
     if isinstance(t, ParsedType):
@@ -73,5 +146,7 @@ def validate_template_argument_value(
             validated_variadic_group.append(group_elem)
         else:
             assert isinstance(group_elem, ParsedType)
-            validated_variadic_group.append(validate_type(group_elem, validator, new_location_id))
+            validated_variadic_group.append(
+                validate_type(group_elem, validator, new_location_id, can_expand_variadic_template_arguments=True)
+            )
     return TemplateArgumentVariadicGroup(tuple(validated_variadic_group))
