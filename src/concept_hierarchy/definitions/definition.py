@@ -54,7 +54,6 @@ class ConceptHierarchyDefinition(ABC):
         self.definition_data: dict | str = definition_data
         self.definition_location_id: LocationId = definition_location_id
 
-        self.is_root: bool = False
         self.is_reference_to: str | None = None
         self.from_reference: str | None = None
 

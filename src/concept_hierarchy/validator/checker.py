@@ -75,7 +75,7 @@ class ConceptHierarchyChecker:
 
     @staticmethod
     def check_cycles_in_references_based_on_defined(
-        references: dict[str, ConceptHierarchyDefinition], definitions: dict, data_type: str
+        references: dict[str, ConceptHierarchyDefinition], definitions: dict, location_id: LocationId
     ) -> dict[str, str | None]:
         mapped_references: dict[str, str | None] = {x: None for x in definitions}
         for reference, ref_data in references.items():
@@ -87,7 +87,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f"The referenced concept {referenced_concept!r} of {reference} does not exist in the "
                     f"Concept Hierarchy!",
-                    location_id=[data_type, reference],
+                    location_id=location_id + [reference],
                     part=PathPart.VALUE,
                 )
         total_length = len(definitions) + len(references)
@@ -107,8 +107,8 @@ class ConceptHierarchyChecker:
                 break
             elif current_length == prev_length:
                 raise CHSemanticError(
-                    f"There is a cycle in the {data_type[:-1]} references: {set(references.keys())!r}",
-                    location_id=[data_type],
+                    f"There is a cycle in the {location_id[-1][:-1]} references: {set(references.keys())!r}",
+                    location_id=location_id,
                     part=PathPart.VALUE,
                 )
             prev_length = current_length
@@ -132,9 +132,9 @@ class ConceptHierarchyChecker:
         return self.model.ch
 
     @staticmethod
-    def resolve_references(referencing_others, defined_data, reference_type: str):
+    def resolve_references(referencing_others, defined_data, location_id: LocationId):
         mapped_data = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
-            referencing_others, defined_data, reference_type
+            referencing_others, defined_data, location_id
         )
         assert all(mapped_data[x] is None for x in defined_data)
         for referencing_name, referencing_def in referencing_others.items():
@@ -184,10 +184,14 @@ class ConceptHierarchyChecker:
         self.ch.metadata = {str(k): str(v) for k, v in raw_meta.items()}
 
         # -- concepts --------------------------------------------------------
+        concept_location_id: LocationId = LocationId()
+        if self.ch.file:
+            concept_location_id.append(self.ch.file)
+        concept_location_id.append(ConceptHierarchyModel.model_concepts)
         if ConceptHierarchyModel.model_concepts not in concept_hierarchy:
             raise CHSyntaxError(
                 f'Missing required top-level key: "{ConceptHierarchyModel.model_concepts}".',
-                location_id=[ConceptHierarchyModel.model_concepts],
+                location_id=concept_location_id,
                 part=PathPart.KEY,
             )
         concept_definition = concept_hierarchy[ConceptHierarchyModel.model_concepts]
@@ -196,15 +200,11 @@ class ConceptHierarchyChecker:
             raise CHSyntaxError(
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_concepts}" data must be a JSON object of concept '
                 f"definitions, not {concept_definition!r}.",
-                location_id=[ConceptHierarchyModel.model_concepts],
+                location_id=concept_location_id,
                 part=PathPart.VALUE,
             )
         concepts_referencing_others: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
-        concept_location_id: LocationId = LocationId()
-        if self.ch.file:
-            concept_location_id.append(self.ch.file)
-        concept_location_id.append(ConceptHierarchyModel.model_concepts)
         for concept_name, concept_def in concept_definition.items():  # type: str, object
             concept_definition = ConceptDefinition(
                 concept_name,
@@ -216,30 +216,30 @@ class ConceptHierarchyChecker:
                 concepts_referencing_others[concept_name] = concept_definition
             else:
                 defined_concepts[concept_name] = concept_definition
-        self.resolve_references(concepts_referencing_others, defined_concepts, ConceptHierarchyModel.model_concepts)
+        self.resolve_references(concepts_referencing_others, defined_concepts, concept_location_id)
 
         # -- instances (optional: default {}) --------------------------------
+        instances_location_id: LocationId = LocationId()
+        if self.ch.file:
+            instances_location_id.append(self.ch.file)
+        instances_location_id.append(ConceptHierarchyModel.model_instances)
         instance_definition = concept_hierarchy.get(ConceptHierarchyModel.model_instances, {})
         if not isinstance(instance_definition, dict):
             raise CHSyntaxError(
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_instances}" data must be a JSON object of definitions'
                 f" of instances, i.e. global variables, not {instance_definition!r}.",
-                location_id=[ConceptHierarchyModel.model_instances],
+                location_id=instances_location_id,
                 part=PathPart.VALUE,
             )
         instances_referencing_others: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
-        instances_location_id: LocationId = LocationId()
-        if self.ch.file:
-            instances_location_id.append(self.ch.file)
-        instances_location_id.append(ConceptHierarchyModel.model_instances)
         for variable_name, variable_def in instance_definition.items():  # type: str, object
             variable_definition = GlobalVariableDefinition(variable_name, variable_def, instances_location_id)
             if variable_definition.is_reference():
                 instances_referencing_others[variable_name] = variable_definition
             else:
                 defined_instances[variable_name] = variable_definition
-        self.resolve_references(instances_referencing_others, defined_instances, ConceptHierarchyModel.model_instances)
+        self.resolve_references(instances_referencing_others, defined_instances, instances_location_id)
         # missing checks:
         #  - valid expressions for all global variables
         #    EXPRESSION CHECK
@@ -268,7 +268,7 @@ class ConceptHierarchyChecker:
                 )
             elif self.ch.root_concept_name not in roots:
                 for root in roots:
-                    defined_concepts[root].parents.append(self.ch.root_concept_name)
+                    defined_concepts[root].update_parents((self.ch.root_concept_name,))
                 self.ch.concept_topo_sort = [self.ch.root_concept_name] + self.ch.concept_topo_sort
                 defined_concepts[self.ch.root_concept_name] = ConceptDefinition(
                     self.ch.root_concept_name, {}, concept_location_id
@@ -283,7 +283,6 @@ class ConceptHierarchyChecker:
                     location_id=[ConceptHierarchyModel.model_concepts],
                     part=PathPart.VALUE,
                 )
-            defined_concepts[root].is_root = True
             self.ch.root_concept_name = root
         except RuntimeError as e:
             if str(e).startswith("Non-hierarchy structure detected! The following items form one or more cycles:"):
@@ -331,7 +330,6 @@ class ConceptHierarchyChecker:
                 parents_concept_data[parent] = self.model.concepts[parent]
             parents_concepts = frozendict(parents_concept_data)
             try:
-                assert c.is_root == (c.parents == [])
                 if self.ch.is_function(c_name):
                     self.ch.concepts[c_name] = FunctionDefinition.from_node(c)
                     concept_data = FunctionData(c_name, parents_concepts)

@@ -41,7 +41,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         *,
         external_data_resolver: Callable | None = None,
     ):
-        self.parents: list[str] = []
+        self.parents: tuple[str, ...] = ()
         self.description: str | None = None
         self.data: dict[str, object] = {}
         self._data_def: object = None
@@ -54,9 +54,26 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         # when the concept is initialized (just as a concept at the beginning) the function below does nothing
         self.concept_data_check()  # sets the members of subclasses of ConceptDefinition
 
+    def update_parents(self, new_parents: tuple[str, ...]) -> None:
+        self.parents = new_parents
+        self.non_root_data_specified_check()
+
+    @property
+    def is_root_concept(self) -> bool:
+        return self.parents == ()
+
     @property
     def data_location_id(self) -> LocationId:
         return ConceptDefinition.definition_location(self) + self._data_location_id
+
+    def non_root_data_specified_check(self):
+        if ConceptDefinition.concept_definition_data not in self.definition_data and self.parents != ():
+            raise CHSyntaxError(
+                f'Every non-root concept must define its data in the "{ConceptDefinition.concept_definition_data}" '
+                f"keyword! Concept {self.name!r} does not, please add its data!",
+                location_id=self.location_id(),
+                part=PathPart.VALUE,
+            )
 
     def check(self):
         super().check()
@@ -64,7 +81,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         if not check_ch_name(self.name, must_start_uppercase=True):
             raise CHSyntaxError(
                 f"Name of concept definition {self.name!r} must be an uppercase string!",
-                self.location_id(),
+                location_id=self.location_id(),
                 part=PathPart.KEY,
             )
         if self.is_reference():
@@ -75,29 +92,31 @@ class ConceptDefinition(ConceptHierarchyDefinition):
             extra_keys = defined_keys - ConceptDefinition.concept_data_keys
             raise CHSyntaxError(
                 f"Found extra keys {extra_keys!r} in the concept definition of {self.name}",
-                self.location_id(),
+                location_id=self.location_id(),
                 part=PathPart.VALUE,
             )
 
-        self.parents = self.definition_data.get(ConceptDefinition.concept_direct_parents, [])
-        if not isinstance(self.parents, list):
+        # do not check direct parents yet, because they may be updated after the topological sort!
+        # they can be left empty and the parser will make them subconcepts of Concept
+        parents_def = self.definition_data.get(ConceptDefinition.concept_direct_parents, [])
+        if not isinstance(parents_def, list):
             raise CHSyntaxError(
-                f"Direct parents of the concept {self.name} must be a JSON array of strings, not {self.parents!r}!",
-                self.location_id(ConceptDefinition.concept_direct_parents),
+                f"Direct parents of the concept {self.name} must be a JSON array of strings, not {parents_def!r}!",
+                location_id=self.location_id(ConceptDefinition.concept_direct_parents),
                 part=PathPart.VALUE,
             )
-        else:
-            for index, parent in enumerate(self.parents):
-                if not isinstance(parent, str):
-                    raise CHSyntaxError(
-                        f"Direct parents of the concept {self.name} must be a list of concepts. "
-                        f"Encountered {parent!r} at parent {index}!",
-                        self.location_id(ConceptDefinition.concept_direct_parents, index),
-                    )
-                # Don't check here the concept-name string formatting requirements for the parent nodes,
-                #  because the parent's concept name will be checked when it will be processed.
-                #  And if the string is not a valid parent name, then the parent-in-ch semantic rule will determine an
-                #  invalid parent specification when computing the topological sort of the hierarchy graph!
+        for index, parent in enumerate(parents_def):
+            if not isinstance(parent, str):
+                raise CHSyntaxError(
+                    f"Direct parents of the concept {self.name} must be a list of concepts. "
+                    f"Encountered {parent!r} at parent {index}!",
+                    location_id=self.location_id(ConceptDefinition.concept_direct_parents, index),
+                )
+            # Don't check here the concept-name string formatting requirements for the parent nodes,
+            #  because the parent's concept name will be checked when it will be processed.
+            #  And if the string is not a valid parent name, then the parent-in-ch semantic rule will determine an
+            #  invalid parent specification when computing the topological sort of the hierarchy graph!
+        self.parents = tuple(parents_def)
         # missing checks:
         #  - check that parents of Functions are Functions (except ValueDomain)
         #    STRUCTURE CHECK
@@ -113,10 +132,11 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         if not isinstance(self.description, (str, NoneType)):
             raise CHSyntaxError(
                 f"The description of the concept {self.name} must be a JSON string or null, not {self.description!r}",
-                self.location_id("definition"),
+                location_id=self.location_id("definition"),
                 part=PathPart.VALUE,
             )
 
+        self.non_root_data_specified_check()
         self._data_def = self.definition_data.get(ConceptDefinition.concept_definition_data, None)
         while self._check_data_content(self._data_location_id):
             if self.external_data_resolver is None:
@@ -130,7 +150,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                 if str(e).startswith("Could not find external data file"):
                     raise CHSemanticError(
                         f"Incorrect external data file specified for concept {self.name}: {self._data_def!r}!",
-                        self.location_id(*self._data_location_id),
+                        location_id=self.location_id(*self._data_location_id),
                         part=PathPart.VALUE,
                     ) from e
                 raise e

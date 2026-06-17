@@ -221,7 +221,7 @@ def replace_template_chars(x: str) -> str:
 
 
 # Topological sort (Kahn's algorithm)
-def topological_sort(parents: dict[str, list[str]]) -> tuple[list[str], list[str]]:
+def topological_sort(parents: dict[str, tuple[str, ...]]) -> tuple[list[str], list[str]]:
     from collections import deque
 
     # children[parent] = list of child names

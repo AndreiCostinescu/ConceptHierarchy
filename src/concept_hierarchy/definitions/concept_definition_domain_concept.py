@@ -1236,7 +1236,7 @@ class DomainConceptDefinition(ConceptDefinition):
         has_properties = DomainConceptDefinition.domain_concept_properties in self.data
         has_functions = DomainConceptDefinition.domain_concept_functions in self.data
         has_management = DomainConceptDefinition.domain_concept_management in self.data
-        if not self.is_root and not has_properties and not has_functions and not has_management:
+        if not self.is_root_concept and not has_properties and not has_functions and not has_management:
             raise CHSemanticError(
                 f"Found a domain concept with no data defined {self.name}", self.location_id(), part=PathPart.VALUE
             )

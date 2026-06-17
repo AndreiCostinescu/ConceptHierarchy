@@ -5,9 +5,7 @@
         "author": "Your Name"
     },
     "concepts": {
-        "Concept": {
-            "data": null
-        },
+        "Concept": {},
         "Animal": {
             "directParents": ["Concept"],
             "data": "external_animal_data.json"
