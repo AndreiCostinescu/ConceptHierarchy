@@ -80,12 +80,15 @@ class ConceptHierarchyError(Exception):
         self.part = part
         self.causes = causes or []
 
+    def __str__(self):
+        return self.print()
+
     def __repr__(self):
         return self.print()
 
     def print(self, indent: int = 0) -> str:
         """Prints the Concept Hierarchy error message with indents and the location causing the error."""
-        message_lines = str(self).split("\n")
+        message_lines = self.args[0].split("\n")
         if self.prefix:
             prefix_str = f"[{self.prefix}] " if self.prefix else ""
             content_indent_str = tab * (indent + 1)
