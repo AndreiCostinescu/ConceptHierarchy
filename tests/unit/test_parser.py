@@ -94,7 +94,7 @@ class TestParseFull:
     def test_parents_set(self):
         check_model(self.model)
         dog = self.model.concepts["Dog"]
-        assert dog.parents == ["Animal"]
+        assert dog.parents == ("Animal",)
 
     def test_metadata_parsed(self):
         check_model(self.model)
@@ -159,4 +159,4 @@ class TestParseErrors:
         )
         check_model(model)
         assert model.concept_names() == ["Concept", "Base"]
-        assert model.concepts["Base"].parents == ["Concept"]
+        assert model.concepts["Base"].parents == ("Concept",)
