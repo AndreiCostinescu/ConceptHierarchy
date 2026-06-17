@@ -48,7 +48,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self.external_data_resolver = external_data_resolver
 
         # initialize this member before calling super, which calls the check function
-        self._data_location_id = [ConceptDefinition.concept_definition_data]
+        self._data_location_id: LocationId = LocationId([ConceptDefinition.concept_definition_data])
 
         super().__init__(name, definition_data, definition_location_id)
         # when the concept is initialized (just as a concept at the beginning) the function below does nothing
