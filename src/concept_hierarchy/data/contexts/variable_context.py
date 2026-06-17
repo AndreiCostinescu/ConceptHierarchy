@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from frozendict import frozendict
 
-from concept_hierarchy.data.parsers.type_parser import ParsedType
+from concept_hierarchy.data.types.parsed_type import ParsedType
 
 
 class VariableContext:
@@ -37,6 +37,10 @@ class VariableContext:
 
     def __repr__(self):
         return "{}".format(self.context)
+
+    @property
+    def empty(self):
+        return len(self.context) == 0
 
     def has_variable(self, variable_name) -> bool:
         return variable_name in self.context

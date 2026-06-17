@@ -18,6 +18,7 @@ from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext
 from concept_hierarchy.data.parsers.type_parser import ParsedType
+from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormula
 from concept_hierarchy.models import ConceptHierarchyModel
 
 
@@ -36,14 +37,18 @@ class ConceptHierarchyContext:
     def ch(self) -> ConceptHierarchyModel:
         return self.model.ch
 
-    def add_new_template_variable(self, template_variable: str, is_variadic: bool) -> ConceptHierarchyContext:
+    def add_new_template_variable(
+        self, template_variable: str, is_variadic: bool, constraint: TemplateConstraintFormula
+    ) -> ConceptHierarchyContext:
         return ConceptHierarchyContext(
             self.model,
-            self.template_context.add_template_variable(template_variable, is_variadic),
+            self.template_context.add_template_variable(template_variable, is_variadic, constraint),
             self.variable_context,
         )
 
-    def add_new_template_variables(self, template_variables: dict[str, bool]) -> ConceptHierarchyContext:
+    def add_new_template_variables(
+        self, template_variables: dict[str, tuple[bool, TemplateConstraintFormula]]
+    ) -> ConceptHierarchyContext:
         return ConceptHierarchyContext(
             self.model, self.template_context.add_template_variables(template_variables), self.variable_context
         )
