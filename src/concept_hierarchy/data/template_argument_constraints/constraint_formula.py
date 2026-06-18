@@ -39,6 +39,24 @@ class TemplateConstraintFormulaValidator(ABC):
         pass
 
 
+"""
+TemplateConstraintFormulae are either:
+- NonStructureConstraintFormula:
+    - Unconstrained (both for types and non-types)
+    - TypeTemplateConstraintFormula
+        - And, Or, Not
+        - HierarchyOperators
+            - X, X., X*, ^X, ^X*
+    - NonTypeTemplateConstraintFormula (\equiv LiteralConstraintFormula)
+        - LiteralValueConstraintFormula
+- StructureConstraintFormula
+    - ConstraintGroup
+    - StructureConjunction
+    - StructureDisjunction
+    - StructureNegation
+"""
+
+
 class TemplateConstraintFormula(ABC):
     def __init__(self, location_id: LocationId):
         self.location_id = location_id
@@ -47,7 +65,11 @@ class TemplateConstraintFormula(ABC):
         return self.__repr__()
 
 
-class Unconstrained(TemplateConstraintFormula):
+class NonStructureConstraintFormula(TemplateConstraintFormula):
+    pass
+
+
+class Unconstrained(NonStructureConstraintFormula):
     def __init__(self, location_id: LocationId):
         super().__init__(location_id)
 
@@ -55,17 +77,16 @@ class Unconstrained(TemplateConstraintFormula):
         return ""
 
 
-class TypeTemplateConstraintFormula(TemplateConstraintFormula, ABC):
-    def __init__(self, location_id: LocationId):
-        super().__init__(location_id)
+class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
+    pass
 
 
 class TemplateConstraintAnd(TypeTemplateConstraintFormula):
-    def __init__(self, sub_formulae: list[TemplateConstraintFormula], location_id: LocationId):
+    def __init__(self, location_id: LocationId, sub_formulae: tuple[NonStructureConstraintFormula, ...]):
         super().__init__(location_id)
         # make tuple to be immutable
         assert sub_formulae
-        self.sub_formulae: tuple[TemplateConstraintFormula, ...] = tuple(sub_formulae)
+        self.sub_formulae: tuple[NonStructureConstraintFormula, ...] = sub_formulae
         for f in self.sub_formulae:
             if not isinstance(f, TypeTemplateConstraintFormula):
                 raise RuntimeError(
@@ -78,11 +99,11 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
 
 
 class TemplateConstraintOr(TypeTemplateConstraintFormula):
-    def __init__(self, sub_formulae: list[TemplateConstraintFormula], location_id: LocationId):
+    def __init__(self, location_id: LocationId, sub_formulae: tuple[NonStructureConstraintFormula, ...]):
         super().__init__(location_id)
         # make tuple to be immutable
         assert sub_formulae
-        self.sub_formulae: tuple[TemplateConstraintFormula, ...] = tuple(sub_formulae)
+        self.sub_formulae: tuple[NonStructureConstraintFormula, ...] = sub_formulae
         for f in self.sub_formulae:
             if not isinstance(f, TypeTemplateConstraintFormula):
                 raise RuntimeError(
@@ -123,7 +144,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
     def __init__(
         self,
         literal: str,
-        literal_template_formulae: tuple[TemplateConstraintFormula, ...],
+        literal_template_formulae: tuple[NonStructureConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
         hierarchy_op: HierarchyCheckType,
@@ -193,7 +214,7 @@ class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
         literal: str,
-        literal_template_formulae: tuple[TemplateConstraintFormula, ...],
+        literal_template_formulae: tuple[NonStructureConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
@@ -207,7 +228,7 @@ class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator)
     def __init__(
         self,
         literal: str,
-        literal_template_formulae: tuple[TemplateConstraintFormula, ...],
+        literal_template_formulae: tuple[NonStructureConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
@@ -223,7 +244,7 @@ class TemplateConstraintSelf(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
         literal: str,
-        literal_template_formulae: tuple[TemplateConstraintFormula, ...],
+        literal_template_formulae: tuple[NonStructureConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
@@ -237,7 +258,7 @@ class TemplateConstraintAscendants(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
         literal: str,
-        literal_template_formulae: tuple[TemplateConstraintFormula, ...],
+        literal_template_formulae: tuple[NonStructureConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
@@ -251,7 +272,7 @@ class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
     def __init__(
         self,
         literal: str,
-        literal_template_formulae: tuple[TemplateConstraintFormula, ...],
+        literal_template_formulae: tuple[NonStructureConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
     ):
@@ -263,18 +284,18 @@ class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
         return "^" + self.print_literal() + "*"
 
 
-class NonTypeTemplateConstraintFormula(TemplateConstraintFormula):
+class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
     def __init__(self, constraint_type: str, location_id: LocationId):
         super().__init__(location_id)
         self.constraint_type = constraint_type
-        if self.constraint_type not in ["int", "float", "bool", "string"]:
-            raise RuntimeError("Unknown constraint type: {}".format(self.constraint_type))
+        if self.constraint_type not in {"int", "float", "bool", "string"}:
+            raise RuntimeError(f"Unknown literal constraint type: {self.constraint_type}")
 
     def __repr__(self):
         return "Literal:" + self.constraint_type
 
 
-class LiteralValueConstraintFormula(TemplateConstraintFormula):
+class LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula):
     """
     A constraint that matches exactly one concrete literal value.
 
@@ -284,7 +305,7 @@ class LiteralValueConstraintFormula(TemplateConstraintFormula):
     Typical use-case is as a template argument constraint, e.g.
         Vector<3>     ->  LiteralValueConstraintFormula("int",    "3")
         Flags<true>   ->  LiteralValueConstraintFormula("bool",   "true")
-        Tag<"x">      ->’  LiteralValueConstraintFormula("string", '"x"')
+        Tag<"x">      ->  LiteralValueConstraintFormula("string", '"x"')
 
     The raw_value string is always the canonical serialized form:
       int/float  --  the digit string exactly as written  (e.g. "3", "-1", "3.14")
@@ -293,10 +314,7 @@ class LiteralValueConstraintFormula(TemplateConstraintFormula):
     """
 
     def __init__(self, constraint_type: str, raw_value: str, location_id: LocationId):
-        super().__init__(location_id)
-        if constraint_type not in ("int", "float", "bool", "string"):
-            raise RuntimeError(f"Unknown literal constraint type: {constraint_type!r}")
-        self.constraint_type = constraint_type
+        super().__init__(constraint_type, location_id)
         self.raw_value = raw_value  # canonical serialized form; used for repr & equality
         self.value: bool | int | float | str | None = None
 
@@ -323,3 +341,44 @@ class LiteralValueConstraintFormula(TemplateConstraintFormula):
 
     def __repr__(self) -> str:
         return self.raw_value
+
+
+class StructureConstraintFormula(TemplateConstraintFormula):
+    def __init__(self, location_id: LocationId):
+        super().__init__(location_id)
+
+
+class ConstraintGroup(StructureConstraintFormula):
+    def __init__(self, location_id: LocationId, group_constraints: tuple[NonStructureConstraintFormula, ...]):
+        super().__init__(location_id)
+        self.group_constraints = group_constraints
+
+    def __repr__(self):
+        return "<" + ", ".join(repr(x) for x in self.group_constraints) + ">"
+
+
+class StructureConjunction(StructureConstraintFormula):
+    def __init__(self, location_id: LocationId, structure_constraints: tuple[StructureConstraintFormula, ...]):
+        super().__init__(location_id)
+        self.structure_constraints = structure_constraints
+
+    def __repr__(self):
+        return "Conj(" + ", ".join(repr(x) for x in self.structure_constraints) + ")"
+
+
+class StructureDisjunction(StructureConstraintFormula):
+    def __init__(self, location_id: LocationId, structure_constraints: tuple[StructureConstraintFormula, ...]):
+        super().__init__(location_id)
+        self.structure_constraints = structure_constraints
+
+    def __repr__(self):
+        return "Disj(" + ", ".join(repr(x) for x in self.structure_constraints) + ")"
+
+
+class StructureNegation(StructureConstraintFormula):
+    def __init__(self, location_id: LocationId, structure_constraint: StructureConstraintFormula):
+        super().__init__(location_id)
+        self.structure_constraint = structure_constraint
+
+    def __repr__(self):
+        return "Neg(" + repr(self.structure_constraint) + ")"
