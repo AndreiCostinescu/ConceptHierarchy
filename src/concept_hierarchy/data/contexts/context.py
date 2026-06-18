@@ -18,7 +18,7 @@ from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext
 from concept_hierarchy.data.parsers.type_parser import ParsedType
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormula
+from concept_hierarchy.errors import LocationId
 from concept_hierarchy.models import ConceptHierarchyModel
 
 
@@ -37,25 +37,30 @@ class ConceptHierarchyContext:
     def ch(self) -> ConceptHierarchyModel:
         return self.model.ch
 
-    def add_new_template_variable(
-        self, template_variable: str, is_variadic: bool, constraint: TemplateConstraintFormula
+    def set_template_context(self, template_context: TemplateContext) -> ConceptHierarchyContext:
+        if self.template_context.empty:
+            return ConceptHierarchyContext(self.model, template_context, self.variable_context)
+        raise RuntimeError(
+            f"Use the extend method to extend an existing template_context; "
+            f"this one {self.template_context!r} is not empty, can't set!"
+        )
+
+    def template_context_extend(
+        self, template_context: TemplateContext, location_id: LocationId
     ) -> ConceptHierarchyContext:
+        return ConceptHierarchyContext(
+            self.model, self.template_context.add_context(template_context, location_id), self.variable_context
+        )
+
+    def template_context_make_neg(self) -> ConceptHierarchyContext:
         return ConceptHierarchyContext(
             self.model,
-            self.template_context.add_template_variable(template_variable, is_variadic, constraint),
+            TemplateContext(
+                self.template_context.variables,
+                self.template_context.variadic_variables,
+                self.template_context.make_constraint_neg(),
+            ),
             self.variable_context,
-        )
-
-    def add_new_template_variables(
-        self, template_variables: dict[str, tuple[bool, TemplateConstraintFormula]]
-    ) -> ConceptHierarchyContext:
-        return ConceptHierarchyContext(
-            self.model, self.template_context.add_template_variables(template_variables), self.variable_context
-        )
-
-    def add_template_context(self, template_context: TemplateContext) -> ConceptHierarchyContext:
-        return ConceptHierarchyContext(
-            self.model, self.template_context.add_context(template_context), self.variable_context
         )
 
     def add_new_variable(self, variable: str, variable_type: ParsedType) -> ConceptHierarchyContext:
