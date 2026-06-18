@@ -30,6 +30,7 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TemplateConstraintOr,
     TemplateConstraintSelf,
     TypeTemplateConstraintFormula,
+    Unconstrained,
 )
 from concept_hierarchy.errors import CHSyntaxError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
@@ -91,7 +92,13 @@ class _ConstraintParser(StringParser):
 
     def parse_constraint(self) -> TemplateConstraintFormula:
         """Entry point for a single constraint expression."""
-        # Literal (non-type) constraint  â†’  Literal:boolean / int / number / string
+        self.skip_whitespace()
+
+        # Empty / whitespace-only input or a closing delimiter means "no constraint".
+        if self.eof() or self.peek() in (")", ">", ","):
+            return Unconstrained(self.location_id)
+
+        # Literal (non-type) constraint  ->  Literal:boolean / int / number / string
         if self.starts_with("Literal:"):
             return self._parse_non_type_constraint()
 
@@ -285,17 +292,14 @@ class _ConstraintParser(StringParser):
                 f"{ch_type.clean_name!r} and and full_name {ch_type.full_name!r}!"
             )
 
-        template_arg_formulae: list[TemplateConstraintFormula] | None = None
+        template_arg_formulae: list[TemplateConstraintFormula] = []
 
         if self.peek() == "<":
             self.pos += 1  # consume '<'
-            self.skip_whitespace()
-            if self.peek() != ">":  # non-empty argument list
-                template_arg_formulae = [self.parse_constraint()]
-                assert template_arg_formulae is not None
-                while self.starts_with(", "):
-                    self.consume(", ")
-                    template_arg_formulae.append(self.parse_constraint())
+            template_arg_formulae.append(self.parse_constraint())
+            while self.starts_with(", "):
+                self.consume(", ")
+                template_arg_formulae.append(self.parse_constraint())
             self.consume(">")
 
-        return ch_type.clean_name, None if template_arg_formulae is None else tuple(template_arg_formulae)
+        return ch_type.clean_name, tuple(template_arg_formulae)

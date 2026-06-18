@@ -17,18 +17,25 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 
-from concept_hierarchy.errors import LocationId
+from concept_hierarchy.errors import CHSemanticError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
 
 class TemplateConstraintFormulaValidator(ABC):
     @abstractmethod
-    def validate(
-        self,
-        ch_type_name: str,
-        template_constraint_arguments: tuple[TemplateConstraintFormula, ...] | None,
-        location_id: LocationId,
-    ):
+    def full_type_name(self, name: str) -> str:
+        pass
+
+    @abstractmethod
+    def get_nr_template_arguments(self, concept_name: str) -> int:
+        pass
+
+    @abstractmethod
+    def is_concept(self, name: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_template_variable(self, name: str):
         pass
 
 
@@ -40,6 +47,14 @@ class TemplateConstraintFormula(ABC):
         return self.__repr__()
 
 
+class Unconstrained(TemplateConstraintFormula):
+    def __init__(self, location_id: LocationId):
+        super().__init__(location_id)
+
+    def __repr__(self):
+        return ""
+
+
 class TypeTemplateConstraintFormula(TemplateConstraintFormula, ABC):
     def __init__(self, location_id: LocationId):
         super().__init__(location_id)
@@ -49,7 +64,8 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
     def __init__(self, sub_formulae: list[TemplateConstraintFormula], location_id: LocationId):
         super().__init__(location_id)
         # make tuple to be immutable
-        self.sub_formulae: tuple[TemplateConstraintFormula] = tuple(sub_formulae or ())  # handle None case by 'or'
+        assert sub_formulae
+        self.sub_formulae: tuple[TemplateConstraintFormula, ...] = tuple(sub_formulae)
         for f in self.sub_formulae:
             if not isinstance(f, TypeTemplateConstraintFormula):
                 raise RuntimeError(
@@ -65,7 +81,8 @@ class TemplateConstraintOr(TypeTemplateConstraintFormula):
     def __init__(self, sub_formulae: list[TemplateConstraintFormula], location_id: LocationId):
         super().__init__(location_id)
         # make tuple to be immutable
-        self.sub_formulae: tuple[TemplateConstraintFormula, ...] = tuple(sub_formulae or ())  # handle None case by 'or'
+        assert sub_formulae
+        self.sub_formulae: tuple[TemplateConstraintFormula, ...] = tuple(sub_formulae)
         for f in self.sub_formulae:
             if not isinstance(f, TypeTemplateConstraintFormula):
                 raise RuntimeError(
@@ -106,23 +123,61 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
     def __init__(
         self,
         literal: str,
-        literal_template_formulae: tuple[TemplateConstraintFormula, ...] | None,
+        literal_template_formulae: tuple[TemplateConstraintFormula, ...],
         validator: TemplateConstraintFormulaValidator,
         location_id: LocationId,
         hierarchy_op: HierarchyCheckType,
     ):
         super().__init__(location_id)
         self.literal = literal
-        self.has_specification_of_template_constraints = literal_template_formulae is not None
-        self.literal_template_formulae: tuple[TemplateConstraintFormula, ...] = literal_template_formulae or ()
+        self.literal_template_formulae: tuple[TemplateConstraintFormula, ...] = literal_template_formulae
         self.hierarchy_op: HierarchyCheckType = hierarchy_op
 
         # validate self.literal type
-        validator.validate(
-            self.literal,
-            self.literal_template_formulae if self.has_specification_of_template_constraints else None,
-            self.location_id,
-        )
+        if not validator.is_template_variable(self.literal) and not validator.is_concept(self.literal):
+            raise CHSemanticError(
+                f"{self.literal} is not a concept and not a template variable!",
+                location_id=self.location_id,
+            )
+
+        # don't allow constraints like "T<ValueDomain>" where T is a template variable!
+        if validator.is_template_variable(self.literal) and self.has_specification_of_template_constraints:
+            raise CHSemanticError(
+                "Can not define a constraint literal value that is a template variable ({0}) and also "
+                "specify constraints on template arguments: {0}<{1}>".format(
+                    self.literal, ", ".join(str(t_constraint) for t_constraint in self.literal_template_formulae)
+                ),
+                location_id=self.location_id,
+            )
+        # Check that either no template_constraint_formulae are specified
+        #  or the same number of formulae as the literal has template arguments!
+        elif not validator.is_template_variable(self.literal) and self.has_specification_of_template_constraints:
+            assert validator.is_concept(self.literal)
+            nr_template_arguments = validator.get_nr_template_arguments(self.literal)
+            # check if the concept also has template arguments if the constraint formula has template constraints!
+            if nr_template_arguments == 0:
+                t_arg_constraints_str = ", ".join(str(t_constraint) for t_constraint in self.literal_template_formulae)
+                literal_str = self.literal + (("<" + t_arg_constraints_str + ">") if t_arg_constraints_str else "")
+                raise CHSemanticError(
+                    f"Can not define a constraint literal value {self.literal} that is a non-template "
+                    f"ValueDomain with template arguments: {literal_str}!",
+                    location_id=location_id,
+                )
+            if (
+                self.has_specification_of_template_constraints
+                and len(self.literal_template_formulae) != nr_template_arguments
+            ):
+                t_arg_constraints_str = ", ".join(str(t_constraint) for t_constraint in self.literal_template_formulae)
+                raise CHSemanticError(
+                    f"The number {len(self.literal_template_formulae)} of template argument constraints "
+                    f"{t_arg_constraints_str} on literal {self.literal} does not match the number of template arguments"
+                    f" in the ValueDomain's definition: {validator.full_type_name(self.literal)}!",
+                    location_id=self.location_id,
+                )
+
+    @property
+    def has_specification_of_template_constraints(self) -> bool:
+        return self.literal_template_formulae != ()
 
     def print_constraints_of_template_arguments(self):
         return ", ".join(str(t_constraint) for t_constraint in self.literal_template_formulae)
