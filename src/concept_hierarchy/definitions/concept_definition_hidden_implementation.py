@@ -185,21 +185,27 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
             raise StopLocationOfCheck(check_res)
         return check_res
 
-    def check_template_argument_definition_list(self, t_arg_list: list):
+    def check_template_argument_definition_list(self, t_arg_list: list, location_id: LocationId):
         for t_arg_index, t_arg in enumerate(t_arg_list):
             if not isinstance(t_arg, str):
                 raise CHSyntaxError(
                     f"Template argument names must be JSON uppercase-starting strings (ending in '...' "
                     f"if variadic), not {t_arg!r} at {self.definition_type()} {self.name}!",
-                    location_id=self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
+                    location_id=location_id + [t_arg_index],
                 )
             is_variadic = t_arg.endswith("...")
             t_arg_clean = t_arg if not is_variadic else t_arg[:-3]
             if not check_ch_name(t_arg_clean, must_start_uppercase=True):
                 raise CHSyntaxError(
-                    f"Template argument names must be JSON uppercase-starting strings (ending in '...' "
-                    f"if variadic), not {t_arg!r} at {self.definition_type()} {self.name}!",
-                    location_id=self.location_id(HiddenImplementationDefinition.hidden_template_arguments, t_arg_index),
+                    f"Template argument names must be JSON uppercase-starting strings (ending in '...' if variadic), "
+                    f"not {t_arg!r} at {self.definition_type()} {self.name}!",
+                    location_id=location_id + [t_arg_index],
+                )
+            if t_arg_clean in self.template_argument_order:
+                raise CHSemanticError(
+                    f"Template argument {t_arg_clean!r} defined multiple times in the template arguments of "
+                    f"{self.name}",
+                    location_id=location_id + [t_arg_index],
                 )
             self.template_argument_order += (t_arg_clean,)
             if is_variadic:
@@ -255,7 +261,9 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     part=PathPart.VALUE,
                 )
             elif isinstance(self.template_arguments, list):
-                self.check_template_argument_definition_list(self.template_arguments)
+                self.check_template_argument_definition_list(
+                    self.template_arguments, self.location_id(HiddenImplementationDefinition.hidden_template_arguments)
+                )
             else:
                 template_structure_data = {
                     k: v
@@ -280,7 +288,11 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                         )
                     else:
                         self.check_template_argument_definition_list(
-                            template_structure_data[HiddenImplementationDefinition.hidden_template_arguments_order]
+                            template_structure_data[HiddenImplementationDefinition.hidden_template_arguments_order],
+                            self.location_id(
+                                HiddenImplementationDefinition.hidden_template_arguments,
+                                HiddenImplementationDefinition.hidden_template_arguments_order,
+                            ),
                         )
                 # missing checks: "substitution_of_template_arguments" TO BE CHECKED AFTER ALL CONCEPTS ARE INITIALIZED
                 substitution_data = template_structure_data.get(
