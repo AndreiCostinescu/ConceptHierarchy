@@ -68,8 +68,8 @@ Known attribute names (from source)
 Critical behavioural changes vs. the previous test suite
 ---------------------------------------------------------
     * And / Or / Not now REQUIRE TypeTemplateConstraintFormula operands.
-      Unconstrained, NonType, LiteralValue  all cause RuntimeError.
-      Empty And() / Or() / Not()  therefore raise RuntimeError (Unconstrained
+      Unconstrained, NonType, LiteralValue  all cause CHSyntaxError.
+      Empty And() / Or() / Not()  therefore raise ChSyntaxError (Unconstrained
       produced for the implicit slot is not a TypeTemplateConstraintFormula).
 
     * Conj / Disj / Neg  require StructureConstraintFormula operands.
@@ -268,7 +268,7 @@ class TestNonTypeConstraint:
         ],
     )
     def test_unknown_literal_type_raises(self, V, loc, text):
-        with pytest.raises((CHSyntaxError, RuntimeError)):
+        with pytest.raises(CHSyntaxError):
             _parse(text, V, loc)
 
     def test_trailing_content_raises(self, V, loc):
@@ -299,11 +299,11 @@ class TestLiteralValueConstraint:
 
     def test_bool_word_boundary_raises(self, V, loc):
         """'trueValue' must not be silently consumed as bool 'true'."""
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("trueValue", V, loc)
 
     def test_falsehood_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("falsehood", V, loc)
 
     # --- string literals ---
@@ -354,11 +354,11 @@ class TestLiteralValueConstraint:
     # --- error cases ---
 
     def test_bare_minus_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("-", V, loc)
 
     def test_unterminated_string_raises(self, V, loc):
-        with pytest.raises((SyntaxError, RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse('"hello', V, loc)
 
 
@@ -495,9 +495,9 @@ class TestBooleanOperators:
     """
     And / Or / Not only accept TypeTemplateConstraintFormula operands.
     This means:
-      - Unconstrained        →  RuntimeError
-      - LiteralValue         →  RuntimeError
-      - NonTypeConstraint    →  RuntimeError
+      - Unconstrained        →  CHSyntaxError
+      - LiteralValue         →  CHSyntaxError
+      - NonTypeConstraint    →  CHSyntaxError
       - ConstraintGroup      →  cannot even reach And/Or/Not
                                 (structure constraints are routed before non-structure)
 
@@ -581,61 +581,61 @@ class TestBooleanOperators:
         assert isinstance(inner_and, TemplateConstraintAnd)
         assert len(inner_and.sub_formulae) == 2
 
-    # --- operand type enforcement: non-TypeTemplateConstraintFormula raises RuntimeError ---
+    # --- operand type enforcement: non-TypeTemplateConstraintFormula raises CHSyntaxError ---
 
     def test_and_empty_raises(self, V, loc):
-        """And() → Unconstrained slot → not TypeTemplateConstraintFormula → RuntimeError."""
-        with pytest.raises(RuntimeError):
+        """And() → Unconstrained slot → not TypeTemplateConstraintFormula → CHSyntaxError."""
+        with pytest.raises(CHSyntaxError):
             _parse("And()", V, loc)
 
     def test_or_empty_raises(self, V, loc):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CHSyntaxError):
             _parse("Or()", V, loc)
 
     def test_not_empty_raises(self, V, loc):
-        """Not() → Unconstrained slot → not TypeTemplateConstraintFormula → RuntimeError."""
-        with pytest.raises(RuntimeError):
+        """Not() → Unconstrained slot → not TypeTemplateConstraintFormula → CHSyntaxError."""
+        with pytest.raises(CHSyntaxError):
             _parse("Not()", V, loc)
 
     def test_and_whitespace_only_raises(self, V, loc):
-        """And( ) still resolves operand to Unconstrained → RuntimeError."""
-        with pytest.raises(RuntimeError):
+        """And( ) still resolves operand to Unconstrained → CHSyntaxError."""
+        with pytest.raises(CHSyntaxError):
             _parse("And( )", V, loc)
 
     def test_not_whitespace_only_raises(self, V, loc):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CHSyntaxError):
             _parse("Not( )", V, loc)
 
     def test_and_with_literal_value_raises(self, V, loc):
         """LiteralValueConstraintFormula is not TypeTemplateConstraintFormula."""
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CHSyntaxError):
             _parse("And(3, Animal)", V, loc)
 
     def test_not_with_literal_value_raises(self, V, loc):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CHSyntaxError):
             _parse('Not("hello")', V, loc)
 
     def test_or_with_bool_value_raises(self, V, loc):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CHSyntaxError):
             _parse("Or(true, Animal)", V, loc)
 
     def test_and_with_non_type_constraint_raises(self, V, loc):
         """NonTypeTemplateConstraintFormula (Literal:X) is not TypeTemplateConstraintFormula."""
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CHSyntaxError):
             _parse("And(Literal:int, Animal)", V, loc)
 
     def test_not_with_non_type_constraint_raises(self, V, loc):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(CHSyntaxError):
             _parse("Not(Literal:string)", V, loc)
 
     # --- unclosed operators raise ---
 
     def test_unclosed_and_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("And(Animal", V, loc)
 
     def test_unclosed_not_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("Not(Animal", V, loc)
 
     def test_trailing_content_after_and(self, V, loc):
@@ -1086,11 +1086,11 @@ class TestStructureOperators:
     # --- unclosed structure operators ---
 
     def test_unclosed_conj_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("Conj(<Animal>", V, loc)
 
     def test_unclosed_neg_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("Neg(<Animal>", V, loc)
 
     def test_trailing_content_after_structure(self, V, loc):
@@ -1188,7 +1188,7 @@ class TestWhitespace:
     parse_constraint() calls skip_whitespace() at entry, so leading whitespace
     before each sub-expression is fine.
     Trailing whitespace before a closing ')' or '>' is NOT automatically consumed
-    by consume() and will cause a RuntimeError/CHSyntaxError.
+    by consume() and will cause a CHSyntaxError.
     """
 
     def test_leading_whitespace_before_concept(self, V, loc):
@@ -1223,17 +1223,17 @@ class TestWhitespace:
 
     def test_space_before_comma_breaks_separator(self, V, loc):
         """' ,' does not match the required ', ' separator → error."""
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("And(Animal , Plant)", V, loc)
 
     def test_trailing_space_before_closing_paren_raises(self, V, loc):
         """'Animal )' — space before ')' is not consumed before consume(')') → error."""
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("And(Animal )", V, loc)
 
     def test_empty_and_with_whitespace_still_raises(self, V, loc):
-        """And( ) → Unconstrained slot → not TypeTemplateConstraintFormula → RuntimeError."""
-        with pytest.raises(RuntimeError):
+        """And( ) → Unconstrained slot → not TypeTemplateConstraintFormula → CHSyntaxError."""
+        with pytest.raises(CHSyntaxError):
             _parse("And( )", V, loc)
 
     def test_empty_conj_with_whitespace_still_raises(self, V, loc):
@@ -1271,7 +1271,7 @@ class TestErrorCases:
         ["Literal:char", "Literal:float", "Literal:Boolean", "Literal:INT", "Literal:"],
     )
     def test_invalid_literal_type_raises(self, V, loc, text):
-        with pytest.raises((CHSyntaxError, RuntimeError)):
+        with pytest.raises(CHSyntaxError):
             _parse(text, V, loc)
 
     @pytest.mark.parametrize(
@@ -1283,11 +1283,11 @@ class TestErrorCases:
             _parse(text, V, loc)
 
     def test_bare_minus_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("-", V, loc)
 
     def test_unterminated_string_raises(self, V, loc):
-        with pytest.raises((SyntaxError, RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse('"unterminated', V, loc)
 
     def test_underscore_initial_raises_syntax(self, V, loc):
@@ -1295,11 +1295,11 @@ class TestErrorCases:
             _parse("_Animal", V, loc)
 
     def test_unclosed_angle_bracket_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("<Animal", V, loc)
 
     def test_unclosed_conj_raises(self, V, loc):
-        with pytest.raises((RuntimeError, CHSyntaxError)):
+        with pytest.raises(CHSyntaxError):
             _parse("Conj(<Animal>", V, loc)
 
     def test_structure_inside_non_structure_list_raises(self, V, loc):

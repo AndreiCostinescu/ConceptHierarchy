@@ -48,16 +48,12 @@ def parse_constraint_string(
     """
     Parse a bare constraint expression (no surrounding quotes) and return the corresponding TemplateConstraintFormula.
 
-    Raises RuntimeError if there is unexpected trailing content after a valid formula,
+    Raises CHSyntaxError if there is unexpected trailing content after a valid formula,
     which usually indicates a syntax error.
     """
     parser = ConstraintParser(text, validator, location_id)
     formula = parser.parse_constraint()
-    parser.skip_whitespace()
-    if parser.pos != len(text):
-        raise CHSyntaxError(
-            f"Unexpected trailing content at position {parser.pos}: {text[parser.pos :]!r}", location_id=location_id
-        )
+    parser.check_finished()
     return formula
 
 
@@ -194,10 +190,9 @@ class ConstraintParser(StringParser):
         return StructureNegation(self.location_id, arg)
 
     def _parse_structure_constraint_list(self) -> tuple[StructureConstraintFormula, ...]:
-        """One or more constraints separated by ', '."""
+        """One or more structure-constraints separated by ', '."""
         items = [self._parse_structure_constraint()]
-        while self.starts_with(", "):
-            self.consume(", ")
+        while self.try_consume(", "):
             items.append(self._parse_structure_constraint())
         return tuple(items)
 
@@ -206,8 +201,7 @@ class ConstraintParser(StringParser):
     def _parse_constraint_group(self) -> ConstraintGroup:
         self.consume("<")
         group_elements = [self._parse_non_structure_constraint()]
-        while self.starts_with(", "):
-            self.consume(", ")
+        while self.try_consume(", "):
             group_elements.append(self._parse_non_structure_constraint())
         self.consume(">")
         return ConstraintGroup(self.location_id, tuple(group_elements))
@@ -216,27 +210,26 @@ class ConstraintParser(StringParser):
 
     def _parse_and(self) -> TemplateConstraintAnd:
         self.consume("And(")
-        args = self._parse_non_structure_constraint_list()
+        args = self._parse_type_constraint_list()
         self.consume(")")
         return TemplateConstraintAnd(self.location_id, args)
 
     def _parse_or(self) -> TemplateConstraintOr:
         self.consume("Or(")
-        args = self._parse_non_structure_constraint_list()
+        args = self._parse_type_constraint_list()
         self.consume(")")
         return TemplateConstraintOr(self.location_id, args)
 
     def _parse_not(self) -> TemplateConstraintNot:
         self.consume("Not(")
-        arg = self._parse_non_structure_constraint()
+        arg = self._parse_type_constraint()
         self.consume(")")
-        return TemplateConstraintNot(arg, self.location_id)
+        return TemplateConstraintNot(self.location_id, arg)
 
     def _parse_non_structure_constraint_list(self) -> tuple[NonStructureConstraintFormula, ...]:
-        """One or more constraints separated by ', '."""
+        """One or more non-structure-constraints separated by ', '."""
         items = [self._parse_non_structure_constraint()]
-        while self.starts_with(", "):
-            self.consume(", ")
+        while self.try_consume(", "):
             items.append(self._parse_non_structure_constraint())
         return tuple(items)
 
@@ -273,10 +266,18 @@ class ConstraintParser(StringParser):
             )
         formula = self.parse_constraint()
         if not isinstance(formula, TypeTemplateConstraintFormula):
-            raise RuntimeError(
-                f"Expected a TypeTemplateConstraintFormula as a template argument, got {type(formula).__name__!r}"
+            raise CHSyntaxError(
+                f"Expected a TypeTemplateConstraintFormula as a template argument, got {type(formula).__name__!r}",
+                location_id=self.location_id,
             )
         return formula
+
+    def _parse_type_constraint_list(self) -> tuple[TypeTemplateConstraintFormula, ...]:
+        """One or more type-template-constraints separated by ', '."""
+        items = [self._parse_type_constraint()]
+        while self.try_consume(", "):
+            items.append(self._parse_type_constraint())
+        return tuple(items)
 
     def _parse_hierarchy_literal(self) -> TemplateConstraintHierarchyOperator:
         """
