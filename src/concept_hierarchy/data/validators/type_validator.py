@@ -464,7 +464,7 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
         assert not t_arg.has_variadic_template_expansion
         # check if all the template arguments are instantiated or not
         if not t_arg.is_templated:
-            return InstantiatedType(t_arg, TemplateContext(), ())
+            return InstantiatedType(t_arg.clean_name, TemplateContext(), ())
         converted_template_arguments, has_template_dependent_template_arguments, merged_template_context = (
             convert_items(t_arg.template_arguments, validator)
         )
