@@ -325,7 +325,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
     ):
         super().__init__(location_id)
         self.literal = literal
-        self.literal_template_formulae: tuple[TemplateConstraintFormula, ...] = literal_template_formulae
+        self.literal_template_formulae = literal_template_formulae
         self.hierarchy_op: HierarchyCheckType = hierarchy_op
 
         # validate self.literal type
