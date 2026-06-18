@@ -51,7 +51,7 @@ def parse_constraint_string(
     Raises RuntimeError if there is unexpected trailing content after a valid formula,
     which usually indicates a syntax error.
     """
-    parser = _ConstraintParser(text, validator, location_id)
+    parser = ConstraintParser(text, validator, location_id)
     formula = parser.parse_constraint()
     parser.skip_whitespace()
     if parser.pos != len(text):
@@ -61,7 +61,7 @@ def parse_constraint_string(
     return formula
 
 
-class _ConstraintParser(StringParser):
+class ConstraintParser(StringParser):
     """
     Recursive-descent parser for the grammar:
 
@@ -99,9 +99,8 @@ class _ConstraintParser(StringParser):
     ]
 
     def __init__(self, text: str, validator: TemplateConstraintFormulaValidator, location_id: LocationId) -> None:
-        super().__init__(text)
+        super().__init__(text, location_id)
         self.validator = validator
-        self.location_id = location_id
 
     # ------------------------------------------------------------------
     # Grammar rules
@@ -245,13 +244,13 @@ class _ConstraintParser(StringParser):
 
     def _parse_non_type_constraint(self) -> NonTypeTemplateConstraintFormula:
         self.consume("Literal:")
-        for token, ctype in _ConstraintParser._LITERAL_TOKENS:
+        for token, ctype in ConstraintParser._LITERAL_TOKENS:
             if self.starts_with(token):
                 self.consume(token)
                 return NonTypeTemplateConstraintFormula(ctype, self.location_id)
         raise CHSyntaxError(
             f"Unknown literal type constraint at position {self.pos}: {self.remaining()!r}. Allowed only "
-            f"{', '.join(x[0] for x in _ConstraintParser._LITERAL_TOKENS)}",
+            f"{', '.join(x[0] for x in ConstraintParser._LITERAL_TOKENS)}",
             location_id=self.location_id,
         )
 

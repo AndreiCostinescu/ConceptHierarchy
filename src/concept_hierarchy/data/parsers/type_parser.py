@@ -62,8 +62,8 @@ class TypeParser(StringParser):
 
     _VARIADIC_CHARS: frozenset[str] = frozenset(VARIADIC_GROUP_IDENTIFIER_CHARACTERS)  # "" not a member
 
-    def __init__(self, domain: str, allow_trailing_comma: bool = False) -> None:
-        super().__init__(domain)
+    def __init__(self, domain: str, location_id: LocationId, allow_trailing_comma: bool = False) -> None:
+        super().__init__(domain, location_id=location_id)
         self.allow_trailing_comma = allow_trailing_comma
 
     def parse_types(self) -> tuple[ParsedType, ...]:
@@ -401,7 +401,7 @@ class TemplateArgumentParser:
             expect_literal = True
         elif isinstance(self.argument_value, (bool, int, float)):
             expect_literal = True
-        res = TypeParser(self.convert_to_string(self.argument_value)).parse()
+        res = TypeParser(self.convert_to_string(self.argument_value), self.location_id).parse()
         if len(res) != 1:
             raise CHSyntaxError(
                 f"Expected a single value to be specified, but got {len(res)} values {res!r}",
@@ -422,7 +422,7 @@ class TemplateArgumentParser:
 # Memoized public entry-point
 @functools.lru_cache(maxsize=None)
 def _parse_type_cached(domain: str) -> tuple[ParsedType, ...]:
-    return TypeParser(domain).parse_types()
+    return TypeParser(domain, LocationId()).parse_types()
 
 
 def parse_type(

@@ -19,11 +19,14 @@ string_parser.py — Contains the base class for parsing string data containig s
 import json
 import re
 
+from concept_hierarchy.errors import CHSyntaxError, LocationId
+
 
 class StringParser:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, location_id: LocationId) -> None:
         self.text = text
         self.pos = 0
+        self.location_id = location_id
 
     # ------------------------------------------------------------------
     # Low-level helpers
@@ -41,10 +44,11 @@ class StringParser:
     def consume(self, expected: str) -> None:
         if not self.starts_with(expected):
             got = self.text[self.pos : self.pos + len(expected)]
-            raise RuntimeError(
+            raise CHSyntaxError(
                 f"Expected {expected!r} at position {self.pos}, got {got!r}\n"
                 f"  Full input : {self.text!r}\n"
-                f"  Remaining  : {self.remaining()!r}"
+                f"  Remaining  : {self.remaining()!r}",
+                location_id=self.location_id,
             )
         self.pos += len(expected)
 
@@ -64,7 +68,10 @@ class StringParser:
     def check_finished(self):
         self.skip_whitespace()
         if not self.eof():
-            raise SyntaxError(f"Unexpected trailing content after input: {self.remaining()!r}")
+            raise CHSyntaxError(
+                f"Unexpected trailing content after input: {self.remaining()!r}",
+                location_id=self.location_id,
+            )
 
     # --- Low-level lexers ---
 
@@ -78,11 +85,14 @@ class StringParser:
             "say \\"hi\\""  ->  raw_value = '"say \\"hi\\""'
         """
         if self.peek() != '"':
-            raise SyntaxError(f"Expected '\"' at position {self.pos}; got {self.remaining()[:10]!r}")
+            raise CHSyntaxError(
+                f"Expected '\"' at position {self.pos}; got {self.remaining()[:10]!r}",
+                location_id=self.location_id,
+            )
         self.consume('"')
         m = re.match(r'((?:[^"\\]|\\.)*)"', self.remaining())
         if not m:
-            raise SyntaxError(f"Unterminated quoted string at position {self.pos}")
+            raise CHSyntaxError(f"Unterminated quoted string at position {self.pos}", location_id=self.location_id)
         raw = m.group(1)
         self.pos += len(m.group())
         # Decode JSON escape sequences (\\, \", \n, \uXXXX, etc.) so that the
@@ -90,7 +100,9 @@ class StringParser:
         try:
             content = json.loads('"' + raw + '"')
         except json.JSONDecodeError as exc:
-            raise SyntaxError(f"Invalid escape sequence in quoted string at position {self.pos}: {exc}") from exc
+            raise CHSyntaxError(
+                f"Invalid escape sequence in quoted string at position {self.pos}: {exc}", location_id=self.location_id
+            ) from exc
         if not surround_result_with_quotes:
             return content
         return '"' + content + '"'
@@ -105,13 +117,16 @@ class StringParser:
             if self.starts_with(keyword):
                 end = self.pos + len(keyword)
                 if end < len(self.text) and (self.text[end].isalnum() or self.text[end] == "_"):
-                    raise RuntimeError(
+                    raise CHSyntaxError(
                         f"Expected boolean literal ('true'/'false') at position {self.pos} "
-                        f"but found a longer identifier: {self.text[self.pos : end + 1]!r}"
+                        f"but found a longer identifier: {self.text[self.pos : end + 1]!r}",
+                        location_id=self.location_id,
                     )
                 self.pos = end
                 return keyword
-        raise RuntimeError(f"Expected 'true' or 'false' at position {self.pos}, got {self.remaining()!r}")
+        raise CHSyntaxError(
+            f"Expected 'true' or 'false' at position {self.pos}, got {self.remaining()!r}", location_id=self.location_id
+        )
 
     def _parse_number_literal(self) -> str:
         """
@@ -138,21 +153,30 @@ class StringParser:
 
         raw = self.text[start : self.pos]
         if not raw or raw == "-":
-            raise RuntimeError(f"Expected a numeric literal at position {start}, got {self.remaining()!r}")
+            raise CHSyntaxError(
+                f"Expected a numeric literal at position {start}, got {self.remaining()!r}",
+                location_id=self.location_id,
+            )
 
         return raw
 
     def _parse_natural(self) -> str:
         m = re.match(r"\d+", self.remaining())
         if not m:
-            raise SyntaxError(f"Expected a natural number at position {self.pos}; got {self.remaining()[:10]!r}")
+            raise CHSyntaxError(
+                f"Expected a natural number at position {self.pos}; got {self.remaining()[:10]!r}",
+                location_id=self.location_id,
+            )
         self.pos += len(m.group())
         return m.group()
 
     def _parse_upper_case_name(self) -> str:
         m = re.match(r"[A-Z][A-Za-z0-9_]*", self.remaining())
         if not m:
-            raise SyntaxError(f"Expected upperCaseName at position {self.pos}; got {self.remaining()[:20]!r}")
+            raise CHSyntaxError(
+                f"Expected upperCaseName at position {self.pos}; got {self.remaining()[:20]!r}",
+                location_id=self.location_id,
+            )
         self.pos += len(m.group())
         return m.group()
 
@@ -162,7 +186,10 @@ class StringParser:
         Returns the full matched text including the delimiters.
         """
         if self.peek() != open_ch:
-            raise SyntaxError(f"Expected {open_ch!r} at position {self.pos}; got {self.remaining()[:10]!r}")
+            raise CHSyntaxError(
+                f"Expected {open_ch!r} at position {self.pos}; got {self.remaining()[:10]!r}",
+                location_id=self.location_id,
+            )
         depth = 0
         start = self.pos
         while self.pos < len(self.text):
@@ -175,4 +202,4 @@ class StringParser:
                     self.pos += 1
                     return self.text[start : self.pos]
             self.pos += 1
-        raise SyntaxError(f"Unmatched {open_ch!r} starting at position {start}")
+        raise CHSyntaxError(f"Unmatched {open_ch!r} starting at position {start}", location_id=self.location_id)
