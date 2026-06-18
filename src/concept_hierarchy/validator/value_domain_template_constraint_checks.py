@@ -12,22 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from frozendict import frozendict
-
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
+from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import (
     TemplateConstraintFormulaValidator,
     parse_constraint_string,
 )
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormula
+from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+    ConstraintGroup,
+    NonStructureConstraintFormula,
+)
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
+from concept_hierarchy.errors import CHSemanticError
 
 
 class ConstraintFormulaValidator(TemplateConstraintFormulaValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.ch_context = context
         # built incrementally as template arguments are processed
-        self.t_arg_context: dict[str, TemplateConstraintFormula] = {}
+        self.t_arg_context: set[str] = set()
 
     def full_type_name(self, name: str) -> str:
         if self.is_concept(name):
@@ -61,7 +64,8 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
         # parse template argument constraints;
         # iterate in definition order because newer arguments have the older arguments as variables
         validator = ConstraintFormulaValidator(context)
-        constraints: dict[str, TemplateConstraintFormula] = {}
+        constraint = None
+        constraints: list[NonStructureConstraintFormula] = []
         for t_arg in vd.template_argument_order:
             t_arg_constraint_formula = vd.template_argument_constraints[t_arg]
             if not vd.has_location_of(t_arg):
@@ -70,7 +74,19 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
             else:
                 location_id = vd.location_of(t_arg)
             t_arg_constraint = parse_constraint_string(t_arg_constraint_formula, validator, location_id)
-            constraints[t_arg] = t_arg_constraint
-            validator.t_arg_context[t_arg] = t_arg_constraint
+            if not isinstance(t_arg_constraint, NonStructureConstraintFormula):
+                raise CHSemanticError(
+                    f"Found a non structure constraint formula {t_arg_constraint} when defining the constraint of "
+                    f"{t_arg}",
+                    location_id=location_id,
+                )
+            constraints.append(t_arg_constraint)
+            validator.t_arg_context.add(t_arg)
 
-        vd_data.template_argument_constraints = frozendict(constraints)
+        if vd.is_templatable():
+            constraint = ConstraintGroup(
+                vd.location_of(HiddenImplementationDefinition.hidden_template_arguments), tuple(constraints)
+            )
+        vd_data.template_context = TemplateContext(
+            vd.template_argument_order, vd.variadic_template_arguments, constraint
+        )

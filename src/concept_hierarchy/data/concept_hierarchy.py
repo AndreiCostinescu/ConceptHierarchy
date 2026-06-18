@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from frozendict import frozendict
 
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormula
+from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.models import ConceptHierarchyModel
 
 from .types.parsed_type import ParsedType, TemplateArgumentValue
@@ -47,8 +47,7 @@ class DomainConceptData(ConceptData):
 
 @lazy_properties
 class TypeData(ConceptData):
-    template_argument_order: tuple[str, ...]
-    template_argument_constraints: frozendict[str, TemplateConstraintFormula]
+    template_context: TemplateContext
     parent_template_variable_substitution: frozendict[tuple[str, str], TemplateArgumentValue]
     instantiable: bool
 
