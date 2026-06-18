@@ -42,6 +42,12 @@ class ConceptHierarchyTemplateArgument(ABC):
         """
         self._registry: frozendict | None = None
 
+    def __str__(self) -> str:
+        return self.full_name
+
+    def __repr__(self) -> str:
+        return self.full_name
+
     @property
     def depends_on_templates(self) -> bool:
         return not self.template_context.empty
@@ -180,6 +186,11 @@ class TemplateDependentType(TemplateDependent, ConceptHierarchyType):
 
 class TemplateVariable(TemplateDependent, ABC):
     def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
+        if not template_context.has_template_variable(clean_name):
+            raise RuntimeError(
+                f"Tried to create a TemplateVariable {clean_name} but it is not part of the template context "
+                f"{template_context!r}!"
+            )
         super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
 
     @property
@@ -222,6 +233,14 @@ class NonVariadicTemplateVariable(TemplateVariable):
 
 
 class VariadicTemplateVariable(TemplateVariable, VariadicArgument):
+    def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
+        super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
+        if not template_context.is_variadic(clean_name):
+            raise RuntimeError(
+                f"Tried to create a VariadicTemplateVariable {clean_name} but it is not a variadic template variable in"
+                f" the template context {template_context!r}!"
+            )
+
     @property
     def is_variadic(self) -> bool:
         return True
