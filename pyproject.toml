@@ -63,7 +63,7 @@ target-version = "py310"
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-line-ending = "auto"
+line-ending = "lf"
 docstring-code-format = true
 
 [tool.ruff.lint]
