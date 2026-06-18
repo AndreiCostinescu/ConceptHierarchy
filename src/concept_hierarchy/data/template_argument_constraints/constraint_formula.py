@@ -22,6 +22,29 @@ from concept_hierarchy.utils import Reference, is_integer, is_number
 
 
 class TemplateConstraintFormulaValidator(ABC):
+    """
+    Abstract interface that exposes concept-hierarchy knowledge to formula classes.
+
+    An instance is passed to every ``TemplateConstraintHierarchyOperator`` at
+    construction time so that semantic validation can happen immediately, before
+    any further compiler phases run.  The validator is responsible for three
+    checks carried out in the operator's ``__init__``:
+
+    1. The referenced name is known as either a concept or a template variable.
+    2. Template variables are never given explicit template-argument constraints.
+    3. If explicit template-argument constraints are given for a concept, their
+       count matches the concept's declared number of template parameters exactly.
+
+    Implementors must supply:
+
+    * ``is_concept`` / ``is_template_variable`` — mutually exclusive membership
+      tests that classify a raw name string.
+    * ``get_nr_template_arguments`` — the number of template parameters declared
+      by a concept (0 for non-parameterised leaf concepts).
+    * ``full_type_name`` — the canonical display name with template parameters
+      filled in, used in error messages (e.g. ``"Map<K, V>"``).
+    """
+
     @abstractmethod
     def full_type_name(self, name: str) -> str:
         pass
@@ -58,6 +81,21 @@ TemplateConstraintFormulae are either:
 
 
 class TemplateConstraintFormula(ABC):
+    """
+    Root abstract base class for every template-argument constraint formula.
+
+    Every formula in the tree carries the ``location_id`` of the source
+    location where it was written, so that semantic errors produced during
+    later compiler phases can be reported with precise source context.
+
+    The two disjoint sub-hierarchies are:
+
+    * ``NonStructureConstraintFormula`` — restricts what a *single* slot may
+      hold (a type, a literal value, or nothing).
+    * ``StructureConstraintFormula`` — expresses constraints on the *relationship
+      between* multiple template-argument slots simultaneously.
+    """
+
     def __init__(self, location_id: LocationId):
         self.location_id = location_id
 
@@ -66,10 +104,48 @@ class TemplateConstraintFormula(ABC):
 
 
 class NonStructureConstraintFormula(TemplateConstraintFormula):
+    """
+    A constraint that governs a single template-argument slot in isolation.
+
+    Non-structure constraints answer the question "what is an acceptable value
+    for *this one* slot?", without reference to any other slot.  They form the
+    operand type for ``And``, ``Or``, and ``Not``, and they appear as the
+    per-slot entries inside a ``ConstraintGroup``.
+
+    The three concrete families are:
+
+    * ``Unconstrained`` — no restriction; any value is accepted.
+    * ``TypeTemplateConstraintFormula`` — restricts the slot to a type from the
+      concept hierarchy.
+    * ``NonTypeTemplateConstraintFormula`` — restricts the slot to a primitive
+      literal value domain (int, float, bool, or string).
+    """
+
     pass
 
 
 class Unconstrained(NonStructureConstraintFormula):
+    """
+    The vacuously true constraint: any type or literal value satisfies it.
+
+    Most importantly, ``Not(Unconstrained)`` means that no value satisfies it.
+
+    ``Unconstrained`` is equivalent to a ``Concept`` constraint, which accepts
+      any type.
+      The constraint ``Not(Concept)`` means that no value can satisfy it.
+
+    ``Unconstrained`` is used wherever a slot is left deliberately unrestricted.
+    It arises in two situations:
+
+    * Explicitly, when a concept is referenced with empty angle brackets, e.g.
+      ``Vector<>`` — the single slot of ``Vector`` receives an ``Unconstrained``
+      formula, meaning any instantiation of that slot is accepted.
+    * Implicitly, as the result of parsing an absent sub-expression, e.g. the
+      body of ``And()`` or a slot delimiter ``>`` or ``,`` in the input stream.
+
+    Its ``repr`` is the empty string, so it is invisible in serialised output.
+    """
+
     def __init__(self, location_id: LocationId):
         super().__init__(location_id)
 
@@ -78,10 +154,32 @@ class Unconstrained(NonStructureConstraintFormula):
 
 
 class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
+    """
+    A non-structure constraint that restricts a slot to a *type* in the
+    concept hierarchy, as opposed to a primitive literal value.
+
+    All ``And``, ``Or``, ``Not``, and hierarchy-operator constraints belong to
+    this family.  The ``And`` and ``Or`` constructors enforce that every operand
+    is a ``TypeTemplateConstraintFormula``; mixing type constraints with literal
+    values or ``Unconstrained`` inside a boolean operator is a runtime error.
+    """
+
     pass
 
 
 class TemplateConstraintAnd(TypeTemplateConstraintFormula):
+    """
+    Type-constraint intersection: the template argument must satisfy *all*
+    sub-formulae simultaneously.  Written ``And(F₁, F₂, …)``.
+
+    Every operand must be a ``TypeTemplateConstraintFormula``; passing
+    ``Unconstrained`` or a ``NonTypeTemplateConstraintFormula`` raises a
+    ``RuntimeError`` at construction time.  At least one operand is required.
+
+    Example: ``And(Animal, Not(Predator))`` matches any concrete type that is
+    both a descendant of ``Animal`` and not a descendant of ``Predator``.
+    """
+
     def __init__(self, location_id: LocationId, sub_formulae: tuple[NonStructureConstraintFormula, ...]):
         super().__init__(location_id)
         # make tuple to be immutable
@@ -99,6 +197,18 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
 
 
 class TemplateConstraintOr(TypeTemplateConstraintFormula):
+    """
+    Type-constraint union: the template argument must satisfy *at least one*
+    sub-formula.  Written ``Or(F₁, F₂, …)``.
+
+    Every operand must be a ``TypeTemplateConstraintFormula``; the same
+    restrictions and error behaviour as ``TemplateConstraintAnd`` apply.
+    At least one operand is required.
+
+    Example: ``Or(Mammal, Bird)`` matches any concrete type that is a
+    descendant of either ``Mammal`` or ``Bird``.
+    """
+
     def __init__(self, location_id: LocationId, sub_formulae: tuple[NonStructureConstraintFormula, ...]):
         super().__init__(location_id)
         # make tuple to be immutable
@@ -116,6 +226,18 @@ class TemplateConstraintOr(TypeTemplateConstraintFormula):
 
 
 class TemplateConstraintNot(TypeTemplateConstraintFormula):
+    """
+    Type-constraint complement: the template argument must *not* satisfy the
+    sub-formula.  Written ``Not(F)``.
+
+    The single operand must be a ``TypeTemplateConstraintFormula``; passing
+    ``Unconstrained`` or a ``NonTypeTemplateConstraintFormula`` raises a
+    ``RuntimeError`` at construction time.
+
+    Example: ``Not(Abstract)`` matches any concrete type that is not a
+    descendant of the abstract concept ``Abstract``.
+    """
+
     def __init__(self, sub_formula: TemplateConstraintFormula, location_id: LocationId):
         super().__init__(location_id)
         self.sub_formula: TemplateConstraintFormula = sub_formula
@@ -130,6 +252,29 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
 
 
 class HierarchyCheckType(Enum):
+    """
+    Identifies which positional relationship to the named concept a
+    ``TemplateConstraintHierarchyOperator`` tests.
+
+    Members
+    -------
+    DESCENDANTS_OF
+        Matches concrete (non-abstract) subtypes of the literal, excluding the
+        literal itself unless it is concrete.  Syntax: ``T``.
+    ABSTRACT_DESCENDANTS_OF
+        Matches all subtypes of the literal, whether abstract or concrete,
+        including the literal itself.  Syntax: ``T*``.
+    SELF
+        Matches exactly the named concept — no subtypes or supertypes.
+        Syntax: ``T.``.
+    ASCENDANTS_OF
+        Matches concrete (non-abstract) supertypes of the literal, excluding
+        the literal itself unless it is concrete.  Syntax: ``^T``.
+    ABSTRACT_ASCENDANTS_OF
+        Matches all supertypes of the literal, whether abstract or concrete,
+        including the literal itself.  Syntax: ``^T*``.
+    """
+
     DESCENDANTS_OF = (0,)
     ABSTRACT_DESCENDANTS_OF = (1,)
     ASCENDANTS_OF = (2,)
@@ -141,6 +286,35 @@ class HierarchyCheckType(Enum):
 # If the concept is a template ValueDomain, and it doesn't have any template restrictions,
 #  then it accepts all template-instantiations
 class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
+    """
+    Abstract base for the five hierarchy-positional type constraints, each of
+    which names a specific concept (or template variable) as its reference point
+    and selects an up- or downward region of the hierarchy relative to it.
+
+    The ``literal`` attribute holds the bare name of the reference concept or
+    template variable.  The optional ``literal_template_formulae`` tuple
+    further constrains the reference concept's own template arguments when it is
+    itself parameterised (e.g. ``Collection<Animal>`` constrains the element
+    type).  When no angle brackets are written, ``literal_template_formulae``
+    is the empty tuple, meaning the reference concept is accepted in any of its
+    instantiations.
+
+    Semantic validation is performed eagerly at construction time via the
+    supplied ``validator``:
+
+    * The ``literal`` must be recognised as either a concept or a template
+      variable; anything else raises ``CHSemanticError``.
+    * Template variables may not carry template-argument constraints, because a
+      template variable stands for an unknown concept whose own template
+      signature is not known at constraint-definition time.
+    * For parameterised concepts, the number of entries in
+      ``literal_template_formulae`` must equal the concept's declared parameter
+      count exactly; a mismatch raises ``CHSemanticError``.
+
+    Concrete subclasses select the hierarchy direction via ``HierarchyCheckType``
+    and provide the appropriate ``repr``.
+    """
+
     def __init__(
         self,
         literal: str,
@@ -211,6 +385,18 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
 
 
 class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
+    """
+    Matches any *concrete* (non-abstract) descendant of the named concept in
+    the hierarchy.  Written as the bare concept name: ``T``.
+
+    A template argument is accepted if its assigned concept is a transitive
+    subtype of ``literal`` and is not abstract.  The literal concept itself is
+    accepted only if it is concrete.
+
+    Example: ``Animal`` matches ``Dog``, ``Cat``, etc., but not the abstract
+    concept ``Vertebrate`` even if ``Vertebrate`` is a subtype of ``Animal``.
+    """
+
     def __init__(
         self,
         literal: str,
@@ -225,6 +411,17 @@ class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
 
 
 class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator):
+    """
+    Matches *any* descendant of the named concept — concrete or abstract —
+    including the literal concept itself.  Written as ``T*``.
+
+    Use this variant instead of ``TemplateConstraintDescendants`` when abstract
+    intermediate concepts in the hierarchy should also be valid instantiations.
+
+    Example: ``Animal*`` matches ``Dog``, ``Cat``, and also the abstract concept
+    ``Vertebrate`` if it is declared as a subtype of ``Animal``.
+    """
+
     def __init__(
         self,
         literal: str,
@@ -241,6 +438,17 @@ class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator)
 
 
 class TemplateConstraintSelf(TemplateConstraintHierarchyOperator):
+    """
+    Matches *exactly* the named concept — no subtypes or supertypes are
+    accepted.  Written as ``T.`` (concept name followed by a dot).
+
+    Use this variant to require a template argument to be instantiated with
+    precisely the specified concept, ruling out any more- or less-specific type.
+
+    Example: ``Animal.`` accepts only an argument assigned the concept
+    ``Animal`` itself; ``Dog`` would be rejected even though it is a subtype.
+    """
+
     def __init__(
         self,
         literal: str,
@@ -255,6 +463,18 @@ class TemplateConstraintSelf(TemplateConstraintHierarchyOperator):
 
 
 class TemplateConstraintAscendants(TemplateConstraintHierarchyOperator):
+    """
+    Matches any *concrete* (non-abstract) ancestor of the named concept in
+    the hierarchy.  Written as ``^T``.
+
+    A template argument is accepted if its assigned concept is a transitive
+    supertype of ``literal`` and is not abstract.  This is the upward-directed
+    counterpart of ``TemplateConstraintDescendants``.
+
+    Example: ``^Dog`` matches ``Animal``, ``Mammal``, etc., but not an abstract
+    common ancestor if that ancestor is declared abstract.
+    """
+
     def __init__(
         self,
         literal: str,
@@ -269,6 +489,17 @@ class TemplateConstraintAscendants(TemplateConstraintHierarchyOperator):
 
 
 class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
+    """
+    Matches *any* ancestor of the named concept — concrete or abstract —
+    including the literal concept itself.  Written as ``^T*``.
+
+    Use this variant instead of ``TemplateConstraintAscendants`` when abstract
+    supertypes in the hierarchy should also be valid instantiations.
+
+    Example: ``^Dog*`` matches ``Animal``, ``Mammal``, and also any abstract
+    concept that appears above ``Dog`` in the hierarchy.
+    """
+
     def __init__(
         self,
         literal: str,
@@ -285,6 +516,21 @@ class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
 
 
 class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
+    """
+    Restricts a template-argument slot to a primitive (non-type) value domain
+    without pinning a specific value.  Written ``Literal:boolean``,
+    ``Literal:int``, ``Literal:number``, or ``Literal:string`` in the CH
+    language; stored internally with the normalised type strings ``"bool"``,
+    ``"int"``, ``"float"``, or ``"string"``.
+
+    Use this class when any value of the given primitive kind is acceptable.
+    To require a specific value (e.g. exactly ``3`` or exactly ``"tag"``), use
+    the subclass ``LiteralValueConstraintFormula`` instead.
+
+    Example: a concept ``FixedVector<N: int>`` might constrain its length
+    parameter with ``Literal:int`` to accept any integer instantiation.
+    """
+
     def __init__(self, constraint_type: str, location_id: LocationId):
         super().__init__(location_id)
         self.constraint_type = constraint_type
@@ -299,18 +545,25 @@ class LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula):
     """
     A constraint that matches exactly one concrete literal value.
 
-    In contrast to NonTypeTemplateConstraintFormula ("any integer"), this
-    class pins the value: e.g. 3, -1, 3.14, true, false, "hello".
+    In contrast to ``NonTypeTemplateConstraintFormula`` ("any integer"), this
+    class pins the value: e.g. ``3``, ``-1``, ``3.14``, ``true``, ``false``,
+    ``"hello"``.
 
-    Typical use-case is as a template argument constraint, e.g.
+    Typical use-case is as a template argument constraint, e.g.::
         Vector<3>     ->  LiteralValueConstraintFormula("int",    "3")
         Flags<true>   ->  LiteralValueConstraintFormula("bool",   "true")
         Tag<"x">      ->  LiteralValueConstraintFormula("string", '"x"')
 
-    The raw_value string is always the canonical serialized form:
-      int/float  --  the digit string exactly as written  (e.g. "3", "-1", "3.14")
-      bool       --  "true" or "false"  (JSON convention)
-      string     --  the full quoted form, including surrounding " and any \" escapes
+    The ``raw_value`` string is always the canonical serialised form:
+
+    * ``int`` / ``float`` — the digit string exactly as written (e.g. ``"3"``,
+      ``"-1"``, ``"3.14"``).
+    * ``bool`` — ``"true"`` or ``"false"`` (JSON convention).
+    * ``string`` — the full quoted form, including surrounding ``"`` and any
+      ``\\"`` escapes.
+
+    The parsed Python value is also stored in ``value`` for efficient exact
+    comparison during instantiation checking, without reparsing on every call.
     """
 
     def __init__(self, constraint_type: str, raw_value: str, location_id: LocationId):
@@ -344,11 +597,50 @@ class LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula):
 
 
 class StructureConstraintFormula(TemplateConstraintFormula):
+    """
+    Abstract base for constraints that express relationships *between* multiple
+    template-argument slots simultaneously, rather than restricting each slot
+    in isolation.
+
+    Whereas a ``NonStructureConstraintFormula`` answers "what may this one slot
+    hold?", a ``StructureConstraintFormula`` answers "given all the slots
+    together, which cross-slot assignments are permissible?".  Structure
+    constraints can only appear as operands of other structure constraints
+    (``StructureConjunction``, ``StructureDisjunction``, ``StructureNegation``)
+    or stand alone as a top-level constraint; they cannot appear inside ``And``,
+    ``Or``, or ``Not``.
+
+    The atomic unit is ``ConstraintGroup``, which pins one non-structure
+    constraint per slot.  ``StructureConjunction``, ``StructureDisjunction``,
+    and ``StructureNegation`` let these groups be combined logically.
+    """
+
     def __init__(self, location_id: LocationId):
         super().__init__(location_id)
 
 
 class ConstraintGroup(StructureConstraintFormula):
+    """
+    An ordered tuple of ``NonStructureConstraintFormula`` instances, one per
+    template-argument slot, representing a single concrete cross-slot
+    assignment.  Written ``<C_1, C_2, ..., C_n>``.
+
+    A ``ConstraintGroup`` is the atomic unit of structural constraint: it
+    simultaneously constrains every template-argument slot of a concept.  For a
+    two-parameter concept ``Map<K, V>``, the group ``<Animal, Plant>`` means
+    "K must match ``Animal`` **and** V must match ``Plant``, at the same time".
+
+    ``group_constraints`` always contains at least one element; ``<>`` produces
+    a group with a single ``Unconstrained`` slot rather than an empty tuple.
+
+    ``ConstraintGroup`` also serves as the syntactic vehicle for template
+    argument lists in hierarchy literals (e.g. the ``<Animal>`` in
+    ``Vector<Animal>``).  In that context the parser extracts ``group_constraints``
+    directly as the operator's ``literal_template_formulae``, so the
+    ``ConstraintGroup`` object itself does not appear in the formula tree of a
+    hierarchy literal.
+    """
+
     def __init__(self, location_id: LocationId, group_constraints: tuple[NonStructureConstraintFormula, ...]):
         super().__init__(location_id)
         self.group_constraints = group_constraints
@@ -358,6 +650,21 @@ class ConstraintGroup(StructureConstraintFormula):
 
 
 class StructureConjunction(StructureConstraintFormula):
+    """
+    All the given structure constraints must hold simultaneously.
+    Written ``Conj(S_1, S_2, ...)``.
+
+    A cross-slot assignment is accepted only if it satisfies *every* operand.
+    This is useful for expressing compound structural requirements that must all
+    be true at once.
+
+    Example: ``Conj(<Animal, Plant>, Neg(<Predator, Prey>))`` requires both
+    that K is ``Animal`` and V is ``Plant``, *and* that the pair is not exactly
+    ``(Predator, Prey)``.
+
+    At least one operand is required; an empty ``Conj()`` is a parse error.
+    """
+
     def __init__(self, location_id: LocationId, structure_constraints: tuple[StructureConstraintFormula, ...]):
         super().__init__(location_id)
         self.structure_constraints = structure_constraints
@@ -367,6 +674,20 @@ class StructureConjunction(StructureConstraintFormula):
 
 
 class StructureDisjunction(StructureConstraintFormula):
+    """
+    At least one of the given structure constraints must hold.
+    Written ``Disj(S_1, S_2, ...)``.
+
+    A cross-slot assignment is accepted if it satisfies *any* operand.  This
+    lets the author enumerate several acceptable cross-slot configurations.
+
+    Example: ``Disj(<Animal, Plant>, <Fungus, Protist>)`` accepts the slot
+    assignment ``(Animal, Plant)`` or ``(Fungus, Protist)``, but not any other
+    combination such as ``(Animal, Protist)``.
+
+    At least one operand is required; an empty ``Disj()`` is a parse error.
+    """
+
     def __init__(self, location_id: LocationId, structure_constraints: tuple[StructureConstraintFormula, ...]):
         super().__init__(location_id)
         self.structure_constraints = structure_constraints
@@ -376,6 +697,19 @@ class StructureDisjunction(StructureConstraintFormula):
 
 
 class StructureNegation(StructureConstraintFormula):
+    """
+    The given structure constraint must *not* hold.  Written ``Neg(S)``.
+
+    A cross-slot assignment is accepted only if it does **not** satisfy the
+    single operand.  ``StructureNegation`` is typically nested inside
+    ``StructureConjunction`` to exclude specific forbidden combinations while
+    still permitting others.
+
+    Example: ``Neg(<Predator, Prey>)`` accepts any slot assignment except the
+    pair ``(Predator, Prey)``. This example is equivalent to
+    ``Disj(<Not(Predator), Unconstrained>, <Unconstrained, Not(Prey)>)``.
+    """
+
     def __init__(self, location_id: LocationId, structure_constraint: StructureConstraintFormula):
         super().__init__(location_id)
         self.structure_constraint = structure_constraint
