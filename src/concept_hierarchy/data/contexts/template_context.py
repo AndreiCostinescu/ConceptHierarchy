@@ -106,7 +106,7 @@ class TemplateContext:
         return self.constraint.is_empty
 
     def is_variadic(self, variable_name) -> bool:
-        return self.variables[variable_name]
+        return variable_name in self.variadic_variables
 
     def has_template_variable(self, variable_name) -> bool:
         return variable_name in self.variables
