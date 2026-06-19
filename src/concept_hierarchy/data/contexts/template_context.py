@@ -125,8 +125,8 @@ class TemplateContext:
             return self.constraint
 
         var_index = self.variables.index(variable_name)
-        if new_variable_constraint.is_empty:
-            # basically create empty!
+        if new_variable_constraint.is_empty or self.is_unconstrained:
+            # basically create empty or return the other constraint
             return self.create_unconstrained_except_with_constraint_at_index(
                 location_id, var_index, new_variable_constraint
             )
