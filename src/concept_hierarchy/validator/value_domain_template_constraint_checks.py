@@ -27,10 +27,10 @@ from concept_hierarchy.errors import CHSemanticError
 
 
 class ConstraintFormulaValidator(TemplateConstraintFormulaValidator):
-    def __init__(self, context: ConceptHierarchyContext):
+    def __init__(self, context: ConceptHierarchyContext, t_arg_context: set[str]):
         self.ch_context = context
-        # built incrementally as template arguments are processed
-        self.t_arg_context: set[str] = set()
+        # contains all template arguments available in the ValueDomain concept that defines the constraints
+        self.t_arg_context: set[str] = t_arg_context
 
     def full_type_name(self, name: str) -> str:
         if self.is_concept(name):
@@ -63,7 +63,7 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
         assert isinstance(vd, HiddenImplementationDefinition)
         # parse template argument constraints;
         # iterate in definition order because newer arguments have the older arguments as variables
-        validator = ConstraintFormulaValidator(context)
+        validator = ConstraintFormulaValidator(context, set(vd.template_argument_order))
         constraint = None
         constraints: list[NonStructureConstraintFormula] = []
         for t_arg in vd.template_argument_order:
@@ -81,7 +81,6 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
                     location_id=location_id,
                 )
             constraints.append(t_arg_constraint)
-            validator.t_arg_context.add(t_arg)
 
         if vd.is_templatable():
             constraint = ConstraintGroup(
