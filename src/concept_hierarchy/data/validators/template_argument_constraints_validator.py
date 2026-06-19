@@ -17,10 +17,16 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Callable
 
+from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+    ConstraintGroup,
     HierarchyCheckType,
     LiteralValueConstraintFormula,
     NonTypeTemplateConstraintFormula,
+    StructureConjunction,
+    StructureConstraintFormula,
+    StructureDisjunction,
+    StructureNegation,
     TemplateConstraintAnd,
     TemplateConstraintFormula,
     TemplateConstraintHierarchyOperator,
@@ -89,6 +95,138 @@ def validate_template_argument_value_against_constraint(
     except StopValidation:
         pass
     return errors
+
+
+def validate_complete_instantiation_of_concept(
+    concept_name: str,
+    complete_instantiation: tuple[ConceptHierarchyTemplateArgument, ...],
+    template_context: TemplateContext,
+    validator: TemplateConstraintArgumentValidator,
+    location_id: LocationId = None,
+) -> list[ConceptHierarchyError]:
+    formula = validator.get_constraint_formula_of(concept_name)
+    if (formula is None) != (complete_instantiation == ()):
+        if formula is None:
+            raise RuntimeError(
+                f"No template variables but provided a instantiation template arguments {complete_instantiation}"
+            )
+        raise RuntimeError(f"No instantiation arguments provided for formula {formula!r}")
+    if formula is None:
+        return []
+    return _validate_complete_instantiation_of_type(
+        concept_name, formula, complete_instantiation, template_context, validator, location_id
+    )
+
+
+def _validate_complete_instantiation_of_type(
+    concept_name: str,
+    formula: StructureConstraintFormula,
+    complete_instantiation: tuple[ConceptHierarchyTemplateArgument, ...],
+    template_context: TemplateContext,
+    validator: TemplateConstraintArgumentValidator,
+    location_id: LocationId = None,
+) -> list[ConceptHierarchyError]:
+    assert template_context.is_unconstrained
+    if isinstance(formula, ConstraintGroup):
+        if len(formula.group_constraints) != len(complete_instantiation):
+            raise RuntimeError(
+                f"Incomplete/wrong substitution for {formula}: expected {len(formula.group_constraints)} variable "
+                f"values, got {complete_instantiation!r}"
+            )
+        assert len(formula.group_constraints) > 0
+        # assert that all values share the same template context object (modifying one will modify all of them)!
+        sub_template_contexts: list[TemplateContext] = []
+        total_errors = []
+        concept_template_argument_names = validator.get_template_argument_names_of(concept_name)
+        concept_template_argument_substitution: dict[str, ConceptHierarchyTemplateArgument] = {
+            key: value for key, value in zip(concept_template_argument_names, complete_instantiation)
+        }
+        for t_arg_index, (constraint, value) in enumerate(zip(formula.group_constraints, complete_instantiation)):
+            new_location_id = location_id + [f"{constraint!r} <-> {value}"]
+            sub_template_context = template_context.create_unconstrained_context(new_location_id)
+            errors = validate_template_argument_value_against_constraint(
+                constraint,
+                value,
+                sub_template_context,
+                validator,
+                concept_template_argument_substitution,
+                new_location_id,
+                collect_all_errors=True,
+            )
+            if errors:
+                # if the first substitution already fails, the next can't possibly validate them
+                total_errors.extend(errors)
+            else:
+                sub_template_contexts.append(sub_template_context)
+        # if there are errors, do not merge the sub-template context with the main one!
+        if not total_errors:
+            # merge the template contexts, only if there are no errors!
+            template_context.merge_constraints_and(sub_template_contexts, location_id)
+        return total_errors
+
+    if isinstance(formula, StructureConjunction):
+        total_errors, sub_template_contexts = _iterate_sub_structure_formulae(
+            concept_name, formula, complete_instantiation, template_context, validator, location_id
+        )
+        if not total_errors:
+            # merge the template contexts, only if there are no errors, i.e. if all conjunction branches have no errors!
+            template_context.merge_constraints_and(sub_template_contexts, location_id)
+        return total_errors
+
+    if isinstance(formula, StructureDisjunction):
+        total_errors, sub_template_contexts = _iterate_sub_structure_formulae(
+            concept_name, formula, complete_instantiation, template_context, validator, location_id
+        )
+        if sub_template_contexts:
+            # merge the template contexts, only if there is at least a disjunction branch with no errors!
+            template_context.merge_constraints_or(sub_template_contexts, location_id)
+        return total_errors
+
+    if isinstance(formula, StructureNegation):
+        sub_template_context = template_context.create_unconstrained_context(location_id)
+        errors = _validate_complete_instantiation_of_type(
+            concept_name,
+            formula.structure_constraint,
+            complete_instantiation,
+            sub_template_context,
+            validator,
+            location_id,
+        )
+        if errors:
+            # there was a non-template-variable-related error in substitution => this means unconstrained success!
+            return []
+        elif sub_template_context.is_unconstrained:
+            # there was no non-template-variable-related error and no template constraints => this means failure!
+            err = CHSemanticError(
+                f"Sub structure-formula {formula.structure_constraint} passed without constraints on template arguments"
+                f" {template_context} => negation fails",
+                location_id=location_id,
+            )
+            return [err]
+        else:
+            # there was no non-template-variable-related error and there are template constraints => negate constraint
+            template_context.constraint = sub_template_context.make_constraint_neg()
+            return []
+
+    raise RuntimeError(f"Unknown structure formula type of {formula}!")
+
+
+def _iterate_sub_structure_formulae(
+    concept_name, formula, complete_substitution, template_context: TemplateContext, validator, location_id
+):
+    sub_template_contexts: list[TemplateContext] = []
+    total_errors = []
+    for structure_formula in formula.structure_constraints:
+        new_location_id = location_id + [f"{structure_formula!r} <-> {complete_substitution!r}"]
+        sub_template_context = template_context.create_unconstrained_context(new_location_id)
+        errors = _validate_complete_instantiation_of_type(
+            concept_name, structure_formula, complete_substitution, sub_template_context, validator, new_location_id
+        )
+        if errors:
+            total_errors.extend(errors)
+        else:
+            sub_template_contexts.append(sub_template_context)
+    return total_errors, sub_template_contexts
 
 
 def _delegate_constraint_check(

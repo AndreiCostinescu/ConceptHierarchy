@@ -40,7 +40,7 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentWithVariadicId,
 )
 from concept_hierarchy.data.value_domain_type import ConceptHierarchyType
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 
 
 @dataclass(frozen=True)
@@ -454,54 +454,3 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
     if has_template_dependent_group_elements:
         return TemplateDependentVariadicGroup(t_arg.clean_name, converted_group_elements)
     return InstantiatedVariadicGroup(t_arg.clean_name, converted_group_elements)
-
-
-def validate_template_argument_constraints_in_instantiated_type(
-    ch_type: InstantiatedType,
-    validator: TypeValidator,
-    location_id: LocationId,
-    type_template_data: TypeTemplateData,
-    *,
-    collect_all_errors: bool = False,
-) -> list[ConceptHierarchyError]:
-    errors = []
-    for t_arg, t_arg_name in zip(ch_type.template_arguments, type_template_data.template_argument_order):
-        t_arg_constraint = type_template_data.constraints[t_arg_name]
-        new_location_id = location_id + [f"{ch_type.clean_name} template argument {t_arg.full_name}"]
-        sub_errors = validator.template_argument_value_satisfies_constraint(
-            t_arg_constraint, t_arg, new_location_id, collect_all_errors
-        )
-        if sub_errors:
-            errors.extend(sub_errors)
-            if not collect_all_errors:
-                break
-    return errors
-
-
-def validate_template_argument_constraints(
-    ch_type: ConceptHierarchyTemplateArgument,
-    validator: TypeValidator,
-    location_id: LocationId,
-    *,
-    collect_all_errors: bool = False,
-) -> list[ConceptHierarchyError]:
-    if isinstance(ch_type, (LiteralValue, TemplateDependent)):
-        return []
-    assert isinstance(ch_type, Instantiated)
-    if isinstance(ch_type, InstantiatedVariadicGroup):
-        errors = []
-        for group_elem in ch_type.variadic_group:
-            new_location_id = location_id + [group_elem.full_name]
-            sub_errors = validate_template_argument_constraints(
-                group_elem, validator, new_location_id, collect_all_errors=collect_all_errors
-            )
-            if sub_errors:
-                errors.extend(sub_errors)
-                if not collect_all_errors:
-                    break
-        return errors
-    assert isinstance(ch_type, InstantiatedType)
-    type_template_data = validator.get_template_data_of(ch_type.clean_name)
-    return validate_template_argument_constraints_in_instantiated_type(
-        ch_type, validator, location_id, type_template_data, collect_all_errors=collect_all_errors
-    )
