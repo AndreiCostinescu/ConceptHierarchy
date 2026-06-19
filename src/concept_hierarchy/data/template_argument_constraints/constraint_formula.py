@@ -415,7 +415,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
             )
 
         # don't allow constraints like "T<ValueDomain>" where T is a template variable!
-        if validator.is_template_variable(self.literal) and self.has_specification_of_template_constraints:
+        if validator.is_template_variable(self.literal) and self.is_templated:
             raise CHSemanticError(
                 "Can not define a constraint literal value that is a template variable ({0}) and also "
                 "specify constraints on template arguments: {0}<{1}>".format(
@@ -425,11 +425,11 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
             )
         # Check that either no template_constraint_formulae are specified
         #  or the same number of formulae as the literal has template arguments!
-        elif not validator.is_template_variable(self.literal) and self.has_specification_of_template_constraints:
+        elif not validator.is_template_variable(self.literal) and self.is_templated:
             assert validator.is_concept(self.literal)
-            nr_template_arguments = validator.get_nr_template_arguments(self.literal)
+            nr_template_arguments_of_literal = validator.get_nr_template_arguments(self.literal)
             # check if the concept also has template arguments if the constraint formula has template constraints!
-            if nr_template_arguments == 0:
+            if nr_template_arguments_of_literal == 0:
                 t_arg_constraints_str = ", ".join(str(t_constraint) for t_constraint in self.literal_template_formulae)
                 literal_str = self.literal + (("<" + t_arg_constraints_str + ">") if t_arg_constraints_str else "")
                 raise CHSemanticError(
@@ -437,10 +437,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
                     f"ValueDomain with template arguments: {literal_str}!",
                     location_id=location_id,
                 )
-            if (
-                self.has_specification_of_template_constraints
-                and len(self.literal_template_formulae) != nr_template_arguments
-            ):
+            if self.is_templated and len(self.literal_template_formulae) != nr_template_arguments_of_literal:
                 t_arg_constraints_str = ", ".join(str(t_constraint) for t_constraint in self.literal_template_formulae)
                 raise CHSemanticError(
                     f"The number {len(self.literal_template_formulae)} of template argument constraints "
@@ -450,7 +447,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
                 )
 
     @property
-    def has_specification_of_template_constraints(self) -> bool:
+    def is_templated(self) -> bool:
         return self.literal_template_formulae != ()
 
     def print_constraints_of_template_arguments(self):
