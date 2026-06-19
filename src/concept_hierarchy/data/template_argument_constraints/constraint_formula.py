@@ -504,6 +504,31 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
             case _:
                 raise RuntimeError(f"Unknown hierarchy operator: {hierarchy_op}")
 
+    def create_new_same_op(
+        self,
+        literal: str,
+        literal_template_constraints: tuple[NonStructureConstraintFormula, ...],
+        validator: TemplateConstraintFormulaValidator,
+        location_id: LocationId,
+    ) -> TemplateConstraintHierarchyOperator:
+        match self.hierarchy_op:
+            case HierarchyCheckType.SELF:
+                return TemplateConstraintSelf(literal, literal_template_constraints, validator, location_id)
+            case HierarchyCheckType.DESCENDANTS_OF:
+                return TemplateConstraintDescendants(literal, literal_template_constraints, validator, location_id)
+            case HierarchyCheckType.ABSTRACT_DESCENDANTS_OF:
+                return TemplateConstraintAbstractDescendants(
+                    literal, literal_template_constraints, validator, location_id
+                )
+            case HierarchyCheckType.ASCENDANTS_OF:
+                return TemplateConstraintAscendants(literal, literal_template_constraints, validator, location_id)
+            case HierarchyCheckType.ABSTRACT_ASCENDANTS_OF:
+                return TemplateConstraintAbstractAscendants(
+                    literal, literal_template_constraints, validator, location_id
+                )
+            case _:
+                raise RuntimeError(f"Unknown hierarchy operator: {self.hierarchy_op}")
+
 
 class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
     """
