@@ -20,6 +20,7 @@ from typing import Callable
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     ConstraintGroup,
+    Empty,
     HierarchyCheckType,
     LiteralValueConstraintFormula,
     NonStructureConstraintFormula,
@@ -36,6 +37,7 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TemplateConstraintOr,
     TemplateConstraintSelf,
     TypeTemplateConstraintFormula,
+    Unconstrained,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
@@ -427,6 +429,17 @@ def _delegate_constraint_check(
         case NonTypeTemplateConstraintFormula():
             _validate_literal(
                 formula, template_argument_value, template_context, location_id, errors, collect_all_errors
+            )
+        case Unconstrained():
+            return  # this is always successful
+        case Empty():
+            errors.append(
+                CHSemanticError(f"Nothing matches the Empty constraint, not even {formula!r}", location_id=location_id)
+            )
+            return  # this is always unsuccessful
+        case StructureConstraintFormula():
+            raise RuntimeError(
+                f"There shouldn't be a structure constraint formula here! Found {formula!r} at {location_id.print()}"
             )
         case _:
             raise ValueError(f"Unknown formula type: {type(formula)!r}")
