@@ -113,6 +113,11 @@ class TemplateConstraintFormula(ABC):
     def is_empty(self) -> bool:
         pass
 
+    @property
+    @abstractmethod
+    def depends_on_template_variables(self) -> bool:
+        pass
+
 
 class NonStructureConstraintFormula(TemplateConstraintFormula, ABC):
     """
@@ -172,6 +177,10 @@ class Unconstrained(NonStructureConstraintFormula):
     def is_empty(self) -> bool:
         return False
 
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return False
+
 
 class Empty(NonStructureConstraintFormula):
     """
@@ -195,6 +204,10 @@ class Empty(NonStructureConstraintFormula):
     @property
     def is_empty(self) -> bool:
         return True
+
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return False
 
 
 class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
@@ -256,6 +269,10 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
         """
         return any(x.is_empty for x in self.sub_formulae)
 
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return any(x.depends_on_template_variables for x in self.sub_formulae)
+
 
 class TemplateConstraintOr(TypeTemplateConstraintFormula):
     """
@@ -288,6 +305,10 @@ class TemplateConstraintOr(TypeTemplateConstraintFormula):
     @property
     def is_empty(self):
         return all(x.is_empty for x in self.sub_formulae)
+
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return any(x.depends_on_template_variables for x in self.sub_formulae)
 
 
 class TemplateConstraintNot(TypeTemplateConstraintFormula):
@@ -329,6 +350,10 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
          This is a separate problem in it of itself!
         """
         return False
+
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return self.sub_formula.depends_on_template_variables
 
 
 class HierarchyCheckType(Enum):
@@ -415,8 +440,10 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
                 location_id=self.location_id,
             )
 
+        self.is_template_variable = validator.is_template_variable(self.literal)
+
         # don't allow constraints like "T<ValueDomain>" where T is a template variable!
-        if validator.is_template_variable(self.literal) and self.is_templated:
+        if self.is_template_variable and self.is_templated:
             raise CHSemanticError(
                 "Can not define a constraint literal value that is a template variable ({0}) and also "
                 "specify constraints on template arguments: {0}<{1}>".format(
@@ -426,7 +453,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
             )
         # Check that either no template_constraint_formulae are specified
         #  or the same number of formulae as the literal has template arguments!
-        elif not validator.is_template_variable(self.literal) and self.is_templated:
+        elif not self.is_template_variable and self.is_templated:
             assert validator.is_concept(self.literal)
             nr_template_arguments_of_literal = validator.get_nr_template_arguments(self.literal)
             # check if the concept also has template arguments if the constraint formula has template constraints!
@@ -529,6 +556,10 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
             case _:
                 raise RuntimeError(f"Unknown hierarchy operator: {self.hierarchy_op}")
 
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return self.is_template_variable or any(x.depends_on_template_variables for x in self.literal_template_formulae)
+
 
 class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
     """
@@ -589,7 +620,7 @@ class TemplateConstraintSelf(TemplateConstraintHierarchyOperator):
     accepted.  Written as ``T.`` (concept name followed by a dot).
 
     Use this variant to require a template argument to be instantiated with
-    precisely the specified concept, ruling out any more- or less-specific type.
+    precisely the specified concept, ruling out more- or less-specific types.
 
     Example: ``Animal.`` accepts only an argument assigned the concept
     ``Animal`` itself; ``Dog`` would be rejected even though it is a subtype.
@@ -692,6 +723,10 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
 
     @property
     def is_empty(self):
+        return False
+
+    @property
+    def depends_on_template_variables(self) -> bool:
         return False
 
 
@@ -810,6 +845,10 @@ class ConstraintGroup(StructureConstraintFormula):
     def is_empty(self):
         return any(x.is_empty for x in self.group_constraints)
 
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return any(x.depends_on_template_variables for x in self.group_constraints)
+
 
 class StructureConjunction(StructureConstraintFormula):
     """
@@ -842,6 +881,10 @@ class StructureConjunction(StructureConstraintFormula):
     def is_empty(self):
         return any(x.is_empty for x in self.structure_constraints)
 
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return any(x.depends_on_template_variables for x in self.structure_constraints)
+
 
 class StructureDisjunction(StructureConstraintFormula):
     """
@@ -873,6 +916,10 @@ class StructureDisjunction(StructureConstraintFormula):
     def is_empty(self):
         return all(x.is_empty for x in self.structure_constraints)
 
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return any(x.depends_on_template_variables for x in self.structure_constraints)
+
 
 class StructureNegation(StructureConstraintFormula):
     """
@@ -902,3 +949,7 @@ class StructureNegation(StructureConstraintFormula):
     @property
     def is_empty(self):
         return self.structure_constraint.is_unconstrained
+
+    @property
+    def depends_on_template_variables(self) -> bool:
+        return self.structure_constraint.depends_on_template_variables
