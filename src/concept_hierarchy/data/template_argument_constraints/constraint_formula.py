@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import copy
 from enum import Enum
 
 from concept_hierarchy.errors import CHSemanticError, LocationId
@@ -473,6 +474,35 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
          This is a separate problem in it of itself!
         """
         return False
+
+    def change_hierarchy_operator(
+        self, hierarchy_op: HierarchyCheckType, validator: TemplateConstraintFormulaValidator, location_id: LocationId
+    ) -> TemplateConstraintHierarchyOperator:
+        if self.hierarchy_op == hierarchy_op:
+            new = copy(self)
+            new.location_id = location_id
+            return new
+        match self.hierarchy_op:
+            case HierarchyCheckType.SELF:
+                return TemplateConstraintSelf(self.literal, self.literal_template_formulae, validator, location_id)
+            case HierarchyCheckType.DESCENDANTS_OF:
+                return TemplateConstraintDescendants(
+                    self.literal, self.literal_template_formulae, validator, location_id
+                )
+            case HierarchyCheckType.ABSTRACT_DESCENDANTS_OF:
+                return TemplateConstraintAbstractDescendants(
+                    self.literal, self.literal_template_formulae, validator, location_id
+                )
+            case HierarchyCheckType.ASCENDANTS_OF:
+                return TemplateConstraintAscendants(
+                    self.literal, self.literal_template_formulae, validator, location_id
+                )
+            case HierarchyCheckType.ABSTRACT_ASCENDANTS_OF:
+                return TemplateConstraintAbstractAscendants(
+                    self.literal, self.literal_template_formulae, validator, location_id
+                )
+            case _:
+                raise RuntimeError(f"Unknown hierarchy operator: {hierarchy_op}")
 
 
 class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
