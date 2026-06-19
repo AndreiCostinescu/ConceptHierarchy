@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     ConstraintGroup,
+    Empty,
     NonStructureConstraintFormula,
     StructureConjunction,
     StructureConstraintFormula,
@@ -223,6 +224,9 @@ class TemplateContext:
     def create_unconstrained(self, location_id: LocationId) -> ConstraintGroup:
         return ConstraintGroup(location_id, tuple(Unconstrained(location_id) for _ in self.variables))
 
+    def create_empty(self, location_id: LocationId) -> ConstraintGroup:
+        return ConstraintGroup(location_id, tuple(Empty(location_id) for _ in self.variables))
+
     def create_unconstrained_except_with_constraint_at_index(
         self, location_id: LocationId, var_index: int, var_constraint: NonStructureConstraintFormula
     ) -> ConstraintGroup:
@@ -248,3 +252,75 @@ class TemplateContext:
 
     def make_constraint_neg(self) -> StructureConstraintFormula:
         return StructureNegation(self.constraint.location_id, self.constraint)
+
+    def merge_in_place(self, other: TemplateContext, location_id: LocationId) -> None:
+        if (
+            (self.variables != other.variables)
+            or (self.variadic_variables != other.variadic_variables)
+            or ((self.constraint is None) != (other.constraint is None))
+        ):
+            raise RuntimeError(f"Can not merge unrelated template contexts: {self!r} and {other!r}")
+        if self.constraint is None:
+            return
+        # make and constraint!
+        if other.is_unconstrained:
+            return
+        if other.is_empty_constraint:
+            self.constraint = self.create_empty(location_id)
+            return
+        assert self.constraint is not None and other.constraint is not None
+        self.constraint = StructureConjunction(location_id, (self.constraint, other.constraint))
+
+    """
+    This does not perform any compatibility checks between the constraints! 
+    It assumes that there are the same template variables are used in the constraint!
+    """
+
+    def merge_constraints_and(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
+        if self.is_empty_constraint:
+            return
+        new_constraints: list[StructureConstraintFormula] = []
+        contexts_to_merge = sub_template_contexts
+        for to_merge in contexts_to_merge:
+            if to_merge.is_unconstrained:
+                continue
+            if to_merge.is_empty_constraint:
+                self.constraint = self.create_empty(location_id)
+                return
+            new_constraints.append(to_merge.constraint)
+        if new_constraints:
+            if self.is_unconstrained:
+                if len(new_constraints) == 1:
+                    self.constraint = new_constraints[0]
+                else:
+                    self.constraint = StructureConjunction(location_id, tuple(new_constraints))
+            else:
+                new_constraints = [self.constraint] + new_constraints
+                self.constraint = StructureConjunction(location_id, tuple(new_constraints))
+
+    """
+    This does not perform any compatibility checks between the constraints! 
+    It assumes that there are the same template variables are used in the constraint!
+    """
+
+    def merge_constraints_or(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
+        if self.is_unconstrained:
+            return
+        new_constraints: list[StructureConstraintFormula] = []
+        contexts_to_merge = sub_template_contexts
+        for to_merge in contexts_to_merge:
+            if to_merge.is_unconstrained:
+                self.constraint = self.create_unconstrained(location_id)
+                return
+            if to_merge.is_empty_constraint:
+                continue
+            new_constraints.append(to_merge.constraint)
+        if new_constraints:
+            if self.is_empty_constraint:
+                if len(new_constraints) == 1:
+                    self.constraint = new_constraints[0]
+                else:
+                    self.constraint = StructureDisjunction(location_id, tuple(new_constraints))
+            else:
+                new_constraints = [self.constraint] + new_constraints
+                self.constraint = StructureDisjunction(location_id, tuple(new_constraints))
