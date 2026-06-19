@@ -146,12 +146,16 @@ class ConceptHierarchyChecker:
         if self.ch.checked:
             return
 
+        base_location_id: LocationId = LocationId()
+        if self.ch.file:
+            base_location_id.append(self.ch.file)
+
         if self.ch.definition_data is None:
             self.ch.definition_data = ConceptHierarchyChecker.read_concept_hierarchy(
                 self.ch.file, self.ch.path_to_root_dir
             )
         if not isinstance(self.ch.definition_data, dict):
-            raise CHSyntaxError("Concept Hierarchy definition must be a JSON object!", location_id=[])
+            raise CHSyntaxError("Concept Hierarchy definition must be a JSON object!", location_id=base_location_id)
         concept_hierarchy = self.ch.definition_data
 
         # interpret either as a meta-definition, or a direct definition of concepts
@@ -169,7 +173,7 @@ class ConceptHierarchyChecker:
             raise CHSyntaxError(
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_name}" {self.ch.name!r} must be a non-empty, '
                 f"non-digit-starting string containing only alphanumeric characters or '_'.",
-                location_id=[ConceptHierarchyModel.model_name],
+                location_id=base_location_id + [ConceptHierarchyModel.model_name],
                 part=PathPart.VALUE,
             )
 
@@ -178,16 +182,13 @@ class ConceptHierarchyChecker:
         if not isinstance(raw_meta, dict):
             raise CHSyntaxError(
                 f'Concept Hierarchy "{ConceptHierarchyModel.model_metadata}" must be a JSON object.',
-                location_id=[ConceptHierarchyModel.model_metadata],
+                location_id=base_location_id + [ConceptHierarchyModel.model_metadata],
                 part=PathPart.VALUE,
             )
         self.ch.metadata = {str(k): str(v) for k, v in raw_meta.items()}
 
         # -- concepts --------------------------------------------------------
-        concept_location_id: LocationId = LocationId()
-        if self.ch.file:
-            concept_location_id.append(self.ch.file)
-        concept_location_id.append(ConceptHierarchyModel.model_concepts)
+        concept_location_id: LocationId = base_location_id + [ConceptHierarchyModel.model_name]
         if ConceptHierarchyModel.model_concepts not in concept_hierarchy:
             raise CHSyntaxError(
                 f'Missing required top-level key: "{ConceptHierarchyModel.model_concepts}".',
@@ -219,10 +220,7 @@ class ConceptHierarchyChecker:
         self.resolve_references(concepts_referencing_others, defined_concepts, concept_location_id)
 
         # -- instances (optional: default {}) --------------------------------
-        instances_location_id: LocationId = LocationId()
-        if self.ch.file:
-            instances_location_id.append(self.ch.file)
-        instances_location_id.append(ConceptHierarchyModel.model_instances)
+        instances_location_id: LocationId = base_location_id + [ConceptHierarchyModel.model_instances]
         instance_definition = concept_hierarchy.get(ConceptHierarchyModel.model_instances, {})
         if not isinstance(instance_definition, dict):
             raise CHSyntaxError(
@@ -251,19 +249,14 @@ class ConceptHierarchyChecker:
                 if p_name not in defined_concepts:
                     raise CHSemanticError(
                         f"The parent {p_name!r} of concept {c_name!r} is not defined in the hierarchy.",
-                        location_id=[
-                            ConceptHierarchyModel.model_concepts,
-                            c_name,
-                            ConceptDefinition.concept_direct_parents,
-                            index,
-                        ],
+                        location_id=concept_location_id + [c_name, ConceptDefinition.concept_direct_parents, index],
                     )
         try:
             self.ch.concept_topo_sort, roots = topological_sort(concept_parent_mapping)
             if self.ch.root_concept_name in roots and len(roots) != 1:
                 raise CHSemanticError(
                     f"Concept Hierarchy has multiple roots: {roots!r}",
-                    location_id=[ConceptHierarchyModel.model_concepts],
+                    location_id=concept_location_id,
                     part=PathPart.VALUE,
                 )
             elif self.ch.root_concept_name not in roots:
@@ -280,7 +273,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f'The root concept of the Concept Hierarchy must be called "{self.ch.root_concept_name}", not '
                     f"{root!r}!",
-                    location_id=[ConceptHierarchyModel.model_concepts],
+                    location_id=concept_location_id,
                     part=PathPart.VALUE,
                 )
             self.ch.root_concept_name = root
@@ -288,7 +281,7 @@ class ConceptHierarchyChecker:
             if str(e).startswith("Non-hierarchy structure detected! The following items form one or more cycles:"):
                 raise CHSemanticError(
                     f"Cycles detected in Concept Hierarchy:\n{tab}{e!s}",
-                    location_id=[ConceptHierarchyModel.model_concepts],
+                    location_id=concept_location_id,
                     part=PathPart.VALUE,
                 ) from e
             raise e
@@ -313,7 +306,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f"The global variable name {instance_name!r} is also a concept name!\n\tThis can create ambiguity! "
                     f"Please rename the global variable name!",
-                    location_id=[ConceptHierarchyModel.model_instances, instance_name],
+                    location_id=instances_location_id + [instance_name],
                     part=PathPart.KEY,
                 )
         self.ch.instances = defined_instances
