@@ -17,9 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from frozendict import frozendict
-
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormula
+from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
     ExpandedVariadicTemplateVariable,
@@ -47,20 +45,18 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHier
 
 @dataclass(frozen=True)
 class TypeTemplateData:
-    constraints: frozendict[str, TemplateConstraintFormula]
-    template_argument_order: tuple[str, ...]
-    variadic_arguments: set[str]
+    context: TemplateContext
     variadic_group_identifiers: dict[str, str]
     defined_variadic_group_identifiers: dict[str, str]
 
 
 class TypeValidator(ABC):
     @abstractmethod
-    def full_type_name(self, ch_type: ParsedType) -> str:
+    def full_type_name(self, concept_name: str) -> str:
         pass
 
     @abstractmethod
-    def get_template_data_of(self, concept_name) -> TypeTemplateData:
+    def get_template_data_of(self, concept_name: str) -> TypeTemplateData:
         """
         Validates:
          - that the number of template arguments are correctly defined,
@@ -71,49 +67,31 @@ class TypeValidator(ABC):
         pass
 
     @abstractmethod
-    def is_concept(self, ch_type: ParsedType) -> bool:
+    def is_concept(self, concept_name: str) -> bool:
         pass
 
     @abstractmethod
-    def is_template_variable(self, ch_type: ParsedType) -> bool:
+    def is_template_variable(self, concept_name: str) -> bool:
         pass
 
     @abstractmethod
-    def is_variadic_template_variable(self, ch_type: ParsedType) -> bool:
+    def is_variadic_template_variable(self, concept_name: str) -> bool:
         pass
 
     @abstractmethod
     def get_available_template_variables(self) -> list[str]:
         pass
 
-    @abstractmethod
-    def get_template_variable_data_of(self, ch_type) -> tuple[bool, TemplateConstraintFormula]:
-        pass
-
-    @abstractmethod
-    def template_argument_value_satisfies_constraint(
-        self,
-        t_constraint: TemplateConstraintFormula,
-        t_arg_value: ConceptHierarchyTemplateArgument,
-        location_id: LocationId,
-        collect_all_errors: bool,
-    ) -> list[ConceptHierarchyError]:
-        pass
-
 
 def validate_template_argument_values_of_type(
-    ch_type: ParsedType,
-    validator: TypeValidator,
-    location_id: LocationId,
-    template_argument_order: tuple[str, ...],
-    variadic_template_arguments: set[str],
+    ch_type: ParsedType, validator: TypeValidator, location_id: LocationId, context: TemplateContext
 ) -> ParsedType:
     if not ch_type.is_templated:
         return ch_type
-    assert len(ch_type.template_arguments) == len(template_argument_order)
+    assert len(ch_type.template_arguments) == context.nr_variables
     new_template_arguments = []
-    for t_arg, t_arg_name in zip(ch_type.template_arguments, template_argument_order):
-        is_variadic_template_argument = t_arg_name in variadic_template_arguments
+    for t_arg, t_arg_name in zip(ch_type.template_arguments, context.variables):
+        is_variadic_template_argument = t_arg_name in context.variadic_variables
         new_location_id = location_id + [f"{ch_type.clean_name} template argument {t_arg.full_name}"]
         t_arg_valid = validate_template_argument_value(t_arg, validator, new_location_id, is_variadic_template_argument)
         new_template_arguments.append(t_arg_valid)
@@ -138,9 +116,9 @@ def validate_type_and_parse_to_variadic_groups(
     # If it is a concept, check
     # - whether the template arguments are correctly specified
     # - whether the shorthand syntax for variadic groups is correct, etc
-    if validator.is_template_variable(ch_type):
+    if validator.is_template_variable(ch_type.clean_name):
         return ch_type
-    if not validator.is_concept(ch_type):
+    if not validator.is_concept(ch_type.clean_name):
         available_template_variables = validator.get_available_template_variables()
         raise CHSemanticError(
             f"Unknown type identifier {ch_type.clean_name}: it is neither a template variable, nor a concept.\n"
@@ -156,7 +134,7 @@ def validate_type_and_parse_to_variadic_groups(
         )
 
     # check type's template arguments
-    type_is_templated = template_data.template_argument_order != ()
+    type_is_templated = template_data.context.variables != ()
     if type_is_templated != ch_type.is_templated:
         if type_is_templated:
             raise CHSemanticError(
@@ -172,8 +150,8 @@ def validate_type_and_parse_to_variadic_groups(
         return ch_type
 
     parsed_template_arguments = ch_type.template_arguments
-    nr_template_arguments = len(template_data.template_argument_order)
-    nr_variadic_template_arguments = len(template_data.variadic_arguments)
+    nr_template_arguments = template_data.context.nr_variables
+    nr_variadic_template_arguments = len(template_data.context.variadic_variables)
     nr_parsed_template_arguments = len(parsed_template_arguments)
 
     if (nr_template_arguments - nr_variadic_template_arguments) > nr_parsed_template_arguments:
@@ -196,10 +174,10 @@ def validate_type_and_parse_to_variadic_groups(
         "" in template_data.defined_variadic_group_identifiers or nr_variadic_template_arguments < nr_template_arguments
     )
     count_values_without_variadic_identifier = 0
-    for t_arg_name, parsed_t_arg_val in zip(template_data.template_argument_order, parsed_template_arguments):
+    for t_arg_name, parsed_t_arg_val in zip(template_data.context.variables, parsed_template_arguments):
         is_variadic_group = isinstance(parsed_t_arg_val, TemplateArgumentVariadicGroup)
         uses_variadic_groups |= is_variadic_group
-        if (t_arg_name in template_data.variadic_arguments) != is_variadic_group:
+        if (t_arg_name in template_data.context.variadic_variables) != is_variadic_group:
             # if found a variadic group at a position where none was expected,
             # or didn't find a variadic group at a position where one was expected,
             #  then the ParsedType is using the syntax with variadic group ids
@@ -240,7 +218,7 @@ def validate_type_and_parse_to_variadic_groups(
             location_id=location_id,
         )
     non_variadic_template_arguments = [
-        x for x in template_data.template_argument_order if x not in template_data.variadic_arguments
+        x for x in template_data.context.variables if x not in template_data.context.variadic_variables
     ]
     if "" not in template_data.defined_variadic_group_identifiers and count_values_without_variadic_identifier < len(
         non_variadic_template_arguments
@@ -253,13 +231,12 @@ def validate_type_and_parse_to_variadic_groups(
         )
     # Only bring to canonic form (i.e. only using variadic groups) if variadic ids are used
     if uses_variadic_ids:
-        ch_type = make_canonic(ch_type, template_data.template_argument_order, template_data.variadic_group_identifiers)
+        ch_type = make_canonic(ch_type, template_data.context.variables, template_data.variadic_group_identifiers)
     return validate_template_argument_values_of_type(
         ch_type,
         validator,
         location_id,
-        template_data.template_argument_order,
-        template_data.variadic_arguments,
+        template_data.context,
     )
 
 
@@ -334,8 +311,8 @@ def validate_type(
     # - whether a variadic template variable is expanded,
     # - whether a non-variadic template variable is expanded,
     # - whether it is allowed to expand a variadic template variable (can expand_variadic_template_arguments), etc.
-    if validator.is_template_variable(t):
-        if validator.is_variadic_template_variable(t):
+    if validator.is_template_variable(t.clean_name):
+        if validator.is_variadic_template_variable(t.clean_name):
             if t.has_variadic_template_expansion and not can_expand_variadic_template_arguments:
                 raise CHSemanticError(
                     f"Use of the variadic expansion operator is not allowed at this location! Got {t.full_name}",
@@ -363,7 +340,7 @@ def validate_type(
     #   this has to happen from inside the validator because only it knows
     #   whether the template argument type is a variadic argument or not
     type_template_data = validator.get_template_data_of(t.clean_name)
-    full_type_name = validator.full_type_name(t)
+    full_type_name = validator.full_type_name(t.clean_name)
     return validate_type_and_parse_to_variadic_groups(t, validator, location_id, full_type_name, type_template_data)
 
 
@@ -389,8 +366,8 @@ def validate_template_argument_value(
                 location_id=location_id,
             )
         elif isinstance(t, ParsedType):
-            if not validator.is_variadic_template_variable(t):
-                if validator.is_template_variable(t):
+            if not validator.is_variadic_template_variable(t.clean_name):
+                if validator.is_template_variable(t.clean_name):
                     raise CHSemanticError(
                         f"The non-variadic template variable {t.full_name!r} can not be used as a variadic template "
                         f"argument value!",
@@ -449,9 +426,9 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
     if isinstance(t_arg, TemplateArgumentLiteral):
         return LiteralValue(t_arg.clean_name, t_arg.literal_type)
     if isinstance(t_arg, ParsedType):
-        if not validator.is_concept(t_arg):
-            assert validator.is_template_variable(t_arg)
-            if validator.is_variadic_template_variable(t_arg):
+        if not validator.is_concept(t_arg.clean_name):
+            assert validator.is_template_variable(t_arg.clean_name)
+            if validator.is_variadic_template_variable(t_arg.clean_name):
                 if t_arg.has_variadic_template_expansion:
                     return ExpandedVariadicTemplateVariable(t_arg.clean_name, concept_that_defines_the_template_vars)
                 else:
