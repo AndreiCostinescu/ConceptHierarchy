@@ -31,10 +31,10 @@ from concept_hierarchy.errors import LocationId
 
 class TemplateContext:
     @staticmethod
-    def create_from(var: TemplateContext) -> TemplateContext:
+    def create_from(context: TemplateContext) -> TemplateContext:
         new_variadic_variables: set[str] = set()
-        new_variadic_variables.update(var.variadic_variables)
-        return TemplateContext(var.variables, new_variadic_variables, var.constraint)
+        new_variadic_variables.update(context.variadic_variables)
+        return TemplateContext(context.variables, new_variadic_variables, context.constraint)
 
     def __init__(
         self,
@@ -254,31 +254,21 @@ class TemplateContext:
         return StructureNegation(self.constraint.location_id, self.constraint)
 
     def merge_in_place(self, other: TemplateContext, location_id: LocationId) -> None:
-        if (
-            (self.variables != other.variables)
-            or (self.variadic_variables != other.variadic_variables)
-            or ((self.constraint is None) != (other.constraint is None))
-        ):
-            raise RuntimeError(f"Can not merge unrelated template contexts: {self!r} and {other!r}")
-        if self.constraint is None:
-            return
-        # make and constraint!
-        if other.is_unconstrained:
-            return
-        if other.is_empty_constraint:
-            self.constraint = self.create_empty(location_id)
-            return
-        assert self.constraint is not None and other.constraint is not None
-        self.constraint = StructureConjunction(location_id, (self.constraint, other.constraint))
+        self.merge_constraints_and([other], location_id)
 
-    """
-    This does not perform any compatibility checks between the constraints! 
-    It assumes that there are the same template variables are used in the constraint!
-    """
+    def _check_contexts_to_merge(self, sub_template_contexts: list[TemplateContext]) -> None:
+        for sub_template_context in sub_template_contexts:
+            if (
+                (self.variables != sub_template_context.variables)
+                or (self.variadic_variables != sub_template_context.variadic_variables)
+                or ((self.constraint is None) != (sub_template_context.constraint is None))
+            ):
+                raise RuntimeError(f"Can not merge unrelated template contexts: {self!r} and {sub_template_context!r}")
 
     def merge_constraints_and(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
         if self.is_empty_constraint:
             return
+        self._check_contexts_to_merge(sub_template_contexts)
         new_constraints: list[StructureConstraintFormula] = []
         contexts_to_merge = sub_template_contexts
         for to_merge in contexts_to_merge:
@@ -298,14 +288,10 @@ class TemplateContext:
                 new_constraints = [self.constraint] + new_constraints
                 self.constraint = StructureConjunction(location_id, tuple(new_constraints))
 
-    """
-    This does not perform any compatibility checks between the constraints! 
-    It assumes that there are the same template variables are used in the constraint!
-    """
-
     def merge_constraints_or(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
         if self.is_unconstrained:
             return
+        self._check_contexts_to_merge(sub_template_contexts)
         new_constraints: list[StructureConstraintFormula] = []
         contexts_to_merge = sub_template_contexts
         for to_merge in contexts_to_merge:
