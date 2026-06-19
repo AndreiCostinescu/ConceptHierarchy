@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from abc import ABC, abstractmethod
 from typing import TypeAlias
@@ -28,7 +29,13 @@ TypeComposition: TypeAlias = tuple[tuple[str | None, str | None, tuple], ...]
 class ConceptHierarchyTemplateArgument(ABC):
     def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
         self.clean_name = clean_name
+        """
+        The template context is not the used templates in this value, but is shared (same object reference) between/with
+        all values created in that template context!
+        """
         self.template_context = template_context
+        """Keeps track of the used template variables in this value only."""
+        self.used_templates: set[str] = set()
 
         self._full_name: str | None = None
         """
@@ -48,9 +55,20 @@ class ConceptHierarchyTemplateArgument(ABC):
     def __repr__(self) -> str:
         return self.full_name
 
+    def copy_in_new_template_context(self, new_template_context) -> ConceptHierarchyTemplateArgument:
+        for used_template_var in self.used_templates:
+            if not new_template_context.has_template_var(used_template_var):
+                raise RuntimeError(
+                    f"The template argument uses the template variables {self.used_templates} "
+                    f"but they are not all part of {new_template_context}"
+                )
+        new = copy.copy(self)
+        new.template_context = new_template_context
+        return new
+
     @property
     def depends_on_templates(self) -> bool:
-        return not self.template_context.empty
+        return len(self.used_templates) > 0
 
     @property
     @abstractmethod
@@ -70,19 +88,11 @@ class ConceptHierarchyTemplateArgument(ABC):
 
 class Instantiated(ConceptHierarchyTemplateArgument, ABC):
     def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
-        if not template_context.empty:
-            raise RuntimeError(
-                "Tried to create an Instantiated template argument value with a non-empty template context!"
-            )
         super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
 
 
 class TemplateDependent(ConceptHierarchyTemplateArgument, ABC):
     def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
-        if template_context.empty:
-            raise RuntimeError(
-                "Tried to create a TemplateDependent template argument value with an empty template context!"
-            )
         super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
 
 
@@ -102,6 +112,8 @@ class ConceptHierarchyType(ConceptHierarchyTemplateArgument, ABC):
         # Because this is in canonical form (i.e. only variadic groups allowed; no variadic identifiers),
         #  a () value for template_arguments means that the type has no template arguments!
         self.template_arguments: tuple[ConceptHierarchyTemplateArgument, ...] = template_arguments
+        for t_arg in self.template_arguments:
+            self.used_templates |= t_arg.used_templates
 
     @property
     def is_templated(self) -> bool:
@@ -166,6 +178,11 @@ class InstantiatedType(Instantiated, ConceptHierarchyType):
             template_arguments=template_arguments,
             **kwargs,
         )
+        if self.depends_on_templates:
+            raise RuntimeError(
+                f"Tried to create an Instantiated template argument value {self!r} that depends on templates "
+                f"{self.used_templates}!"
+            )
 
 
 class TemplateDependentType(TemplateDependent, ConceptHierarchyType):
@@ -182,16 +199,22 @@ class TemplateDependentType(TemplateDependent, ConceptHierarchyType):
             template_arguments=template_arguments,
             **kwargs,
         )
+        if not self.depends_on_templates:
+            raise RuntimeError(
+                f"Tried to create a TemplateDependent template argument value {self!r} that does not depend on "
+                f"templates!"
+            )
 
 
 class TemplateVariable(TemplateDependent, ABC):
     def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
-        if not template_context.has_template_variable(clean_name):
+        super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
+        if not self.template_context.has_template_variable(clean_name):
             raise RuntimeError(
                 f"Tried to create a TemplateVariable {clean_name} but it is not part of the template context "
-                f"{template_context!r}!"
+                f"{self.template_context!r}!"
             )
-        super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
+        self.used_templates.add(self.clean_name)
 
     @property
     def full_name(self) -> str:
@@ -235,7 +258,7 @@ class NonVariadicTemplateVariable(TemplateVariable):
 class VariadicTemplateVariable(TemplateVariable, VariadicArgument):
     def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
         super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
-        if not template_context.is_variadic(clean_name):
+        if not self.template_context.is_variadic(clean_name):
             raise RuntimeError(
                 f"Tried to create a VariadicTemplateVariable {clean_name} but it is not a variadic template variable in"
                 f" the template context {template_context!r}!"
@@ -303,6 +326,8 @@ class ConceptHierarchyVariadicGroup(VariadicArgument, ABC):
     ):
         super().__init__(clean_name=clean_name, template_context=template_context, **kwargs)
         self.variadic_group = variadic_group
+        for group_element in variadic_group:
+            self.used_templates |= group_element.used_templates
 
     @property
     def full_name(self) -> str:
@@ -343,6 +368,11 @@ class InstantiatedVariadicGroup(Instantiated, ConceptHierarchyVariadicGroup):
             variadic_group=variadic_group,
             **kwargs,
         )
+        if self.depends_on_templates:
+            raise RuntimeError(
+                f"Tried to create an Instantiated template argument value {self!r} that depends on templates "
+                f"{self.used_templates}!"
+            )
 
 
 class TemplateDependentVariadicGroup(TemplateDependent, ConceptHierarchyVariadicGroup):
@@ -359,3 +389,8 @@ class TemplateDependentVariadicGroup(TemplateDependent, ConceptHierarchyVariadic
             variadic_group=variadic_group,
             **kwargs,
         )
+        if not self.depends_on_templates:
+            raise RuntimeError(
+                f"Tried to create a TemplateDependent template argument value {self!r} that does not depend on "
+                f"templates!"
+            )
