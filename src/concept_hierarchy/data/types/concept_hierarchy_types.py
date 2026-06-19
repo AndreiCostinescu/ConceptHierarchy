@@ -29,25 +29,25 @@ TypeComposition: TypeAlias = tuple[tuple[str | None, str | None, tuple], ...]
 class ConceptHierarchyTemplateArgument(ABC):
     def __init__(self, clean_name: str, template_context: TemplateContext, **kwargs):
         self.clean_name = clean_name
+        self.template_context = template_context
         """
         The template context is not the used templates in this value, but is shared (same object reference) between/with
         all values created in that template context!
         """
-        self.template_context = template_context
-        """Keeps track of the used template variables in this value only."""
         self.used_templates: set[str] = set()
+        """Keeps track of the used template variables in this value only."""
 
         self._full_name: str | None = None
+        self._type_composition: TypeComposition | None = None
         """
         tuple of multiple (full_name, clean_name, template_argument_sub_type_composition)
         """
-        self._type_composition: TypeComposition | None = None
+        self._registry: frozendict | None = None
         """
         All types encountered while parsing this template argument value (including sub-types and sub-function-types), 
         keyed by ``full_name``, mapped to ``(clean_name, template_args, function_args)``. 
         Variadic groups are registered under their tuple key.
         """
-        self._registry: frozendict | None = None
 
     def __str__(self) -> str:
         return self.full_name
