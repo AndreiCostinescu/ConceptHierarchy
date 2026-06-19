@@ -19,7 +19,6 @@ from dataclasses import dataclass
 
 from frozendict import frozendict
 
-from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormula
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
@@ -32,6 +31,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TemplateDependent,
     TemplateDependentType,
     TemplateDependentVariadicGroup,
+    TemplateVariable,
     VariadicTemplateVariable,
 )
 from concept_hierarchy.data.types.parsed_type import (
@@ -41,6 +41,7 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentVariadicGroup,
     TemplateArgumentWithVariadicId,
 )
+from concept_hierarchy.data.value_domain_type import ConceptHierarchyType
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId
 
 
@@ -426,60 +427,56 @@ def validate_template_argument_value(
 
 
 def convert_items(
-    items: tuple[TemplateArgumentValue, ...], validator: TypeValidator
-) -> tuple[tuple[ConceptHierarchyTemplateArgument, ...], bool, TemplateContext]:
+    concept_that_defines_the_template_vars: str, items: tuple[TemplateArgumentValue, ...], validator: TypeValidator
+) -> tuple[tuple[ConceptHierarchyTemplateArgument, ...], bool]:
     converted_items: list[ConceptHierarchyTemplateArgument] = []
     has_template_dependent_items = False
-    merged_template_context = TemplateContext()
     for item in items:
-        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(item, validator)
-        merged_template_context = merged_template_context.add_context(converted_item.template_context)
+        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(
+            concept_that_defines_the_template_vars, item, validator
+        )
         if isinstance(converted_item, TemplateDependent):
             has_template_dependent_items = True
         else:
             assert isinstance(converted_item, Instantiated)
         converted_items.append(converted_item)
-    return tuple(converted_items), has_template_dependent_items, merged_template_context
+    return tuple(converted_items), has_template_dependent_items
 
 
 def convert_template_argument_to_concept_hierarchy_template_argument(
-    t_arg: TemplateArgumentValue, validator: TypeValidator
+    concept_that_defines_the_template_vars: str, t_arg: TemplateArgumentValue, validator: TypeValidator
 ) -> ConceptHierarchyTemplateArgument:
     if isinstance(t_arg, TemplateArgumentLiteral):
-        return LiteralValue(t_arg.clean_name, TemplateContext(), t_arg.literal_type)
+        return LiteralValue(t_arg.clean_name, t_arg.literal_type)
     if isinstance(t_arg, ParsedType):
         if not validator.is_concept(t_arg):
             assert validator.is_template_variable(t_arg)
-
-            template_context = TemplateContext({t_arg.clean_name: validator.get_template_variable_data_of(t_arg)})
-
             if validator.is_variadic_template_variable(t_arg):
                 if t_arg.has_variadic_template_expansion:
-                    return ExpandedVariadicTemplateVariable(t_arg.clean_name, template_context)
+                    return ExpandedVariadicTemplateVariable(t_arg.clean_name, concept_that_defines_the_template_vars)
                 else:
-                    return VariadicTemplateVariable(t_arg.clean_name, template_context)
+                    return VariadicTemplateVariable(t_arg.clean_name, concept_that_defines_the_template_vars)
             else:
                 assert not t_arg.has_variadic_template_expansion
-                return NonVariadicTemplateVariable(t_arg.clean_name, template_context)
+                return NonVariadicTemplateVariable(t_arg.clean_name, concept_that_defines_the_template_vars)
         assert not t_arg.has_variadic_template_expansion
         # check if all the template arguments are instantiated or not
         if not t_arg.is_templated:
-            return InstantiatedType(t_arg.clean_name, TemplateContext(), ())
-        converted_template_arguments, has_template_dependent_template_arguments, merged_template_context = (
-            convert_items(t_arg.template_arguments, validator)
+            return InstantiatedType(t_arg.clean_name, ())
+        converted_template_arguments, has_template_dependent_template_arguments = convert_items(
+            concept_that_defines_the_template_vars, t_arg.template_arguments, validator
         )
         if has_template_dependent_template_arguments:
-            return TemplateDependentType(t_arg.clean_name, merged_template_context, converted_template_arguments)
-        assert merged_template_context.empty
-        return InstantiatedType(t_arg.clean_name, merged_template_context, converted_template_arguments)
+            return TemplateDependentType(t_arg.clean_name, converted_template_arguments)
+        return InstantiatedType(t_arg.clean_name, converted_template_arguments)
     assert isinstance(t_arg, TemplateArgumentVariadicGroup)
-    converted_group_elements, has_template_dependent_group_elements, merged_template_context = convert_items(
-        t_arg.variadic_group, validator
+    converted_group_elements, has_template_dependent_group_elements = convert_items(
+        concept_that_defines_the_template_vars, t_arg.variadic_group, validator
     )
+    assert all(isinstance(x, (ConceptHierarchyType, LiteralValue, TemplateVariable)) for x in converted_group_elements)
     if has_template_dependent_group_elements:
-        return TemplateDependentVariadicGroup(t_arg.clean_name, merged_template_context, converted_group_elements)
-    assert merged_template_context.empty
-    return InstantiatedVariadicGroup(t_arg.clean_name, merged_template_context, converted_group_elements)
+        return TemplateDependentVariadicGroup(t_arg.clean_name, converted_group_elements)
+    return InstantiatedVariadicGroup(t_arg.clean_name, converted_group_elements)
 
 
 def validate_template_argument_constraints_in_instantiated_type(
