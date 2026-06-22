@@ -91,7 +91,7 @@ class TemplateConstraintArgumentValidator(TemplateConstraintFormulaValidator, AB
         pass
 
 
-def create_formula_from_substituted_value_for(
+def create_exact_match_constraint_from_value(
     value: ConceptHierarchyTemplateArgument, validator: TemplateConstraintFormulaValidator, location_id: LocationId
 ) -> NonStructureConstraintFormula:
     if isinstance(value, LiteralValue):
@@ -99,7 +99,7 @@ def create_formula_from_substituted_value_for(
     elif isinstance(value, ConceptHierarchyType):
         template_constraints = []
         for t_arg in value.template_arguments:
-            template_constraints.append(create_formula_from_substituted_value_for(t_arg, validator, location_id))
+            template_constraints.append(create_exact_match_constraint_from_value(t_arg, validator, location_id))
         return TemplateConstraintSelf(value.clean_name, tuple(template_constraints), validator, location_id)
     elif isinstance(value, VariadicArgument):
         raise RuntimeError("[Feature-Request] Did not implement support for using variadic constraints!")
@@ -142,7 +142,7 @@ def substitute_template_variables_in_formula(
                     raise RuntimeError("[Feature-Request] Did not implement support for using variadic constraints!")
                 else:
                     assert isinstance(subst_value, ConceptHierarchyType)
-                    subst_formula = create_formula_from_substituted_value_for(subst_value, validator, location_id)
+                    subst_formula = create_exact_match_constraint_from_value(subst_value, validator, location_id)
                     assert isinstance(subst_formula, TemplateConstraintHierarchyOperator)
                     subst_formula = subst_formula.change_hierarchy_operator(
                         formula.hierarchy_op, validator, location_id
@@ -617,7 +617,7 @@ def _validate_type(
         # Create new formula from the substitution value!
         # The formula will have all template arguments (and all template arguments thereof and so on) marked with a '.'
         #  to match exactly the substituted value.
-        check_formula = create_formula_from_substituted_value_for(
+        check_formula = create_exact_match_constraint_from_value(
             concept_template_argument_instantiation[formula.literal], validator, location_id
         )
         assert isinstance(check_formula, TemplateConstraintHierarchyOperator)
