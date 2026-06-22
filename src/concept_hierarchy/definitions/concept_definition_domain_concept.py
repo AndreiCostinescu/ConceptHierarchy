@@ -936,6 +936,14 @@ class DomainConceptDefinition(ConceptDefinition):
         #       - done in checker.py - check_after_parsing_concepts
         #  - property types (correctly template-instantiated type)
         #    TYPE CHECK
+        #    EXPRESSION CHECK
+        #       - partially done in concept_hierarchy_type_checks.py
+        #       - still need to parse constraints
+        #  - property types should be subconcepts of ValueDomain
+        #    TYPE CHECK
+        #    EXPRESSION CHECK
+        #       - partially done in concept_hierarchy_type_checks.py
+        #       - still need to parse constraints
         #  - property constraints (correctly defined either subtype of property type of Variation-instantiation of
         #      property type)
         #    EXPRESSION CHECK
@@ -1026,7 +1034,7 @@ class DomainConceptDefinition(ConceptDefinition):
         #  - check that the valueDomain of every domain concept function is a subconcept of CustomFunction
         #    REQUIRES: all concepts to be processed and the type validator to be initialized
         #    TYPE CHECK
-        #       - done in checker.py - check_after_parsing_concepts
+        #       - done in concept_hierarchy_type_checks.py
         #  - function names should be unique among all concepts (incl. defining a property with same name as a function)
         #    STRUCTURE CHECK
         #       - done in checker.py - check_after_parsing_concepts

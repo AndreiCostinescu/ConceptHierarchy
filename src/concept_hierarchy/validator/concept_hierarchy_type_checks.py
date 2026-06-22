@@ -465,7 +465,10 @@ def check_types_in_domain_concept_definition(
     - domain concept functions (if present)
     """
     type_validator = ConceptHierarchyTypeValidator(context)
+    constraint_validator = ConstraintValidator(context)
     property_types: dict[str, InstantiatedType] = {}
+    value_domain_type: InstantiatedType | None = None
+    domain_concept_function_type: InstantiatedType | None = None
     for prop_name, prop_def_data in c.properties.items():
         if PropertyDefinition.VALUE_DOMAIN in prop_def_data:
             # validate the type of the property!
@@ -486,6 +489,15 @@ def check_types_in_domain_concept_definition(
                     causes=[e],
                 )
             property_types[prop_name] = ch_type
+            # check that the type is a subtype of ValueDomain!
+            if value_domain_type is None:
+                value_domain_type = parse_convert_type(None, "ValueDomain", type_validator, None)
+            if not constraint_validator.is_subtype(ch_type, value_domain_type, None):
+                raise CHSemanticError(
+                    f"The defined ValueDomain of property {prop_name} is not a subtype of ValueDomain!",
+                    location_id=location_id,
+                )
+
         else:
             # missing checks: infer the type from the expression that is the constraint!...
             #  but this can only be done later because we can't parse expressions yet...
@@ -512,6 +524,20 @@ def check_types_in_domain_concept_definition(
                 causes=[e],
             )
         function_types[func_name] = ch_type
+        # check that the type is a subtype of CustomFunction!
+        if domain_concept_function_type is None:
+            domain_concept_function_type = parse_convert_type(
+                None,
+                DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions,
+                type_validator,
+                None,
+            )
+        if not constraint_validator.is_subtype(ch_type, domain_concept_function_type, location_id):
+            raise CHSemanticError(
+                f"The defined ValueDomain of function {func_name} is not a subtype of "
+                f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions}!",
+                location_id=location_id,
+            )
 
     datum.function_types = frozendict(function_types)
     pass
