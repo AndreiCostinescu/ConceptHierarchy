@@ -172,6 +172,7 @@ class TemplateVariable(TemplateDependent, ABC):
         The unique defining location is to prevent variable capture in substitution procedures. See: 
         https://opencs.aalto.fi/en/courses/programming-languages/part-5/3-alpha-equivalence-and-capture-avoiding-subst
         """
+        assert self.unique_defining_location is not None
         self.used_templates.add(self.clean_name)
 
     @property
