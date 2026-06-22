@@ -213,7 +213,7 @@ def validate_template_argument_value_against_constraint(
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
     validator: TemplateConstraintArgumentValidator,
-    concept_template_argument_substitution: dict[str, ConceptHierarchyTemplateArgument],
+    concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId = None,
     *,
     collect_all_errors: bool = False,
@@ -228,7 +228,7 @@ def validate_template_argument_value_against_constraint(
         template_argument_value,
         template_context,
         validator,
-        concept_template_argument_substitution,
+        concept_template_argument_instantiation,
         check_location_id,
         errors,
         collect_all_errors,
@@ -277,7 +277,7 @@ def _validate_complete_instantiation_of_type(
         sub_template_contexts: list[TemplateContext] = []
         total_errors = []
         concept_template_argument_names = validator.get_template_argument_names_of(concept_name)
-        concept_template_argument_substitution: dict[str, ConceptHierarchyTemplateArgument] = {
+        concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument] = {
             key: value for key, value in zip(concept_template_argument_names, complete_instantiation)
         }
         for t_arg_index, (constraint, value) in enumerate(zip(formula.group_constraints, complete_instantiation)):
@@ -288,7 +288,7 @@ def _validate_complete_instantiation_of_type(
                 value,
                 sub_template_context,
                 validator,
-                concept_template_argument_substitution,
+                concept_template_argument_instantiation,
                 new_location_id,
                 collect_all_errors=True,
             )
@@ -373,7 +373,7 @@ def _delegate_constraint_check(
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
     validator: TemplateConstraintArgumentValidator,
-    concept_template_argument_substitution: dict[str, ConceptHierarchyTemplateArgument],
+    concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool = False,
@@ -385,7 +385,7 @@ def _delegate_constraint_check(
                 template_argument_value,
                 template_context,
                 validator,
-                concept_template_argument_substitution,
+                concept_template_argument_instantiation,
                 location_id,
                 errors,
                 collect_all_errors,
@@ -396,7 +396,7 @@ def _delegate_constraint_check(
                 template_argument_value,
                 template_context,
                 validator,
-                concept_template_argument_substitution,
+                concept_template_argument_instantiation,
                 location_id,
                 errors,
                 collect_all_errors,
@@ -407,7 +407,7 @@ def _delegate_constraint_check(
                 template_argument_value,
                 template_context,
                 validator,
-                concept_template_argument_substitution,
+                concept_template_argument_instantiation,
                 location_id,
                 errors,
                 collect_all_errors,
@@ -418,7 +418,7 @@ def _delegate_constraint_check(
                 template_argument_value,
                 template_context,
                 validator,
-                concept_template_argument_substitution,
+                concept_template_argument_instantiation,
                 location_id,
                 errors,
                 collect_all_errors,
@@ -447,7 +447,7 @@ def _validate_and(
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
     validator: TemplateConstraintArgumentValidator,
-    concept_template_argument_substitution: dict[str, ConceptHierarchyTemplateArgument],
+    concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
@@ -464,7 +464,7 @@ def _validate_and(
             template_argument_value,
             sub_template_context,
             validator,
-            concept_template_argument_substitution,
+            concept_template_argument_instantiation,
             new_location_id,
             sub_errors,
             collect_all_errors,
@@ -490,7 +490,7 @@ def _validate_or(
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
     validator: TemplateConstraintArgumentValidator,
-    concept_template_argument_substitution,
+    concept_template_argument_instantiation,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
@@ -507,7 +507,7 @@ def _validate_or(
             template_argument_value,
             sub_template_context,
             validator,
-            concept_template_argument_substitution,
+            concept_template_argument_instantiation,
             new_location_id,
             sub_errors,
             collect_all_errors,
@@ -532,7 +532,7 @@ def _validate_not(
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
     validator: TemplateConstraintArgumentValidator,
-    concept_template_argument_substitution: dict[str, ConceptHierarchyTemplateArgument],
+    concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
@@ -545,7 +545,7 @@ def _validate_not(
         template_argument_value,
         sub_template_context,
         validator,
-        concept_template_argument_substitution,
+        concept_template_argument_instantiation,
         new_location_id,
         sub_errors,
         collect_all_errors,
@@ -606,18 +606,19 @@ def _validate_type(
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
     validator: TemplateConstraintArgumentValidator,
-    concept_template_argument_substitution: dict[str, ConceptHierarchyTemplateArgument],
+    concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ):
     # process the case where the formula is a reference to a previous template argument's value!
-    if formula.literal in concept_template_argument_substitution:
+    formula_is_template_argument = formula.literal in concept_template_argument_instantiation
+    if formula_is_template_argument:
         # Create new formula from the substitution value!
         # The formula will have all template arguments (and all template arguments thereof and so on) marked with a '.'
         #  to match exactly the substituted value.
         check_formula = create_formula_from_substituted_value_for(
-            concept_template_argument_substitution[formula.literal], validator, location_id
+            concept_template_argument_instantiation[formula.literal], validator, location_id
         )
         assert isinstance(check_formula, TemplateConstraintHierarchyOperator)
         check_formula = check_formula.change_hierarchy_operator(formula.hierarchy_op, validator, location_id)
