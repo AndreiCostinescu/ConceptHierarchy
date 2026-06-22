@@ -248,7 +248,8 @@ class TemplateContext:
         return ConstraintGroup(var_constraint.location_id, new_constraint)
 
     def create_unconstrained_context(self, location_id: LocationId) -> TemplateContext:
-        return TemplateContext(self.variables, self.variadic_variables, self.create_unconstrained(location_id))
+        new_constraint = self.create_unconstrained(location_id) if self.constraint is not None else None
+        return TemplateContext(self.variables, self.variadic_variables, new_constraint)
 
     def make_constraint_neg(self) -> StructureConstraintFormula:
         return StructureNegation(self.constraint.location_id, self.constraint)
@@ -266,9 +267,9 @@ class TemplateContext:
                 raise RuntimeError(f"Can not merge unrelated template contexts: {self!r} and {sub_template_context!r}")
 
     def merge_constraints_and(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
-        if self.is_empty_constraint:
-            return
         self._check_contexts_to_merge(sub_template_contexts)
+        if self.constraint is None or self.is_empty_constraint:
+            return
         new_constraints: list[StructureConstraintFormula] = []
         contexts_to_merge = sub_template_contexts
         for to_merge in contexts_to_merge:
@@ -289,9 +290,9 @@ class TemplateContext:
                 self.constraint = StructureConjunction(location_id, tuple(new_constraints))
 
     def merge_constraints_or(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
-        if self.is_unconstrained:
-            return
         self._check_contexts_to_merge(sub_template_contexts)
+        if self.constraint is None or self.is_unconstrained:
+            return
         new_constraints: list[StructureConstraintFormula] = []
         contexts_to_merge = sub_template_contexts
         for to_merge in contexts_to_merge:

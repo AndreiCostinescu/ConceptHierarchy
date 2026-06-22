@@ -220,7 +220,7 @@ def validate_template_argument_value_against_constraint(
 ) -> list[ConceptHierarchyError]:
     if location_id is None:
         location_id = []
-    assert template_context.is_unconstrained
+    assert template_context.empty or template_context.is_unconstrained
     errors: list[ConceptHierarchyError] = []
     check_location_id = location_id + [f"{formula!r} <-> {template_argument_value.full_name}"]
     _delegate_constraint_check(
@@ -267,7 +267,7 @@ def validate_complete_instantiation_of_type(
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId = None,
 ) -> list[ConceptHierarchyError]:
-    assert template_context.is_unconstrained
+    assert template_context.empty or template_context.is_unconstrained
     if isinstance(formula, ConstraintGroup):
         if len(formula.group_constraints) != len(complete_instantiation):
             raise RuntimeError(
