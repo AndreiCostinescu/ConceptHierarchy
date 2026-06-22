@@ -13,7 +13,16 @@
 # limitations under the License.
 from frozendict import frozendict
 
-from concept_hierarchy.data.concept_hierarchy import DomainConceptData, FunctionData, TypeData, ValueDomainData
+from concept_hierarchy.data.concept_hierarchy import (
+    DomainConceptData,
+    FunctionArgumentModifier,
+    FunctionArgumentReference,
+    FunctionData,
+    FunctionResultModifier,
+    TypeData,
+    ValueDomainArgumentReference,
+    ValueDomainData,
+)
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser
@@ -616,7 +625,67 @@ def check_types_in_value_domain_definition(
 
 
 def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionData, context: ConceptHierarchyContext):
-    pass
+    """
+    Check Function evaluation arguments, result type if defined, addVariablesToScope, and scopeVariables
+
+    :param c: Function concept for which to check types
+    :param datum: the output data container
+    :param context: the concept hierarchy in which the check is made
+    """
+    local_context = context.set_template_context(datum.template_context)
+    type_validator = ConceptHierarchyTypeValidator(local_context)
+    function_evaluation_argument_types: dict[str, InstantiatedType] = {}
+    function_evaluation_argument_modifiers: dict[str, FunctionArgumentModifier] = {}
+    function_evaluation_argument_reference_types: dict[str, FunctionArgumentReference] = {}
+    for f_eval_arg_name, f_eval_arg_type in c.evaluation_argument_types.items():
+        assert f_eval_arg_name in c.evaluation_argument_modifier_types
+        assert f_eval_arg_name in c.evaluation_argument_reference_types
+        # validate the type of the function evaluation argument!
+        assert isinstance(f_eval_arg_type, str)
+        location_id = c.location_of(FunctionDefinition.function_interface, f_eval_arg_name)
+        try:
+            # check syntax and semantics of types
+            ch_type = parse_convert_type(c.name, f_eval_arg_type, type_validator, location_id)
+        except ConceptHierarchyError as e:
+            raise CHSemanticError(
+                f"Parsing the definition of the evaluation argument {f_eval_arg_name} into a type "
+                f"failed: got {f_eval_arg_type!r}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+                causes=[e],
+            )
+        function_evaluation_argument_types[f_eval_arg_name] = ch_type
+        function_evaluation_argument_modifiers[f_eval_arg_name] = FunctionArgumentModifier(
+            c.evaluation_argument_modifier_types[f_eval_arg_name]
+        )
+        function_evaluation_argument_reference_types[f_eval_arg_name] = FunctionArgumentReference(
+            c.evaluation_argument_reference_types[f_eval_arg_name]
+        )
+    datum.evaluation_argument_types = frozendict(function_evaluation_argument_types)
+    datum.evaluation_argument_modifier_type = frozendict(function_evaluation_argument_modifiers)
+    datum.evaluation_argument_reference_type = frozendict(function_evaluation_argument_reference_types)
+    datum.evaluation_interface = c.evaluation_interface
+    # process type of result
+    if c.returns_something:
+        assert isinstance(c.result_type, str)
+        location_id = c.location_of(FunctionDefinition.function_interface, FunctionDefinition.function_result)
+        try:
+            # check syntax and semantics of types
+            ch_type = parse_convert_type(c.name, c.result_type, type_validator, location_id)
+        except ConceptHierarchyError as e:
+            raise CHSemanticError(
+                f"Parsing the definition of the {c.definition_type()} result into a type failed: got {c.result_type!r}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+                causes=[e],
+            )
+        datum.evaluation_result_type = ch_type
+    datum.evaluation_result_modifier_type = (
+        None if c.result_modifier_type is None else FunctionResultModifier(c.result_modifier_type)
+    )
+    datum.evaluation_result_reference_type = (
+        None if c.result_reference_type is None else ValueDomainArgumentReference(c.result_reference_type)
+    )
 
 
 def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
@@ -57,12 +59,51 @@ class TypeData(ConceptData):
         super().__init__(name, parents)
 
 
+class ValueDomainArgumentReference(Enum):
+    NO_REF = "NoRef"
+    REF = "Reference"
+
+
 class ValueDomainData(TypeData):
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 
 
+class FunctionArgumentReference(Enum):
+    NO_REF = "NoRef"
+    REF = "Reference"
+    EMPTY_REF = "EmptyReference"
+
+
+class FunctionResultModifier(Enum):
+    GET = "Get"
+    MOD = "Modify"
+
+
+class FunctionArgumentModifier(Enum):
+    GET = "Get"
+    MOD = "Modify"
+    GET_MOD = "GetModify"
+
+
+@lazy_properties
 class FunctionData(ValueDomainData):
+    evaluation_interface: tuple[str, ...]
+    evaluation_argument_types: frozendict[str, InstantiatedType]
+    evaluation_argument_modifier_type: frozendict[str, FunctionArgumentModifier]
+    evaluation_argument_reference_type: frozendict[str, FunctionArgumentReference]
+    evaluation_argument_default_value: frozendict[str, object]  # replace object with Expression
+    evaluation_result_type: InstantiatedType | None
+    evaluation_result_modifier_type: FunctionResultModifier | None
+    evaluation_result_reference_type: ValueDomainArgumentReference | None
+
+    procedure: object  # replace object with expression
+
+    sub_scope_vars: frozendict[str, frozendict[str, InstantiatedType]]
+    """Maps evaluation argument names to new variables available in their scope and their type."""
+    new_vars_in_scope: frozendict[str, InstantiatedType]
+    """Maps the new variables introduced after the evaluation of this Function to their type."""
+
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 
