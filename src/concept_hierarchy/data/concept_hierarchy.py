@@ -19,7 +19,8 @@ from frozendict import frozendict
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.models import ConceptHierarchyModel
 
-from .types.parsed_type import ParsedType, TemplateArgumentValue
+from .types.concept_hierarchy_types import ConceptHierarchyTemplateArgument
+from .types.parsed_type import ParsedType
 from .utils import lazy_properties
 
 
@@ -48,7 +49,8 @@ class DomainConceptData(ConceptData):
 @lazy_properties
 class TypeData(ConceptData):
     template_context: TemplateContext
-    parent_template_variable_substitution: frozendict[tuple[str, str], TemplateArgumentValue]
+    parent_template_variable_substitution: frozendict[tuple[str, str], ConceptHierarchyTemplateArgument]
+    """Contains all substitution values of the template arguments of all parents (also non direct parents!)"""
     instantiable: bool
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
