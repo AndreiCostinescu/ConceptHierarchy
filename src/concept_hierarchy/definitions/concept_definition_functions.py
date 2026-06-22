@@ -200,25 +200,26 @@ class FunctionDefinition(HiddenImplementationDefinition):
                         part=PathPart.VALUE,
                     )
                 if len(new_var_def) > 1:
-                    if (
-                        new_var_name not in self.evaluation_argument_types
-                        or self.evaluation_argument_types[new_var_name] != "String"
-                    ):
-                        raise CHSemanticError(
-                            f"When using the [|NewVariableType|, true] new variable definition syntax, the variable "
-                            f"name must be an evaluation argument of the {self.definition_type()}, that has String "
-                            f"type!\n\t{new_var_name} is not a String argument of {self.name}!",
-                            location_id_functor(new_var_name),
-                            part=PathPart.KEY,
-                        )
-                    elif new_var_def[1] and for_arg_name is not None and for_arg_name == new_var_name:
-                        raise CHSemanticError(
-                            f"Can't define a new variable, whose name depends on the runtime (call-time) value of an "
-                            f"argument as a sub-scope variable available in the scope of that same argument."
-                            f"\n\tFound at {for_arg_name}",
-                            location_id_functor(new_var_name),
-                            part=PathPart.KEY,
-                        )
+                    if new_var_def[1] is True:
+                        if (
+                            new_var_name not in self.evaluation_argument_types
+                            or self.evaluation_argument_types[new_var_name] != "String"
+                        ):
+                            raise CHSemanticError(
+                                f"When using the [|NewVariableType|, true] new variable definition syntax, the variable"
+                                f" name must be an evaluation argument of the {self.definition_type()}, that has String"
+                                f" type!\n\t{new_var_name} is not a String argument of {self.name}!",
+                                location_id_functor(new_var_name),
+                                part=PathPart.KEY,
+                            )
+                        elif for_arg_name is not None and for_arg_name == new_var_name:
+                            raise CHSemanticError(
+                                f"Can't define a new variable, whose name depends on the runtime (call-time) value of "
+                                f"an argument as a sub-scope variable available in the scope of that same argument."
+                                f"\n\tFound at {for_arg_name}",
+                                location_id_functor(new_var_name),
+                                part=PathPart.KEY,
+                            )
                     new_var_dict_def[new_var_name] = (new_var_def[0], new_var_def[1])
                 else:
                     new_var_dict_def[new_var_name] = (new_var_def[0], False)
