@@ -61,7 +61,7 @@ class TemplateConstraintArgumentValidator(TemplateConstraintFormulaValidator, AB
     @abstractmethod
     def create_substitution_for(
         self, parent_type_name: str, sub_type: ConceptHierarchyType, location_id: LocationId
-    ) -> tuple[ConceptHierarchyTemplateArgument, ...] | None:
+    ) -> tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] | None:
         """
         (_, t_arg_value_clean, _, t_args_of_t_arg) = process_value_domain(template_argument_value)[0]
         t_arg_vd = ValueDomain.all_value_domains[t_arg_value_clean]
@@ -132,7 +132,7 @@ def substitute_template_variables_in_formula(
                 return formula
             else:
                 # has substitution: a template variable, a partially instantiated value, a fully instantiated value
-                subst_value = substitution[formula.literal]
+                subst_value: ConceptHierarchyTemplateArgument = substitution[formula.literal]
                 if isinstance(subst_value, TemplateVariable):
                     subst_literal = subst_value.clean_name
                     # don't change subst_t_args, because a template variable does not have template arguments
@@ -252,15 +252,17 @@ def validate_complete_instantiation_of_concept(
         raise RuntimeError(f"No instantiation arguments provided for formula {formula!r}")
     if formula is None:
         return []
-    return _validate_complete_instantiation_of_type(
-        concept_name, formula, complete_instantiation, template_context, validator, location_id
+    t_arg_names = validator.get_template_argument_names_of(concept_name)
+    assert len(t_arg_names) == len(complete_instantiation)
+    complete_instantiation_with_names = tuple((name, value) for name, value in zip(t_arg_names, complete_instantiation))
+    return validate_complete_instantiation_of_type(
+        formula, complete_instantiation_with_names, template_context, validator, location_id
     )
 
 
-def _validate_complete_instantiation_of_type(
-    concept_name: str,
+def validate_complete_instantiation_of_type(
     formula: StructureConstraintFormula,
-    complete_instantiation: tuple[ConceptHierarchyTemplateArgument, ...],
+    complete_instantiation: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...],
     template_context: TemplateContext,
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId = None,
@@ -276,11 +278,10 @@ def _validate_complete_instantiation_of_type(
         # assert that all values share the same template context object (modifying one will modify all of them)!
         sub_template_contexts: list[TemplateContext] = []
         total_errors = []
-        concept_template_argument_names = validator.get_template_argument_names_of(concept_name)
         concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument] = {
-            key: value for key, value in zip(concept_template_argument_names, complete_instantiation)
+            name: value for name, value in complete_instantiation
         }
-        for t_arg_index, (constraint, value) in enumerate(zip(formula.group_constraints, complete_instantiation)):
+        for t_arg_index, (constraint, (_, value)) in enumerate(zip(formula.group_constraints, complete_instantiation)):
             new_location_id = location_id + [f"{constraint!r} <-> {value}"]
             sub_template_context = template_context.create_unconstrained_context(new_location_id)
             errors = validate_template_argument_value_against_constraint(
@@ -305,7 +306,7 @@ def _validate_complete_instantiation_of_type(
 
     if isinstance(formula, StructureConjunction):
         total_errors, sub_template_contexts = _iterate_sub_structure_formulae(
-            concept_name, formula, complete_instantiation, template_context, validator, location_id
+            formula, complete_instantiation, template_context, validator, location_id
         )
         if not total_errors:
             # merge the template contexts, only if there are no errors, i.e. if all conjunction branches have no errors!
@@ -314,7 +315,7 @@ def _validate_complete_instantiation_of_type(
 
     if isinstance(formula, StructureDisjunction):
         total_errors, sub_template_contexts = _iterate_sub_structure_formulae(
-            concept_name, formula, complete_instantiation, template_context, validator, location_id
+            formula, complete_instantiation, template_context, validator, location_id
         )
         if sub_template_contexts:
             # merge the template contexts, only if there is at least a disjunction branch with no errors!
@@ -323,8 +324,7 @@ def _validate_complete_instantiation_of_type(
 
     if isinstance(formula, StructureNegation):
         sub_template_context = template_context.create_unconstrained_context(location_id)
-        errors = _validate_complete_instantiation_of_type(
-            concept_name,
+        errors = validate_complete_instantiation_of_type(
             formula.structure_constraint,
             complete_instantiation,
             sub_template_context,
@@ -351,15 +351,19 @@ def _validate_complete_instantiation_of_type(
 
 
 def _iterate_sub_structure_formulae(
-    concept_name, formula, complete_substitution, template_context: TemplateContext, validator, location_id
+    formula: StructureConjunction | StructureDisjunction,
+    complete_instantiation: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...],
+    template_context: TemplateContext,
+    validator,
+    location_id,
 ):
     sub_template_contexts: list[TemplateContext] = []
     total_errors = []
     for structure_formula in formula.structure_constraints:
-        new_location_id = location_id + [f"{structure_formula!r} <-> {complete_substitution!r}"]
+        new_location_id = location_id + [f"{structure_formula!r} <-> {complete_instantiation!r}"]
         sub_template_context = template_context.create_unconstrained_context(new_location_id)
-        errors = _validate_complete_instantiation_of_type(
-            concept_name, structure_formula, complete_substitution, sub_template_context, validator, new_location_id
+        errors = validate_complete_instantiation_of_type(
+            structure_formula, complete_instantiation, sub_template_context, validator, new_location_id
         )
         if errors:
             total_errors.extend(errors)
@@ -624,8 +628,8 @@ def _validate_type(
         check_formula = check_formula.change_hierarchy_operator(formula.hierarchy_op, validator, location_id)
     elif not validator.is_concept(formula.literal):
         raise RuntimeError(
-            f"Literal value {formula.literal!r} from {formula!r} is not a template-variable and not a concept! "
-            f"How was this formula validated?!"
+            f"Literal value {formula.literal!r} from formula {formula!r} is not a template-variable and not a concept! "
+            f"How was this formula validated?!\n{concept_template_argument_instantiation!r}"
         )
     else:
         check_formula = formula
@@ -673,11 +677,16 @@ def _validate_type(
             continue
         if not formula.is_templated:
             continue
+        if check_formula.is_template_variable:
+            raise RuntimeError(
+                "[FEATURE-REQUEST] To process this, we should support constraints of the type "
+                '"Sequence<T2> should be member of T1", where both T2 and T1 are unknown template-variables.'
+            )
         # Check the template argument constraints of the literal_type
         # It is not the template arguments of this value (template_argument_value) that must be checked,
         #  but the substitution value of the template arguments of literal_type that must match the constraints!
         assert validator.is_concept(formula.literal)
-        literal_type_substituted_template_args: tuple[ConceptHierarchyTemplateArgument, ...] = (
+        literal_type_substituted_template_args: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] = (
             validator.create_substitution_for(formula.literal, t_arg, location_id)
         )
         if len(literal_type_substituted_template_args) != len(formula.literal_template_formulae):
@@ -689,8 +698,7 @@ def _validate_type(
         structure_constraint = ConstraintGroup(formula.location_id, formula.literal_template_formulae)
 
         sub_template_context = template_context.create_unconstrained_context(sub_location_id)
-        subst_errors = _validate_complete_instantiation_of_type(
-            formula.literal,
+        subst_errors = validate_complete_instantiation_of_type(
             structure_constraint,
             literal_type_substituted_template_args,
             sub_template_context,
