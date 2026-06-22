@@ -60,7 +60,7 @@ class TypeParser(StringParser):
 
     _VARIADIC_CHARS: frozenset[str] = frozenset(VARIADIC_GROUP_IDENTIFIER_CHARACTERS)  # "" not a member
 
-    def __init__(self, domain: str, location_id: LocationId, allow_trailing_comma: bool = False) -> None:
+    def __init__(self, domain: str, location_id: LocationId | None = None, allow_trailing_comma: bool = False) -> None:
         super().__init__(domain, location_id=location_id)
         self.allow_trailing_comma = allow_trailing_comma
 
@@ -429,7 +429,7 @@ def _parse_type_cached(domain: str, location_id: LocationId) -> tuple[ParsedType
 
 
 def parse_type(
-    domain: str, location_id: LocationId | LocationIdLike, *, expected_number_of_values: int | None = None
+    domain: str, location_id: LocationId | LocationIdLike | None = None, *, expected_number_of_values: int | None = None
 ) -> tuple[ParsedType, ...]:
     """
     Parse a type string; results are memoized on *domain*.

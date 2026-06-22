@@ -23,7 +23,7 @@ from concept_hierarchy.errors import CHSyntaxError, LocationId
 
 
 class StringParser:
-    def __init__(self, text: str, location_id: LocationId) -> None:
+    def __init__(self, text: str, location_id: LocationId | None = None) -> None:
         self.text = text
         self.pos = 0
         self.location_id = location_id
