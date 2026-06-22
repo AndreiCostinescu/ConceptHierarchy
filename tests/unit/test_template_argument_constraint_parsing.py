@@ -169,6 +169,12 @@ class _TestValidator(TemplateConstraintFormulaValidator):
         args = ", ".join(f"T{i}" for i in range(1, count + 1))
         return f"{name}<{args}>"
 
+    def get_existing_template_variables(self) -> set[str]:
+        pass
+
+    def update_existing_template_variables(self, new_template_variables: set[str]):
+        pass
+
 
 # ===========================================================================
 # Fixtures and helpers
