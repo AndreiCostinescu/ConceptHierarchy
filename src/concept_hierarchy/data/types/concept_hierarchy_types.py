@@ -47,6 +47,11 @@ class ConceptHierarchyTemplateArgument(ABC):
     def __repr__(self) -> str:
         return self.full_name
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ConceptHierarchyTemplateArgument):
+            return False
+        return type(self) is type(other) and self.full_name == other.full_name
+
     @property
     def depends_on_templates(self) -> bool:
         return len(self.used_templates) > 0
