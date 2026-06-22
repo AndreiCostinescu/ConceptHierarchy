@@ -192,7 +192,7 @@ class ConceptHierarchyChecker:
         self.ch.metadata = {str(k): str(v) for k, v in raw_meta.items()}
 
         # -- concepts --------------------------------------------------------
-        concept_location_id: LocationId = base_location_id + [ConceptHierarchyModel.model_name]
+        concept_location_id: LocationId = base_location_id + [ConceptHierarchyModel.model_concepts]
         if ConceptHierarchyModel.model_concepts not in concept_hierarchy:
             raise CHSyntaxError(
                 f'Missing required top-level key: "{ConceptHierarchyModel.model_concepts}".',
