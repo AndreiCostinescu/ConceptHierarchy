@@ -239,9 +239,9 @@
                     }
                 },
                 "interface": {
-                    "arg1": ["Integer"],
-                    "arg2": ["Integer"],
-                    "res": "Integer"
+                    "arg1": ["T"],
+                    "arg2": ["T"],
+                    "res": "T"
                 }
             }
         },
@@ -258,6 +258,18 @@
                     "_defaultArgumentValues": {
                         "arg2": 1
                     }
+                }
+            }
+        },
+        "CreateLocalVariable": {
+            "directParents": ["Function"],
+            "data": {
+                "templateArguments": ["T"],
+                "interface": {
+                    "varName": "String"
+                },
+                "addNewVariablesInExistingScope": {
+                    "varName": ["T", true]
                 }
             }
         }

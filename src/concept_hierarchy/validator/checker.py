@@ -567,7 +567,12 @@ class ConceptHierarchyChecker:
                                     part=PathPart.KEY,
                                 )
                             c.all_evaluation_arguments[eval_arg] = c.name
+                        # there isn't anything to overwrite below
                         c.all_evaluation_arguments.update(parent_c.all_evaluation_arguments)
+                        # ``all_sub_scope_data`` is initially empty;
+                        #  first add parent data, then overwrite it with this concept's data.
+                        c.all_sub_scope_data.update(parent_c.all_sub_scope_data)
+                        c.all_sub_scope_data.update(c.sub_scopes)
                     for eval_arg_name in c.evaluation_interface:
                         if eval_arg_name in self.ch.instances:
                             raise CHSemanticError(
