@@ -110,7 +110,7 @@ def create_formula_from_substituted_value_for(
 
 def substitute_template_variables_in_formula(
     formula: TemplateConstraintFormula,
-    substitution: dict[str, ConceptHierarchyTemplateArgument],
+    substitution: dict[str, ConceptHierarchyTemplateArgument | None],
     validator: TemplateConstraintFormulaValidator,
     location_id: LocationId,
 ) -> TemplateConstraintFormula:
@@ -118,21 +118,17 @@ def substitute_template_variables_in_formula(
         case NonTypeTemplateConstraintFormula():
             return formula
         case TemplateConstraintHierarchyOperator():
-            if not validator.is_template_variable(formula.literal) and not validator.is_concept(formula.literal):
-                raise RuntimeError(
-                    f"Something is wrong with the validator: previously valid formula {formula!r} is no longer valid "
-                    f"in this template context!"
-                )
+            formula_is_template_variable = formula.literal in substitution
             subst_literal: str  # will be set in the complex if-statement below
             subst_t_args: list[NonStructureConstraintFormula] = []
-            if validator.is_concept(formula.literal):
+            if not formula_is_template_variable:
                 subst_literal = formula.literal
                 for item in formula.literal_template_formulae:
                     res = substitute_template_variables_in_formula(item, substitution, validator, location_id)
                     if not isinstance(res, NonStructureConstraintFormula):
                         raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}!")
                     subst_t_args.append(res)
-            elif formula.literal not in substitution:
+            elif substitution[formula.literal] is None:
                 return formula
             else:
                 # has substitution: a template variable, a partially instantiated value, a fully instantiated value
