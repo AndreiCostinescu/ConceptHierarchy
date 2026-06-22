@@ -436,8 +436,8 @@ class ConceptHierarchyChecker:
                         ):
                             raise CHSemanticError(
                                 f"The substitution specification of template argument {t_arg_name} is ambiguous in "
-                                f"{c_name} because the parent concepts {parents_defining_t_arg} define the template "
-                                f"argument with the same name. Use the "
+                                f"{c_name} because the parent concepts {sorted(parents_defining_t_arg)} define the "
+                                f"template argument with the same name. Use the "
                                 f'"<ParentConceptName>:<ParentTemplateArgumentName>" syntax to define the unambiguous '
                                 f"substitution value for all parent template arguments",
                                 location_id=c.location_of(
