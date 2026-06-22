@@ -27,7 +27,7 @@ def _model(concepts, name="MyHierarchy"):
 
 class TestSyntaxValidator:
     def test_valid_passes(self):
-        model = _model({"Foo": {"data": {"properties": {"x": "Integer"}}}})
+        model = _model({"Foo": {"data": {"properties": {"x": "Integer"}}}, "Integer": {"data": {"properties": {}}}})
         check_model(model)  # should not raise
 
     def test_invalid_concept_name(self):
@@ -48,13 +48,13 @@ class TestSyntaxValidator:
 
 class TestSemanticValidator:
     def test_valid_hierarchy_passes(self):
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {}, "Child": {"directParents": ["Base"]}}))
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {"data": {}}, "Child": {"directParents": ["Base"]}}))
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"]}}))
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(CHSemanticError, match="Found a domain concept with no data defined: 'Child'"):
             check_model(
                 _model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {}}})
             )
@@ -64,12 +64,14 @@ class TestSemanticValidator:
         check_model(model)  # should not raise
 
     def test_undefined_parent(self):
-        model = _model({"Child": {"directParents": ["Ghost"]}})
-        with pytest.raises(CHSemanticError, match="Ghost"):
+        model = _model({"Child": {"directParents": ["Ghost"], "data": {"properties": {}}}})
+        with pytest.raises(
+            CHSemanticError, match="The parent 'Ghost' of concept 'Child' is not defined in the hierarchy"
+        ):
             check_model(model)
 
     def test_cycle_detected(self):
-        model = _model({"A": {"directParents": ["B"]}, "B": {"directParents": ["A"]}})
+        model = _model({"A": {"directParents": ["B"], "data": {}}, "B": {"directParents": ["A"], "data": {}}})
         with pytest.raises(CHSemanticError, match="[Cc]ycle(s?)"):
             check_model(model)
 
@@ -92,7 +94,7 @@ class TestSemanticValidator:
         model = _model(
             {"Concept": {}, "ValueDomain": {"directParents": ["Concept"], "data": {}}, "Type": "ValueDomain"}
         )
-        with pytest.raises(CHSemanticError, match="Found a domain concept with no data defined Type"):
+        with pytest.raises(CHSemanticError, match="Found a domain concept with no data defined: 'Type'"):
             check_model(model)
 
     def test_reference_chain(self):
