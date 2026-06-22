@@ -109,7 +109,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # stop if found procedure; it has no more sub-data (just the expression?)
         if check_res.check_successful and check_res.last_consumed == FunctionDefinition.function_procedure:
             raise StopLocationOfCheck(check_res)
-        # try to consume "interface" data
+        # try to consume data inside "interface"
         interface_data = self.data.get(FunctionDefinition.function_interface, {})
         assert isinstance(interface_data, dict)
         self.check_location_id(
@@ -121,6 +121,16 @@ class FunctionDefinition(HiddenImplementationDefinition):
             allow_start_at_this_location=True,
         )
         if check_res.check_successful:
+            if check_res.last_consumed == FunctionDefinition.function_default_argument_values:
+                # try to consume data inside "_defaultArgumentValues"
+                default_arguments_data = interface_data.get(check_res.last_consumed)
+                self.check_location_id(
+                    check_res,
+                    check_res.current_location_id + [check_res.first_remaining],
+                    location_check=default_arguments_data,
+                    previous_location=FunctionDefinition.function_default_argument_values,
+                    allow_start_at_this_location=False,
+                )
             raise StopLocationOfCheck(check_res)
         return check_res
 
