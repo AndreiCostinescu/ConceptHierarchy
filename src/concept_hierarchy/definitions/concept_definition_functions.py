@@ -126,29 +126,73 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # stop if found procedure; it has no more sub-data (just the expression?)
         if check_res.check_successful and check_res.last_consumed == FunctionDefinition.function_procedure:
             raise StopLocationOfCheck(check_res)
-        # try to consume data inside "interface"
-        interface_data = self.data.get(FunctionDefinition.function_interface, {})
-        assert isinstance(interface_data, dict)
-        self.check_location_id(
-            check_res,
-            FunctionDefinition.definition_location(self)
-            + [FunctionDefinition.function_interface, check_res.first_remaining],
-            location_check=interface_data,
-            previous_location=FunctionDefinition.function_interface,
-            allow_start_at_this_location=True,
-        )
-        if check_res.check_successful:
-            if check_res.last_consumed == FunctionDefinition.function_default_argument_values:
-                # try to consume data inside "_defaultArgumentValues"
-                default_arguments_data = interface_data.get(check_res.last_consumed)
-                self.check_location_id(
-                    check_res,
-                    check_res.current_location_id + [check_res.first_remaining],
-                    location_check=default_arguments_data,
-                    previous_location=FunctionDefinition.function_default_argument_values,
-                    allow_start_at_this_location=False,
-                )
+
+        # try to consume data inside "interface" or evaluation arguments directly
+        if not check_res.check_successful or check_res.last_consumed == FunctionDefinition.function_interface:
+            # use ``get``-method because it is possible that "interface" was not consumed
+            interface_data = self.data.get(FunctionDefinition.function_interface, {})
+            assert isinstance(interface_data, dict)
+            self.check_location_id(
+                check_res,
+                FunctionDefinition.definition_location(self)
+                + [FunctionDefinition.function_interface, check_res.first_remaining],
+                location_check=interface_data,
+                previous_location=FunctionDefinition.function_interface,
+                allow_start_at_this_location=True,
+            )
+            if check_res.check_successful:
+                if check_res.last_consumed == FunctionDefinition.function_default_argument_values:
+                    # try to consume data inside "_defaultArgumentValues"
+                    default_arguments_data = interface_data.get(check_res.last_consumed)
+                    self.check_location_id(
+                        check_res,
+                        check_res.current_location_id + [check_res.first_remaining],
+                        location_check=default_arguments_data,
+                        previous_location=FunctionDefinition.function_default_argument_values,
+                        allow_start_at_this_location=False,
+                    )
+            # either no top-level keyword was found or no interface data was matched => either way, stop checking
             raise StopLocationOfCheck(check_res)
+
+        assert check_res.check_successful
+
+        # try to consume data inside "subScopes"
+        if check_res.last_consumed == FunctionDefinition.function_sub_scopes:
+            sub_scopes_data = self.data[FunctionDefinition.function_sub_scopes]
+            assert isinstance(sub_scopes_data, dict)
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_scopes_data,
+                previous_location=FunctionDefinition.function_sub_scopes,
+                allow_start_at_this_location=False,
+            )
+            if not check_res.check_successful:
+                raise StopLocationOfCheck(check_res)
+            sub_scopes_argument_data = sub_scopes_data[check_res.last_consumed]
+            assert isinstance(sub_scopes_argument_data, dict)
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=sub_scopes_argument_data,
+                previous_location=check_res.last_consumed,
+                allow_start_at_this_location=False,
+            )
+            raise StopLocationOfCheck(check_res)
+
+        # try to consume "addNewVariablesInExistingScope" data
+        if check_res.last_consumed == FunctionDefinition.function_add_new_variables_in_existing_scope:
+            add_new_vars_in_scope = self.data[FunctionDefinition.function_add_new_variables_in_existing_scope]
+            assert isinstance(add_new_vars_in_scope, dict)
+            self.check_location_id(
+                check_res,
+                check_res.current_location_id + [check_res.first_remaining],
+                location_check=add_new_vars_in_scope,
+                previous_location=FunctionDefinition.function_add_new_variables_in_existing_scope,
+                allow_start_at_this_location=False,
+            )
+            raise StopLocationOfCheck(check_res)
+
         return check_res
 
     def check_inversion_arguments(
