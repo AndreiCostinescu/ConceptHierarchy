@@ -410,14 +410,18 @@ def validate_template_argument_value(
 
 
 def convert_items(
-    concept_that_defines_the_template_vars: str, items: tuple[TemplateArgumentValue, ...], validator: TypeValidator
+    concept_name: str, items: tuple[TemplateArgumentValue, ...], validator: TypeValidator
 ) -> tuple[tuple[ConceptHierarchyTemplateArgument, ...], bool]:
+    """
+    :param concept_name: the name of the concept that defines the template variables present in the items
+    :param items: contains the items to respectively convert to ConceptHierarchyTemplateArgument values
+    :param validator: the type validator
+    :return: the converted values, whether any of the value depends on template variables
+    """
     converted_items: list[ConceptHierarchyTemplateArgument] = []
     has_template_dependent_items = False
     for item in items:
-        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(
-            concept_that_defines_the_template_vars, item, validator
-        )
+        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(concept_name, item, validator)
         if isinstance(converted_item, TemplateDependent):
             has_template_dependent_items = True
         else:
@@ -427,8 +431,14 @@ def convert_items(
 
 
 def convert_template_argument_to_concept_hierarchy_template_argument(
-    concept_that_defines_the_template_vars: str, t_arg: TemplateArgumentValue, validator: TypeValidator
+    concept_name: str, t_arg: TemplateArgumentValue, validator: TypeValidator
 ) -> ConceptHierarchyTemplateArgument:
+    """
+    :param concept_name: is the concept that defines the template variables
+    :param t_arg: is the value to be converted
+    :param validator: is the type validator
+    :return: the converted value
+    """
     if isinstance(t_arg, TemplateArgumentLiteral):
         return LiteralValue(t_arg.clean_name, t_arg.literal_type)
     if isinstance(t_arg, ParsedType):
@@ -436,25 +446,25 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
             assert validator.is_template_variable(t_arg.clean_name)
             if validator.is_variadic_template_variable(t_arg.clean_name):
                 if t_arg.has_variadic_template_expansion:
-                    return ExpandedVariadicTemplateVariable(t_arg.clean_name, concept_that_defines_the_template_vars)
+                    return ExpandedVariadicTemplateVariable(t_arg.clean_name, concept_name)
                 else:
-                    return VariadicTemplateVariable(t_arg.clean_name, concept_that_defines_the_template_vars)
+                    return VariadicTemplateVariable(t_arg.clean_name, concept_name)
             else:
                 assert not t_arg.has_variadic_template_expansion
-                return NonVariadicTemplateVariable(t_arg.clean_name, concept_that_defines_the_template_vars)
+                return NonVariadicTemplateVariable(t_arg.clean_name, concept_name)
         assert not t_arg.has_variadic_template_expansion
         # check if all the template arguments are instantiated or not
         if not t_arg.is_templated:
             return InstantiatedType(t_arg.clean_name, ())
         converted_template_arguments, has_template_dependent_template_arguments = convert_items(
-            concept_that_defines_the_template_vars, t_arg.template_arguments, validator
+            concept_name, t_arg.template_arguments, validator
         )
         if has_template_dependent_template_arguments:
             return TemplateDependentType(t_arg.clean_name, converted_template_arguments)
         return InstantiatedType(t_arg.clean_name, converted_template_arguments)
     assert isinstance(t_arg, TemplateArgumentVariadicGroup)
     converted_group_elements, has_template_dependent_group_elements = convert_items(
-        concept_that_defines_the_template_vars, t_arg.variadic_group, validator
+        concept_name, t_arg.variadic_group, validator
     )
     assert all(isinstance(x, (ConceptHierarchyType, LiteralValue, TemplateVariable)) for x in converted_group_elements)
     if has_template_dependent_group_elements:
