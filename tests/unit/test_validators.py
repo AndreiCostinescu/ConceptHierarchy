@@ -27,8 +27,35 @@ def _model(concepts, name="MyHierarchy"):
 
 class TestSyntaxValidator:
     def test_valid_passes(self):
-        model = _model({"Foo": {"data": {"properties": {"x": "Integer"}}}, "Integer": {"data": {"properties": {}}}})
+        model = _model(
+            {
+                "Foo": {"data": {"properties": {"x": "Integer"}}},
+                "Integer": {"directParents": ["ValueDomain"], "data": {"defaultSerialization": "integer"}},
+                "ValueDomain": {"data": {}},
+            }
+        )
         check_model(model)  # should not raise
+
+    def test_property_definition_without_value_domain(self):
+        with pytest.raises(
+            CHSemanticError,
+            match=r"ParsedType 'ValueDomain' is not a template variable \(in this context\) nor a concept!",
+        ):
+            model = _model({"Foo": {"data": {"properties": {"x": "Integer"}}}, "Integer": {"data": {"properties": {}}}})
+            check_model(model)  # should raise because ValueDomain is not defined
+
+    def test_property_definition_with_no_value_domain_type(self):
+        with pytest.raises(
+            CHSemanticError, match="The defined ValueDomain of property x is not a subtype of ValueDomain!"
+        ):
+            model = _model(
+                {
+                    "Foo": {"data": {"properties": {"x": "Integer"}}},
+                    "Integer": {"data": {"properties": {}}},
+                    "ValueDomain": {"data": {}},
+                }
+            )
+            check_model(model)  # should raise because Integer is not a ValueDomain
 
     def test_invalid_concept_name(self):
         model = _model({"123invalid": {"data": {"properties": {"x": "Integer"}}}})
