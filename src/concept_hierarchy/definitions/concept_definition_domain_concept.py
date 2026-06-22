@@ -130,6 +130,9 @@ class DomainConceptDefinition(ConceptDefinition):
         self.available_property_data: dict[str, dict[str, str]] = {}
         self.available_function_data: dict[str, dict[str, str]] = {}
 
+        self.is_shorthand_property_definition: set[str] = set()  # set of property names who use a shorthand definition
+        self.is_shorthand_function_definition: set[str] = set()  # set of function names who use a shorthand definition
+
         # (property name, concept that defines it, property type)
         # self.all_properties: dict[str, tuple[str, str, ValueDomainType]] = {}
         # self.own_properties: dict[str, PropertyDefinition] = {}
@@ -150,6 +153,8 @@ class DomainConceptDefinition(ConceptDefinition):
         domain_concept.function_specializations_for_this = {}
         domain_concept.available_property_data = {}
         domain_concept.available_function_data = {}
+        domain_concept.is_shorthand_property_definition = set()
+        domain_concept.is_shorthand_function_definition = set()
         return domain_concept
 
     def definition_type(self) -> str:
@@ -182,10 +187,32 @@ class DomainConceptDefinition(ConceptDefinition):
             != DomainConceptDefinition.domain_concept_specialization,
         )
         if check_res.check_successful:
+            # => we now have consumed either a property name or the specializations keyword
             # try to consume property definition data and specializations data
             prop_name_or_specialization = check_res.last_consumed
             assert prop_name_or_specialization in properties_data
             prop_def_data = properties_data[prop_name_or_specialization]
+
+            # The data for a property name can be either:
+            #  - a string-value representing the value_domain type,
+            #  - an expression defining the type constraint,
+            #  - or the property definition dictionary
+            if (
+                prop_name_or_specialization in self.properties
+                and prop_name_or_specialization in self.is_shorthand_property_definition
+            ):
+                if isinstance(prop_def_data, str):
+                    if check_res.first_remaining != PropertyDefinition.VALUE_DOMAIN:
+                        # search failed
+                        return check_res
+                    self._consume_remaining_keyword(check_res)
+                    return check_res
+                else:
+                    assert isinstance(prop_def_data, dict)
+                    if check_res.first_remaining in [PropertyDefinition.VALUE_DOMAIN, PropertyDefinition.CONSTRAINT]:
+                        self._consume_remaining_keyword(check_res)
+                    return check_res
+
             # check prop_def_key data or forSub prop_name data or forThis keyword
             self.check_location_id(
                 check_res,
@@ -290,6 +317,7 @@ class DomainConceptDefinition(ConceptDefinition):
             != DomainConceptDefinition.domain_concept_specialization,
         )
         if check_res.check_successful:
+            # => we now have consumed either a function name or the specializations keyword
             # Watch out because function specialization data can be at the top-level (after the function name!)
             #   It can skip the func_def_key, take this into account in the processing steps below!
             #   Also, compared to the property chain above, there are no hooks that can go deeper with keywords!
@@ -304,6 +332,13 @@ class DomainConceptDefinition(ConceptDefinition):
                     func_def_data, accept_specialization=False
                 )
             ):
+                # consume default, static, and valueDomain key
+                if check_res.remaining_keywords[0] in [
+                    FunctionDefinition.VALUE_DOMAIN,
+                    FunctionDefinition.STATIC,
+                    FunctionDefinition.DEFAULT,
+                ]:
+                    self._consume_remaining_keyword(check_res)
                 return check_res
             # check func_def_key data or forSub func_name data or forThis keyword
             self.check_location_id(
@@ -327,6 +362,8 @@ class DomainConceptDefinition(ConceptDefinition):
                 != DomainConceptDefinition.domain_concept_specialization_for_this
                 and DomainConceptDefinition.looks_like_function_instantiation(sub_data, accept_specialization=True)
             ):
+                if check_res.remaining_keywords[0] == FunctionDefinition.DEFAULT:
+                    self._consume_remaining_keyword(check_res)
                 return check_res
             assert isinstance(sub_data, dict)
             # check forSub func_def_key data or forThis func_name data
@@ -349,6 +386,8 @@ class DomainConceptDefinition(ConceptDefinition):
             sub_sub_data = sub_data[for_sub_func_def_key_or_for_this_func_name]
             # stop processing if this is a FunctionComposition or INHERIT_FROM_KEYWORD definition at forThis func_name
             if DomainConceptDefinition.looks_like_function_instantiation(sub_sub_data, accept_specialization=True):
+                if check_res.remaining_keywords[0] == FunctionDefinition.DEFAULT:
+                    self._consume_remaining_keyword(check_res)
                 return check_res
             assert isinstance(sub_sub_data, dict)
             # check func_name hook_f_arg data, forSub hook_f_name data or forThis func_def_key data
@@ -786,11 +825,14 @@ class DomainConceptDefinition(ConceptDefinition):
                 ):
                     raise CHSemanticError(
                         f"{c.definition_type()} function specialization values must be either:"
-                        f"\n - FunctionComposition values (i.e. the procedure of a CustomFunction without any input"
-                        f" arguments),\n - the instantiation of a CustomFunction (i.e. by specifying its procedure "
-                        f"and optional interface)\n - or a JSON object defining the only specializable definition "
-                        f'key for {c.definition_type()} functions: the "{FunctionDefinition.DEFAULT}" value (which '
-                        f"can be any of the above).\n\tGot {func_def_val!r}!",
+                        f"\n - FunctionComposition values (i.e. the procedure of a "
+                        f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions} without any "
+                        f"input arguments),\n - the instantiation of a "
+                        f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions} (i.e. by "
+                        f"specifying its procedure and optional interface)\n - or a JSON object defining the only "
+                        f"specializable definition key for {c.definition_type()} functions: the "
+                        f'"{FunctionDefinition.DEFAULT}" value (which can be any of the above).\n\tGot '
+                        f"{func_def_val!r}!",
                         location_id=location_id,
                         part=PathPart.VALUE,
                     )
@@ -861,8 +903,10 @@ class DomainConceptDefinition(ConceptDefinition):
                     # if prop_def does not contain any property-definition-keys, interpret as the definition of an
                     #  expression that defines the constraint & type of the property
                     self.properties[prop_name] = {PropertyDefinition.CONSTRAINT: prop_data}
+                    self.is_shorthand_property_definition.add(prop_name)
             else:
                 self.properties[prop_name] = {PropertyDefinition.VALUE_DOMAIN: prop_data}
+                self.is_shorthand_property_definition.add(prop_name)
         self.initialize_domain_concept_specialization_data_from_defined_data(
             ForPropertyOrFunction.PROPERTY,
             self.properties,
@@ -956,6 +1000,7 @@ class DomainConceptDefinition(ConceptDefinition):
                         )
                     # interpret as default value of the static property
                     self.functions[func_name] = {FunctionDefinition.STATIC: True, FunctionDefinition.DEFAULT: func_data}
+                    self.is_shorthand_function_definition.add(func_name)
         self.initialize_domain_concept_specialization_data_from_defined_data(
             ForPropertyOrFunction.FUNCTION,
             self.functions,

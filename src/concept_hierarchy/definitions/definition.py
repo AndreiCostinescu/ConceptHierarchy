@@ -213,13 +213,19 @@ class ConceptHierarchyDefinition(ABC):
             allow_start_at_this_location if consumed_keywords == () else consumed_keywords[-1] == previous_location
         )
         if check_result.check_successful:
-            check_result.current_location_id = new_location_if_successful
-            check_result.consumed_keywords += (remaining_keywords[0],)
-            self._definition_location_cache[check_result.consumed_keywords] = check_result.current_location_id
-            check_result.remaining_keywords = remaining_keywords[1:]
+            self._consume_remaining_keyword(check_result, new_location_if_successful)
         if check_result.remaining_keywords == ():
             raise FoundLocationId(check_result)
         return check_result
+
+    def _consume_remaining_keyword(
+        self, check_result: LocationOfCheckData, new_location_if_successful: LocationId | None = None
+    ):
+        if new_location_if_successful is not None:
+            check_result.current_location_id = new_location_if_successful
+        check_result.consumed_keywords += (check_result.remaining_keywords[0],)
+        self._definition_location_cache[check_result.consumed_keywords] = check_result.current_location_id
+        check_result.remaining_keywords = check_result.remaining_keywords[1:]
 
     def is_reference(self) -> bool:
         return self.is_reference_to is not None
