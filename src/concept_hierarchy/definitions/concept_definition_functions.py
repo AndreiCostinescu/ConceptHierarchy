@@ -209,6 +209,13 @@ class FunctionDefinition(HiddenImplementationDefinition):
             isinstance(arg_type_def, list)
             and (not (1 <= len(arg_type_def) <= 3) or any(not isinstance(x, str) for x in arg_type_def))
         ):
+            if "default" in arg_name and isinstance(arg_type_def, dict):
+                raise CHSyntaxError(
+                    f"It seems you were trying to define default argument values for the {self.definition_type()} "
+                    f"{self.name!r}. {arg_type_def!r} does not look like a {self.definition_type()} argument definition"
+                    f'.\nUse the "{FunctionDefinition.function_default_argument_values}" keyword for that!',
+                    location_id=self.location_id(FunctionDefinition.function_interface, arg_name),
+                )
             raise CHSyntaxError(
                 f"{self.definition_type()} argument type definitions must be either a JSON string "
                 f"(defining the argument's type) or an array of at least 1 and at most 3 string items "
