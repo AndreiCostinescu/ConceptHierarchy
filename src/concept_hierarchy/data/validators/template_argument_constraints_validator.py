@@ -60,8 +60,8 @@ class TemplateConstraintArgumentValidator(TemplateConstraintFormulaValidator, AB
 
     @abstractmethod
     def create_substitution_for(
-        self, parent_type_name: str, sub_type: ConceptHierarchyType
-    ) -> list[ConceptHierarchyTemplateArgument] | None:
+        self, parent_type_name: str, sub_type: ConceptHierarchyType, location_id: LocationId
+    ) -> tuple[ConceptHierarchyTemplateArgument, ...] | None:
         """
         (_, t_arg_value_clean, _, t_args_of_t_arg) = process_value_domain(template_argument_value)[0]
         t_arg_vd = ValueDomain.all_value_domains[t_arg_value_clean]
@@ -102,7 +102,7 @@ def create_formula_from_substituted_value_for(
             template_constraints.append(create_formula_from_substituted_value_for(t_arg, validator, location_id))
         return TemplateConstraintSelf(value.clean_name, tuple(template_constraints), validator, location_id)
     elif isinstance(value, VariadicArgument):
-        raise RuntimeError("Did not implement support for using variadic constraints!")
+        raise RuntimeError("[Feature-Request] Did not implement support for using variadic constraints!")
     else:
         assert isinstance(value, TemplateVariable)
         return TemplateConstraintSelf(value.clean_name, (), validator, location_id)
@@ -123,9 +123,10 @@ def substitute_template_variables_in_formula(
                     f"Something is wrong with the validator: previously valid formula {formula!r} is no longer valid "
                     f"in this template context!"
                 )
-            subst_literal = ""
+            subst_literal: str  # will be set in the complex if-statement below
             subst_t_args: list[NonStructureConstraintFormula] = []
             if validator.is_concept(formula.literal):
+                subst_literal = formula.literal
                 for item in formula.literal_template_formulae:
                     res = substitute_template_variables_in_formula(item, substitution, validator, location_id)
                     if not isinstance(res, NonStructureConstraintFormula):
@@ -137,12 +138,12 @@ def substitute_template_variables_in_formula(
                 # has substitution: a template variable, a partially instantiated value, a fully instantiated value
                 subst_value = substitution[formula.literal]
                 if isinstance(subst_value, TemplateVariable):
-                    subst_literal = subst_value.full_name
+                    subst_literal = subst_value.clean_name
                     # don't change subst_t_args, because a template variable does not have template arguments
                 elif isinstance(subst_value, LiteralValue):
                     return LiteralValueConstraintFormula(subst_value.literal_type, subst_value.full_name, location_id)
                 elif isinstance(subst_value, VariadicArgument):
-                    raise RuntimeError("Did not implement support for using variadic constraints!")
+                    raise RuntimeError("[Feature-Request] Did not implement support for using variadic constraints!")
                 else:
                     assert isinstance(subst_value, ConceptHierarchyType)
                     subst_formula = create_formula_from_substituted_value_for(subst_value, validator, location_id)
@@ -679,8 +680,8 @@ def _validate_type(
         # It is not the template arguments of this value (template_argument_value) that must be checked,
         #  but the substitution value of the template arguments of literal_type that must match the constraints!
         assert validator.is_concept(formula.literal)
-        literal_type_substituted_template_args: tuple[ConceptHierarchyTemplateArgument, ...] = tuple(
-            validator.create_substitution_for(formula.literal, t_arg)
+        literal_type_substituted_template_args: tuple[ConceptHierarchyTemplateArgument, ...] = (
+            validator.create_substitution_for(formula.literal, t_arg, location_id)
         )
         if len(literal_type_substituted_template_args) != len(formula.literal_template_formulae):
             raise RuntimeError(
