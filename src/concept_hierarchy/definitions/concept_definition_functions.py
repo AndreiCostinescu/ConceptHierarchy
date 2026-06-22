@@ -17,6 +17,7 @@ from __future__ import annotations
 from types import NoneType
 from typing import Callable
 
+from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.definition import LocationOfCheckData, StopLocationOfCheck
@@ -65,6 +66,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
 
         self.all_evaluation_arguments: dict[str, str] = {}
         """Mapping from all available arguments (incl. the inherited ones) to the concept that defines them."""
+        self.result_defined_in: str | None | object = UNINITIALIZED
+        """Stores the concept that defines the result type or ``None`` if the function does not return anything."""
+
         self.evaluation_interface: tuple[str, ...] = ()
         self.evaluation_argument_types: dict[str, str] = {}
         self.evaluation_argument_reference_types: dict[str, str] = {}
@@ -85,6 +89,8 @@ class FunctionDefinition(HiddenImplementationDefinition):
         domain_concept.sub_scopes = {}
 
         domain_concept.all_evaluation_arguments = {}
+        domain_concept.result_defined_in = UNINITIALIZED
+
         domain_concept.evaluation_interface = ()
         domain_concept.evaluation_argument_types = {}
         domain_concept.evaluation_argument_reference_types = {}
@@ -338,11 +344,19 @@ class FunctionDefinition(HiddenImplementationDefinition):
         #   TYPE CHECK
         # - function evaluation default arguments
         #   EXPRESSION CHECK
+        # - function arguments not doubly-defined
+        #   REQUIRES: all concepts initialized (arguments can be inherited from parent functions)
+        #   STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
+        # - function result type not doubly-defined
+        #   REQUIRES: all concepts initialized (arguments can be inherited from parent functions)
+        #   STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
         # - whether default argument values are truly defined arguments
         #   (can't check here because this Function can define default values for arguments of the parent Function)
         #   REQUIRES: all concepts initialized (arguments can be inherited from parent functions)
         #   STRUCTURE CHECK
-        #       - done in checker.py
+        #       - done in checker.py - check_after_parsing_concepts
 
         # check "procedure"
         self.procedure = self.data.get(FunctionDefinition.function_procedure, None)
@@ -589,3 +603,12 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # missing checks:
         #  - types of new variables are valid
         #    TYPE CHECK
+
+    @property
+    def returns_something(self):
+        return self.result_type is not None
+
+    @property
+    def has_interface_defined(self):
+        """Stores whether the concept definition has the ``"interface"`` keyword."""
+        return FunctionDefinition.function_interface in self.data

@@ -29,6 +29,7 @@ from concept_hierarchy.data.concept_hierarchy import (
     ValueDomainData,
 )
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext, VariableContext
+from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
@@ -490,60 +491,83 @@ class ConceptHierarchyChecker:
                     self.ch.default_serializations[c.default_serialization] = c_name
                 if isinstance(c, FunctionDefinition):
                     assert self.ch.is_function(c_name)
-                    # check parent concepts and merge the interface!
-                    for parent_index, parent in enumerate(c.parents):
-                        if not self.ch.is_function(parent) and parent != ValueDomainDefinition.value_domain_name:
-                            raise CHSemanticError(
-                                f"Parents of {FunctionDefinition.function_name}s must be "
-                                f"{FunctionDefinition.function_name}s.\nEncountered non "
-                                f"{FunctionDefinition.function_name} parent {parent!r} of {c_name}",
-                                location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
-                            )
-                        elif parent != ValueDomainDefinition.value_domain_name:
-                            parent_c = self.ch.concepts[parent]
-                            assert isinstance(parent_c, FunctionDefinition)
-                            for eval_arg, eval_arg_type in c.evaluation_argument_types.items():
-                                if eval_arg in parent_c.all_evaluation_arguments:
-                                    defining_parent_of_eval_arg = parent_c.all_evaluation_arguments[eval_arg]
-                                    defining_parent_c = self.ch.concepts[defining_parent_of_eval_arg]
-                                    assert isinstance(defining_parent_c, FunctionDefinition)
-                                    eval_arg_type_in_first_definition = defining_parent_c.evaluation_argument_types[
-                                        eval_arg
-                                    ]
-                                    eval_arg_mod_in_first_definition = (
-                                        defining_parent_c.evaluation_argument_modifier_types[eval_arg]
+                    # check parent concept and merge the interface!
+                    assert len(c.parents) == 1
+                    parent_index, parent = 0, c.parents[0]
+                    parent_c = self.ch.concepts[parent]
+                    if not self.ch.is_function(parent) and parent != ValueDomainDefinition.value_domain_name:
+                        raise CHSemanticError(
+                            f"Parents of {FunctionDefinition.function_name}s must be "
+                            f"{FunctionDefinition.function_name}s.\nEncountered non "
+                            f"{FunctionDefinition.function_name} parent {parent!r} of {c_name}",
+                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                        )
+                    elif parent != ValueDomainDefinition.value_domain_name:
+                        assert isinstance(parent_c, FunctionDefinition)
+                        if parent_c.result_defined_in is UNINITIALIZED:
+                            if not c.abstract and c.has_interface_defined:
+                                c.result_defined_in = c.name if c.returns_something else None
+                        else:
+                            if parent_c.result_defined_in is not None and c.returns_something:
+                                raise CHSemanticError(
+                                    f"Defined result twice: once in {parent_c.result_defined_in} and once in {c.name}. "
+                                    f"If you need a different result type, define a new Function concept that is not a "
+                                    f"subconcept of {parent!r}.",
+                                    location_id=c.location_of(FunctionDefinition.function_result),
+                                    part=PathPart.KEY,
+                                )
+                            if parent_c.result_defined_in is None and c.returns_something:
+                                raise CHSemanticError(
+                                    f"Defined result type in {c.name!r} after a parent concept defines that the "
+                                    f"evaluation interface does not result in anything! Defined this in "
+                                    f"{parent_c.result_defined_in}.\nIf you need a different result type, define a new "
+                                    f"Function concept that is not a subconcept of {parent!r}.",
+                                    location_id=c.location_of(FunctionDefinition.function_result),
+                                    part=PathPart.KEY,
+                                )
+                            c.result_defined_in = parent_c.result_defined_in
+                        for eval_arg, eval_arg_type in c.evaluation_argument_types.items():
+                            if eval_arg in parent_c.all_evaluation_arguments:
+                                defining_parent_of_eval_arg = parent_c.all_evaluation_arguments[eval_arg]
+                                defining_parent_c = self.ch.concepts[defining_parent_of_eval_arg]
+                                assert isinstance(defining_parent_c, FunctionDefinition)
+                                eval_arg_type_in_first_definition = defining_parent_c.evaluation_argument_types[
+                                    eval_arg
+                                ]
+                                eval_arg_mod_in_first_definition = defining_parent_c.evaluation_argument_modifier_types[
+                                    eval_arg
+                                ]
+                                eval_arg_ref_in_first_definition = (
+                                    defining_parent_c.evaluation_argument_reference_types[eval_arg]
+                                )
+                                if (
+                                    (c.evaluation_argument_types[eval_arg] != eval_arg_type_in_first_definition)
+                                    or (
+                                        c.evaluation_argument_modifier_types[eval_arg]
+                                        != eval_arg_mod_in_first_definition
                                     )
-                                    eval_arg_ref_in_first_definition = (
-                                        defining_parent_c.evaluation_argument_reference_types[eval_arg]
+                                    or (
+                                        c.evaluation_argument_reference_types[eval_arg]
+                                        != eval_arg_ref_in_first_definition
                                     )
-                                    if (
-                                        (c.evaluation_argument_types[eval_arg] != eval_arg_type_in_first_definition)
-                                        or (
-                                            c.evaluation_argument_modifier_types[eval_arg]
-                                            != eval_arg_mod_in_first_definition
-                                        )
-                                        or (
-                                            c.evaluation_argument_reference_types[eval_arg]
-                                            != eval_arg_ref_in_first_definition
-                                        )
-                                    ):
-                                        raise CHSemanticError(
-                                            f"{c.definition_type()} evaluation argument {eval_arg!r} is defined twice "
-                                            f"in {c.name} and {parent} with a different definition.\nEither remove the "
-                                            f"definition from {c.name!r} or don't make {c.name!r} a subconcept of "
-                                            f"{defining_parent_of_eval_arg!r}.",
-                                            location_id=c.location_of(FunctionDefinition.function_interface, eval_arg),
-                                            part=PathPart.KEY,
-                                        )
+                                ):
                                     raise CHSemanticError(
-                                        f"{c.definition_type()} evaluation argument {eval_arg!r} is defined twice in "
-                                        f"{c.name} and {parent} with the same definition.\nRemove the definition from "
-                                        f"{c.name!r}.",
+                                        f"{c.definition_type()} evaluation argument {eval_arg!r} is defined twice "
+                                        f"in {c.name} and {parent} with a different definition.\nEither remove the "
+                                        f"definition from {c.name!r} or don't make {c.name!r} a subconcept of "
+                                        f"{defining_parent_of_eval_arg!r}.",
                                         location_id=c.location_of(FunctionDefinition.function_interface, eval_arg),
                                         part=PathPart.KEY,
                                     )
-                                c.all_evaluation_arguments[eval_arg] = c.name
-                            c.all_evaluation_arguments.update(parent_c.all_evaluation_arguments)
+                                raise CHSemanticError(
+                                    f"{c.definition_type()} evaluation argument {eval_arg!r} is defined twice in "
+                                    f"{c.name} and {parent} with the same definition.\nRemove the definition from "
+                                    f"{c.name!r}.",
+                                    location_id=c.location_of(FunctionDefinition.function_interface, eval_arg),
+                                    part=PathPart.KEY,
+                                )
+                            c.all_evaluation_arguments[eval_arg] = c.name
+                        c.all_evaluation_arguments.update(parent_c.all_evaluation_arguments)
                     for eval_arg_name in c.evaluation_interface:
                         if eval_arg_name in self.ch.instances:
                             raise CHSemanticError(
