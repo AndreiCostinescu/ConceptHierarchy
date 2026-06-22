@@ -20,6 +20,7 @@ from typing import Callable
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.definition import LocationOfCheckData, StopLocationOfCheck
+from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
 
@@ -274,6 +275,12 @@ class FunctionDefinition(HiddenImplementationDefinition):
                     continue
                 # assertion, not check because this is a key of a JSON object
                 assert isinstance(arg_name, str)
+                if not check_ch_name(arg_name, must_start_lowercase=True):
+                    raise CHSyntaxError(
+                        f"{self.definition_type()} argument name {arg_name!r} must be a lowercase-starting string! "
+                        f"Got {arg_name}!",
+                        location_id=self.location_id(FunctionDefinition.function_interface, arg_name),
+                    )
                 type_def_res = self.process_type_reference_and_modifier_of_argument(arg_name, arg_type_def)
                 self.evaluation_argument_types[arg_name] = type_def_res[0]
                 self.evaluation_argument_reference_types[arg_name] = type_def_res[1]
