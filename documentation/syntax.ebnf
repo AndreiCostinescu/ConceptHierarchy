@@ -84,8 +84,7 @@ PropertySpecializationDefinition
             '}' ws
 PropertySpecializationItem
         ::= SpecializablePropertyDefinitionElement
-          | (ws '"justForThis"' ws ':' PropertySpecializationContainer)
-          | (ws '"justForSubconcepts"' ws ':' PropertySpecializationContainer)
+          | (ws '"_forThis"' ws ':' PropertySpecializationContainer)
 PropertySpecializationContainer
         ::= ws '{'
                 (ws | (SpecializablePropertyDefinitionElement (',' SpecializablePropertyDefinitionElement)*))
@@ -141,8 +140,7 @@ DomainFunctionSpecializationElement
             '}' ws))
 DomainFunctionSpecializationItem
         ::= FunctionSpecializationValueDefinition
-          | (ws '"justForThis"' ws ':' FunctionSpecializationKindContent)
-          | (ws '"justForSubconcepts"' ws ':' FunctionSpecializationKindContent)
+          | (ws '"_forThis"' ws ':' FunctionSpecializationKindContent)
 FunctionSpecializationKindContent
         ::= DomainFunctionCustomProcedure | InheritedValueDisambiguation | (ws '{'
                 (ws | (FunctionSpecializationValueDefinition (',' FunctionSpecializationValueDefinition)*))

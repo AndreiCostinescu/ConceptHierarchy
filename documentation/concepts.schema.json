@@ -331,8 +331,7 @@
             { "$ref": "#/$defs/inheritedValueDisambiguation" }
           ]
         },
-        "justForThis": { "$ref": "#/$defs/propertySpecializationContent" },
-        "justForSubconcepts": { "$ref": "#/$defs/propertySpecializationContent" }
+        "_forThis": { "$ref": "#/$defs/propertySpecializationContent" }
       },
       "additionalProperties": false
     },
@@ -483,8 +482,7 @@
           "type": "object",
           "properties": {
             "default": { "$ref": "#/$defs/functionSpecializationValueDefinition" },
-            "justForThis": { "$ref": "#/$defs/functionSpecializationKindContent" },
-            "justForSubconcepts": { "$ref": "#/$defs/functionSpecializationKindContent" }
+            "_forThis": { "$ref": "#/$defs/functionSpecializationKindContent" }
           },
           "additionalProperties": false
         }
