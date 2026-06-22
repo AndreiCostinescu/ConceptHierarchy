@@ -268,6 +268,12 @@ class FunctionDefinition(HiddenImplementationDefinition):
     def concept_data_check(self):
         super().concept_data_check()
 
+        if len(self.parents) != 1:
+            raise CHSemanticError(
+                f"{self.definition_type()}s can have at most one parent concept! {self.name!r} has {self.parents}",
+                location_id=ConceptDefinition.definition_location(self) + [ConceptDefinition.concept_direct_parents],
+            )
+
         # check "interface"; abstract Functions may not have an interface
         if FunctionDefinition.function_interface not in self.data and not self.abstract:
             raise CHSyntaxError(
