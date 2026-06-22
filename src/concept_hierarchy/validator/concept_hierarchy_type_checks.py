@@ -41,9 +41,11 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TemplateDependentType,
     TemplateDependentVariadicGroup,
     TemplateVariable,
+    TypeValue,
     VariadicArgument,
     VariadicTemplateVariable,
 )
+from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
     HierarchyCheckType,
     TemplateConstraintArgumentValidator,
@@ -55,6 +57,7 @@ from concept_hierarchy.data.validators.type_validator import (
     TypeValidator,
     convert_template_argument_to_concept_hierarchy_template_argument,
     parse_convert_type,
+    parse_convert_type_in_template_context,
     validate_template_argument_value,
 )
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
@@ -646,7 +649,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         location_id = c.location_of(FunctionDefinition.function_interface, f_eval_arg_name)
         try:
             # check syntax and semantics of types
-            ch_type = parse_convert_type(c.name, f_eval_arg_type, type_validator, location_id)
+            ch_type = parse_convert_type_in_template_context(c.name, f_eval_arg_type, type_validator, location_id)
         except ConceptHierarchyError as e:
             raise CHSemanticError(
                 f"Parsing the definition of the evaluation argument {f_eval_arg_name} into a type "
@@ -672,7 +675,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         location_id = c.location_of(FunctionDefinition.function_interface, FunctionDefinition.function_result)
         try:
             # check syntax and semantics of types
-            ch_type = parse_convert_type(c.name, c.result_type, type_validator, location_id)
+            ch_type = parse_convert_type_in_template_context(c.name, c.result_type, type_validator, location_id)
         except ConceptHierarchyError as e:
             raise CHSemanticError(
                 f"Parsing the definition of the {c.definition_type()} result into a type failed: got {c.result_type!r}",
@@ -681,12 +684,60 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
                 causes=[e],
             )
         datum.evaluation_result_type = ch_type
-    datum.evaluation_result_modifier_type = (
-        None if c.result_modifier_type is None else FunctionResultModifier(c.result_modifier_type)
-    )
-    datum.evaluation_result_reference_type = (
-        None if c.result_reference_type is None else ValueDomainArgumentReference(c.result_reference_type)
-    )
+        datum.evaluation_result_modifier_type = FunctionResultModifier(c.result_modifier_type)
+        datum.evaluation_result_reference_type = ValueDomainArgumentReference(c.result_reference_type)
+    elif isinstance(c.result_defined_in, str):
+        datum.evaluation_result_type = context.model.functions[c.result_defined_in].evaluation_result_type
+        datum.evaluation_result_modifier_type = context.model.functions[
+            c.result_defined_in
+        ].evaluation_result_modifier_type
+        datum.evaluation_result_reference_type = context.model.functions[
+            c.result_defined_in
+        ].evaluation_result_reference_type
+    else:
+        datum.evaluation_result_type = None if c.result_defined_in is None else UNINITIALIZED
+        datum.evaluation_result_modifier_type = None
+        datum.evaluation_result_reference_type = None
+
+    sub_scope_data: dict[str, dict[str, tuple[TypeValue, bool]]] = {}
+    for f_arg, new_var_data in c.sub_scopes.items():
+        for new_var_name, new_var_def_data in new_var_data.items():
+            new_var_type = new_var_def_data[0]
+            assert isinstance(new_var_type, str)
+            location_id = c.location_of(FunctionDefinition.function_sub_scopes, f_arg, new_var_name)
+            try:
+                # check syntax and semantics of types
+                ch_type = parse_convert_type_in_template_context(c.name, new_var_type, type_validator, location_id)
+            except ConceptHierarchyError as e:
+                raise CHSemanticError(
+                    f"Parsing the definition of the new variable {new_var_name!r} to be added to the sub-scope of "
+                    f"evaluation argument {f_arg!r} into a type failed: got {new_var_type!r}",
+                    location_id=location_id,
+                    part=PathPart.VALUE,
+                    causes=[e],
+                )
+            if f_arg not in sub_scope_data:
+                sub_scope_data[f_arg] = {}
+            sub_scope_data[f_arg][new_var_name] = (ch_type, new_var_def_data[1])
+    datum.sub_scope_vars = frozendict(sub_scope_data)
+
+    add_to_existing_scope: dict[str, tuple[TypeValue, bool]] = {}
+    for new_var_name, new_var_def_data in c.add_new_variables_in_existing_scope.items():
+        new_var_type = new_var_def_data[0]
+        assert isinstance(new_var_type, str)
+        location_id = c.location_of(FunctionDefinition.function_add_new_variables_in_existing_scope, new_var_name)
+        try:
+            # check syntax and semantics of types
+            ch_type = parse_convert_type_in_template_context(c.name, new_var_type, type_validator, location_id)
+        except ConceptHierarchyError as e:
+            raise CHSemanticError(
+                f"Parsing the definition of the new variable {new_var_name!r} to be added to the existing scope into a "
+                f"type failed: got {new_var_type!r}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+                causes=[e],
+            )
+    datum.new_vars_in_scope = frozendict(add_to_existing_scope)
 
 
 def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):

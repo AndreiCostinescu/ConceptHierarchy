@@ -326,3 +326,6 @@ class TemplateDependentVariadicGroup(TemplateDependent, ConceptHierarchyVariadic
                 f"Tried to create a TemplateDependent template argument value {self!r} that does not depend on "
                 f"templates!"
             )
+
+
+TypeValue: TypeAlias = InstantiatedType | TemplateDependentType | NonVariadicTemplateVariable | VariadicTemplateVariable

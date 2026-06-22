@@ -19,7 +19,8 @@ from enum import Enum
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
-from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType
+from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType, TypeValue
+from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.models import ConceptHierarchyModel
 
 from .types.concept_hierarchy_types import ConceptHierarchyTemplateArgument
@@ -93,23 +94,32 @@ class FunctionArgumentModifier(Enum):
 @lazy_properties
 class FunctionData(ValueDomainData):
     evaluation_interface: tuple[str, ...]
-    evaluation_argument_types: frozendict[str, InstantiatedType]
+    evaluation_argument_types: frozendict[str, TypeValue]
     evaluation_argument_modifier_type: frozendict[str, FunctionArgumentModifier]
     evaluation_argument_reference_type: frozendict[str, FunctionArgumentReference]
     evaluation_argument_default_value: frozendict[str, object]  # replace object with Expression
-    evaluation_result_type: InstantiatedType | None
+    evaluation_result_type: TypeValue | None | object
     evaluation_result_modifier_type: FunctionResultModifier | None
     evaluation_result_reference_type: ValueDomainArgumentReference | None
 
     procedure: object  # replace object with expression
 
-    sub_scope_vars: frozendict[str, frozendict[str, InstantiatedType]]
+    sub_scope_vars: frozendict[str, frozendict[str, TypeValue]]
     """Maps evaluation argument names to new variables available in their scope and their type."""
-    new_vars_in_scope: frozendict[str, InstantiatedType]
+    new_vars_in_scope: frozendict[str, TypeValue]
     """Maps the new variables introduced after the evaluation of this Function to their type."""
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
+
+    @property
+    def knows_what_it_returns(self):
+        return self.evaluation_result_type is not UNINITIALIZED
+
+    @property
+    def returns_something(self):
+        assert self.knows_what_it_returns
+        return self.evaluation_result_type is not None
 
 
 @lazy_properties

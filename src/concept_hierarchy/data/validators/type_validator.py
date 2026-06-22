@@ -31,6 +31,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TemplateDependentType,
     TemplateDependentVariadicGroup,
     TemplateVariable,
+    TypeValue,
     VariadicTemplateVariable,
 )
 from concept_hierarchy.data.types.parsed_type import (
@@ -473,9 +474,9 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
     return InstantiatedVariadicGroup(t_arg.clean_name, converted_group_elements)
 
 
-def parse_convert_type(
+def _parse_convert_no_check(
     concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
-) -> InstantiatedType:
+) -> ConceptHierarchyTemplateArgument:
     # check the syntax of the type
     parsed_type = parse_type(type_def, location_id)
     if not len(parsed_type) == 1:
@@ -484,7 +485,28 @@ def parse_convert_type(
         raise CHSyntaxError(f"Expected a single type, but parsing produced: {parsed_type!r}", location_id=location_id)
     validated_type = validate_type(parsed_type[0], validator, location_id)
     # check the semantics of the type
-    ch_type = convert_template_argument_to_concept_hierarchy_template_argument(concept_name, validated_type, validator)
+    return convert_template_argument_to_concept_hierarchy_template_argument(concept_name, validated_type, validator)
+
+
+def parse_convert_type(
+    concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
+) -> InstantiatedType:
+    ch_type = _parse_convert_no_check(concept_name, type_def, validator, location_id)
     if not isinstance(ch_type, InstantiatedType):
-        raise CHSemanticError(f"Expected an InstantiatedType,  got {ch_type!r}", location_id=location_id)
+        raise CHSemanticError(f"Expected an InstantiatedType, got {ch_type!r}", location_id=location_id)
+    return ch_type
+
+
+def parse_convert_type_in_template_context(
+    concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
+) -> TypeValue:
+    ch_type = _parse_convert_no_check(concept_name, type_def, validator, location_id)
+    if not isinstance(
+        ch_type, (InstantiatedType, TemplateDependentType, NonVariadicTemplateVariable, VariadicTemplateVariable)
+    ):
+        raise CHSemanticError(
+            f"Expected an InstantiatedType, a TemplateDependentType, a NonVariadicTemplateVariable or a "
+            f"VariadicTemplateVariable, but got {ch_type!r}",
+            location_id=location_id,
+        )
     return ch_type
