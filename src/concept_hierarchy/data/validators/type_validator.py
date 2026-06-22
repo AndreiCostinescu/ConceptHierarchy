@@ -332,6 +332,12 @@ def validate_type(
             )
         return t
 
+    if not validator.is_concept(t.clean_name):
+        raise CHSemanticError(
+            f"ParsedType {t.full_name!r} is not a template variable (in this context) nor a concept!",
+            location_id=location_id,
+        )
+
     # Bring to canonic form:
     #   Use only variadic groups (no more ParsedTypes with variadic identifiers)
     #   Make sure that mixed syntax with the empty variadic identifier is NOT used

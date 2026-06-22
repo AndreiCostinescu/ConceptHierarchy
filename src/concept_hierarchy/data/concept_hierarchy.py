@@ -17,10 +17,10 @@ from __future__ import annotations
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
+from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType
 from concept_hierarchy.models import ConceptHierarchyModel
 
 from .types.concept_hierarchy_types import ConceptHierarchyTemplateArgument
-from .types.parsed_type import ParsedType
 from .utils import lazy_properties
 
 
@@ -38,9 +38,9 @@ class ConceptData(ConceptHierarchyData):
 @lazy_properties
 class DomainConceptData(ConceptData):
     # all the data is (available) for this concept; this class does not store any data for subconcepts
-    property_types: frozendict[str, ParsedType]
+    property_types: frozendict[str, InstantiatedType]
     property_constraints: frozendict[str, object]  # replace object with Expression
-    function_types: frozendict[str, ParsedType]
+    function_types: frozendict[str, InstantiatedType]
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
@@ -69,7 +69,7 @@ class FunctionData(ValueDomainData):
 
 @lazy_properties
 class GlobalVariableData(ConceptHierarchyData):
-    value_type: ParsedType
+    value_type: InstantiatedType
     value: object  # replace object with Expression
 
     def __init__(self, name: str):

@@ -18,8 +18,6 @@ type_parser.py — Contains the parser for parsing a string into a Concept Hiera
 
 from __future__ import annotations
 
-import functools
-
 from concept_hierarchy.data.parsers.string_parser import StringParser
 from concept_hierarchy.data.types.parsed_type import (
     VARIADIC_GROUP_IDENTIFIER_CHARACTERS,
@@ -29,7 +27,7 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentVariadicGroup,
     TemplateArgumentWithVariadicId,
 )
-from concept_hierarchy.errors import CHSyntaxError, LocationId
+from concept_hierarchy.errors import CHSyntaxError, LocationId, LocationIdLike
 from concept_hierarchy.utils import is_integer
 
 
@@ -419,15 +417,19 @@ class TemplateArgumentParser:
         return res[0]
 
 
+_type_cache: dict[str, tuple[ParsedType, ...]] = {}
+"""Cache the parse_type results only on the domain, not on the location_id!"""
+
+
 # Memoized public entry-point
-@functools.lru_cache(maxsize=None)
-def _parse_type_cached(domain: str) -> tuple[ParsedType, ...]:
-    return TypeParser(domain, LocationId()).parse_types()
+def _parse_type_cached(domain: str, location_id: LocationId) -> tuple[ParsedType, ...]:
+    if domain not in _type_cache:
+        _type_cache[domain] = TypeParser(domain, location_id).parse_types()
+    return _type_cache[domain]
 
 
 def parse_type(
-    domain: str,
-    expected_number_of_values: int | None = None,
+    domain: str, location_id: LocationId | LocationIdLike, *, expected_number_of_values: int | None = None
 ) -> tuple[ParsedType, ...]:
     """
     Parse a type string; results are memoized on *domain*.
@@ -435,7 +437,7 @@ def parse_type(
     Returns one ``ParsedType`` per comma-separated top-level entry.
     Raises ``RuntimeError`` if the result count doesn't match *expected_number_of_values* when supplied.
     """
-    results = _parse_type_cached(domain)
+    results = _parse_type_cached(domain, location_id)
     if expected_number_of_values is not None and len(results) != expected_number_of_values:
         raise RuntimeError(
             f"Parsing {domain!r} failed: expected {expected_number_of_values} "

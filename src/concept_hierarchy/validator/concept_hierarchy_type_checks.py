@@ -16,7 +16,7 @@ from frozendict import frozendict
 from concept_hierarchy.data.concept_hierarchy import DomainConceptData, FunctionData, TypeData, ValueDomainData
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
-from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser
+from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser, parse_type
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     StructureConstraintFormula,
 )
@@ -46,12 +46,16 @@ from concept_hierarchy.data.validators.type_validator import (
     TypeValidator,
     convert_template_argument_to_concept_hierarchy_template_argument,
     validate_template_argument_value,
+    validate_type,
 )
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
+from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    FunctionDefinition as DomainConceptFunctionDefinition,
+)
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
-from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
+from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
 
 def substitute_non_template_variable(
@@ -352,13 +356,8 @@ class ConstraintValidator(TemplateConstraintArgumentValidator):
 
 
 class ConceptHierarchyTypeValidator(TypeValidator):
-    def __init__(
-        self,
-        context: ConceptHierarchyContext,
-        template_argument_constraint_validator: TemplateConstraintArgumentValidator,
-    ):
+    def __init__(self, context: ConceptHierarchyContext):
         self.context = context
-        self.template_argument_constraint_validator = template_argument_constraint_validator
         self.cached_template_data: dict[str, TypeTemplateData] = {}
 
     def full_type_name(self, concept_name: str) -> str:
@@ -433,21 +432,119 @@ def validate_template_argument_constraints_in_instantiated_types(
 def check_types_in_domain_concept_definition(
     c: DomainConceptDefinition, datum: DomainConceptData, context: ConceptHierarchyContext
 ):
+    """
+    The types to verify are:
+    - domain concept properties
+    - domain concept functions (if present)
+    """
+    type_validator = ConceptHierarchyTypeValidator(context)
+    property_types: dict[str, InstantiatedType] = {}
+    for prop_name, prop_def_data in c.properties.items():
+        if PropertyDefinition.VALUE_DOMAIN in prop_def_data:
+            # validate the type of the property!
+            value_domain = prop_def_data[PropertyDefinition.VALUE_DOMAIN]
+            assert isinstance(value_domain, str)
+            location_id = c.location_of(
+                DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.VALUE_DOMAIN
+            )
+            try:
+                # check the syntax of the type
+                validated_type = validate_type(
+                    parse_type(value_domain, location_id, expected_number_of_values=1)[0], type_validator, location_id
+                )
+                # check the semantics of the type
+                ch_type = convert_template_argument_to_concept_hierarchy_template_argument(
+                    datum.name, validated_type, type_validator
+                )
+                if not isinstance(ch_type, InstantiatedType):
+                    raise CHSemanticError(
+                        f'Expected an InstantiatedType as the "{PropertyDefinition.VALUE_DOMAIN}" value of {prop_name},'
+                        f" got {ch_type!r}",
+                        location_id=location_id,
+                        part=PathPart.VALUE,
+                    )
+            except ConceptHierarchyError as e:
+                raise CHSemanticError(
+                    f"Parsing {value_domain!r} into a type failed.",
+                    location_id=location_id,
+                    part=PathPart.VALUE,
+                    causes=[e],
+                )
+            property_types[prop_name] = ch_type
+        else:
+            # missing checks: infer the type from the expression that is the constraint!...
+            #  but this can only be done later because we can't parse expressions yet...
+            assert PropertyDefinition.CONSTRAINT in prop_def_data
+    datum.property_types = frozendict(property_types)
+    function_types: dict[str, InstantiatedType] = {}
+    for func_name, func_def_data in c.functions.items():
+        location_id = c.location_of(
+            DomainConceptDefinition.domain_concept_functions, func_name, DomainConceptFunctionDefinition.VALUE_DOMAIN
+        )
+        if DomainConceptFunctionDefinition.VALUE_DOMAIN in func_def_data:
+            # validate the type of the function!
+            value_domain = func_def_data[DomainConceptFunctionDefinition.VALUE_DOMAIN]
+            assert isinstance(value_domain, str)
+            try:
+                # check the syntax of the type
+                validated_type = validate_type(
+                    parse_type(value_domain, location_id, expected_number_of_values=1)[0], type_validator, location_id
+                )
+                # check the semantics of the type
+                ch_type = convert_template_argument_to_concept_hierarchy_template_argument(
+                    datum.name, validated_type, type_validator
+                )
+                if not isinstance(ch_type, InstantiatedType):
+                    raise CHSemanticError(
+                        f'Expected an InstantiatedType as the "{DomainConceptFunctionDefinition.VALUE_DOMAIN}" value of'
+                        f" {func_name}, got {ch_type!r}",
+                        location_id=location_id,
+                        part=PathPart.VALUE,
+                    )
+            except ConceptHierarchyError as e:
+                raise CHSemanticError(
+                    f"Parsing {value_domain!r} into a type failed.",
+                    location_id=location_id,
+                    part=PathPart.VALUE,
+                    causes=[e],
+                )
+            function_types[func_name] = ch_type
+        else:
+            # check the semantics of the type
+            ch_type = convert_template_argument_to_concept_hierarchy_template_argument(
+                datum.name,
+                validate_type(
+                    parse_type(
+                        DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions,
+                        location_id,
+                        expected_number_of_values=1,
+                    )[0],
+                    type_validator,
+                    location_id,
+                ),
+                type_validator,
+            )
+            assert isinstance(ch_type, InstantiatedType)
+            function_types[func_name] = ch_type
+
+    datum.function_types = frozendict(function_types)
     pass
 
 
 def check_types_in_hidden_implementation_definition(
     c: HiddenImplementationDefinition, datum: TypeData, context: ConceptHierarchyContext
 ):
-    # Check template argument substitution value
-    # -> parse value to a ConceptHierarchyTemplateArgument and validate the value
-    #   -> including its template argument constraint values!
-    # -> then validate that the substituted value satisfies the constraints of the parent template argument!
+    """
+    Check template argument substitution values
+    -> parse value to a ConceptHierarchyTemplateArgument and validate the value
+      -> and check the template argument constraint values present in the substitution value!
+    -> then validate that the substituted value satisfies the constraints of the parent type-instantiation!
+    """
     substitution_values: dict[tuple[str, str], ConceptHierarchyTemplateArgument] = {}
     constraint_validator = ConstraintValidator(context)
     constraint_validator.update_existing_template_variables(set(datum.template_context.variables))
     local_context = context.set_template_context(datum.template_context)
-    type_validator = ConceptHierarchyTypeValidator(local_context, constraint_validator)
+    type_validator = ConceptHierarchyTypeValidator(local_context)
     subst_location_key = HiddenImplementationDefinition.hidden_template_arguments_substitutions
     for parent in c.parents:
         parent_def_data = context.ch.concepts[parent]
