@@ -206,7 +206,7 @@ def validate_type_and_parse_to_variadic_groups(
                     f"{full_type_name}!",
                     location_id=location_id,
                 )
-            count_values_without_variadic_identifier += parsed_t_arg_val.has_variadic_identifier
+            count_values_without_variadic_identifier += not parsed_t_arg_val.has_variadic_identifier
     if uses_variadic_ids and uses_variadic_groups:
         # Can't catch the mixed-syntax in the type parsing
         # (because the empty variadic identifier does not look like a variadic identifier).
