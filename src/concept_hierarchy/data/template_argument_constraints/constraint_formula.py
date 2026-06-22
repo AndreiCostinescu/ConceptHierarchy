@@ -105,11 +105,18 @@ class TemplateConstraintFormula(ABC):
       between* multiple template-argument slots simultaneously.
     """
 
-    def __init__(self, location_id: LocationId):
+    def __init__(self, location_id: LocationId, constraint_on=None):
+        self.constraint_on = constraint_on
+        """On which value (i.e. template argument or sub-constraint) is this constraint applied."""
         self.location_id = location_id
+        """The creation location of this constraint."""
 
     def __str__(self):
         return self.__repr__()
+
+    def __eq__(self, other):
+        # do not compare the location_id; it does not matter for the constraint where it was created
+        return isinstance(other, TemplateConstraintFormula)
 
     @property
     @abstractmethod
