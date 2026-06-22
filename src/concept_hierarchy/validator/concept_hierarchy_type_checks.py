@@ -519,31 +519,38 @@ def check_types_in_hidden_implementation_definition(
                 location_id = c.location_of(subst_location_key, f"{parent_t_arg}")
             else:
                 location_id = c.location_of(subst_location_key, f"{parent}:{parent_t_arg}")
-            # Start validation of the syntax of the substitution value:
-            #  1) Convert json object to TemplateArgumentValue
-            parsed_t_arg_value = TemplateArgumentParser(subst_value, location_id).parse()
-            #  2) Validate nr. template args, create variadic groups from var.ids., don't validate template constraints
-            validated_t_arg_value = validate_template_argument_value(
-                parsed_t_arg_value,
-                type_validator,
-                location_id,
-                parent_t_arg in parent_def_data.variadic_template_arguments,
-            )
-            # syntax of the substitution value is validated from now on;
-            # Start checking semantic of the value
-            #  1) TemplateArgumentValue => (TemplateDependent / Instantiated) and (VariadicTemplateVar. / TemplateVar)
-            ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
-                datum.name, validated_t_arg_value, type_validator
-            )
-            #  2) Validate the template constraints of subtypes
-            errors = validate_template_argument_constraints_in_instantiated_types(
-                ch_t_arg_value, datum.template_context, constraint_validator, location_id
-            )
-            if errors:
+            try:
+                # Start validation of the syntax of the substitution value:
+                #  1) Convert json object to TemplateArgumentValue
+                parsed_t_arg_value = TemplateArgumentParser(subst_value, location_id).parse()
+                #  2) Validate nr. template args, create variadic groups from var.ids., don't check template constraints
+                validated_t_arg_value = validate_template_argument_value(
+                    parsed_t_arg_value,
+                    type_validator,
+                    location_id,
+                    parent_t_arg in parent_def_data.variadic_template_arguments,
+                )
+                # syntax of the substitution value is validated from now on;
+                # Start checking semantic of the value
+                #  1) TemplateArgumentValue => (TemplateDependent / Instantiated) & (VariadicTemplateVar. / TemplateVar)
+                ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
+                    datum.name, validated_t_arg_value, type_validator
+                )
+                #  2) Validate the template constraints of subtypes
+                errors = validate_template_argument_constraints_in_instantiated_types(
+                    ch_t_arg_value, datum.template_context, constraint_validator, location_id
+                )
+                if errors:
+                    raise CHSemanticError(
+                        f"Type validation failed inside {ch_t_arg_value.full_name}! "
+                        f"Template argument constraints of a fully-instantiated type not satisfied!",
+                        causes=errors,
+                    )
+            except ConceptHierarchyError as e:
                 raise CHSemanticError(
-                    f"Type validation failed inside {ch_t_arg_value.full_name}! "
-                    f"Template argument constraints of a fully-instantiated type not satisfied!",
-                    causes=errors,
+                    f"Parsing {subst_value!r} into a template argument value for {parent_t_arg} failed:",
+                    location_id=location_id,
+                    causes=[e],
                 )
             instantiation_values_of_parent_template_variables.append(ch_t_arg_value)
             parent_template_substitution[parent_t_arg] = ch_t_arg_value
