@@ -452,7 +452,8 @@ class ConceptHierarchyChecker:
                         )
                         raise CHSemanticError(
                             f"Extra key(s) {extra_keys_str} in template substitution definition of {c_name} must be "
-                            f"removed!",
+                            f"removed!\nThey are not template arguments of any of the defined parent concepts: "
+                            f"{', '.join(c.parents)}!",
                             location_id=c.location_of(
                                 HiddenImplementationDefinition.hidden_template_arguments_substitutions
                             ),
