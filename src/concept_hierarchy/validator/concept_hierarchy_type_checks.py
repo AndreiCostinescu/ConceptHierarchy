@@ -16,7 +16,7 @@ from frozendict import frozendict
 from concept_hierarchy.data.concept_hierarchy import DomainConceptData, FunctionData, TypeData, ValueDomainData
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
-from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser, parse_type
+from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     StructureConstraintFormula,
 )
@@ -45,8 +45,8 @@ from concept_hierarchy.data.validators.type_validator import (
     TypeTemplateData,
     TypeValidator,
     convert_template_argument_to_concept_hierarchy_template_argument,
+    parse_convert_type,
     validate_template_argument_value,
-    validate_type,
 )
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
@@ -448,24 +448,12 @@ def check_types_in_domain_concept_definition(
                 DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.VALUE_DOMAIN
             )
             try:
-                # check the syntax of the type
-                validated_type = validate_type(
-                    parse_type(value_domain, location_id, expected_number_of_values=1)[0], type_validator, location_id
-                )
-                # check the semantics of the type
-                ch_type = convert_template_argument_to_concept_hierarchy_template_argument(
-                    datum.name, validated_type, type_validator
-                )
-                if not isinstance(ch_type, InstantiatedType):
-                    raise CHSemanticError(
-                        f'Expected an InstantiatedType as the "{PropertyDefinition.VALUE_DOMAIN}" value of {prop_name},'
-                        f" got {ch_type!r}",
-                        location_id=location_id,
-                        part=PathPart.VALUE,
-                    )
+                # check syntax and semantics of types
+                ch_type = parse_convert_type(c.name, value_domain, type_validator, location_id)
             except ConceptHierarchyError as e:
                 raise CHSemanticError(
-                    f"Parsing {value_domain!r} into a type failed.",
+                    f'Parsing the "{PropertyDefinition.VALUE_DOMAIN}" definition of property {prop_name} into a type '
+                    f"failed: got {value_domain!r}",
                     location_id=location_id,
                     part=PathPart.VALUE,
                     causes=[e],
@@ -481,51 +469,22 @@ def check_types_in_domain_concept_definition(
         location_id = c.location_of(
             DomainConceptDefinition.domain_concept_functions, func_name, DomainConceptFunctionDefinition.VALUE_DOMAIN
         )
-        if DomainConceptFunctionDefinition.VALUE_DOMAIN in func_def_data:
-            # validate the type of the function!
-            value_domain = func_def_data[DomainConceptFunctionDefinition.VALUE_DOMAIN]
-            assert isinstance(value_domain, str)
-            try:
-                # check the syntax of the type
-                validated_type = validate_type(
-                    parse_type(value_domain, location_id, expected_number_of_values=1)[0], type_validator, location_id
-                )
-                # check the semantics of the type
-                ch_type = convert_template_argument_to_concept_hierarchy_template_argument(
-                    datum.name, validated_type, type_validator
-                )
-                if not isinstance(ch_type, InstantiatedType):
-                    raise CHSemanticError(
-                        f'Expected an InstantiatedType as the "{DomainConceptFunctionDefinition.VALUE_DOMAIN}" value of'
-                        f" {func_name}, got {ch_type!r}",
-                        location_id=location_id,
-                        part=PathPart.VALUE,
-                    )
-            except ConceptHierarchyError as e:
-                raise CHSemanticError(
-                    f"Parsing {value_domain!r} into a type failed.",
-                    location_id=location_id,
-                    part=PathPart.VALUE,
-                    causes=[e],
-                )
-            function_types[func_name] = ch_type
-        else:
-            # check the semantics of the type
-            ch_type = convert_template_argument_to_concept_hierarchy_template_argument(
-                datum.name,
-                validate_type(
-                    parse_type(
-                        DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions,
-                        location_id,
-                        expected_number_of_values=1,
-                    )[0],
-                    type_validator,
-                    location_id,
-                ),
-                type_validator,
+        assert DomainConceptFunctionDefinition.VALUE_DOMAIN in func_def_data
+        # validate the type of the function!
+        value_domain = func_def_data[DomainConceptFunctionDefinition.VALUE_DOMAIN]
+        assert isinstance(value_domain, str)
+        try:
+            # check syntax and semantics of types
+            ch_type = parse_convert_type(c.name, value_domain, type_validator, location_id)
+        except ConceptHierarchyError as e:
+            raise CHSemanticError(
+                f'Parsing the "{DomainConceptFunctionDefinition.VALUE_DOMAIN}" definition of function '
+                f"{func_name} into a type failed: got {value_domain!r}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+                causes=[e],
             )
-            assert isinstance(ch_type, InstantiatedType)
-            function_types[func_name] = ch_type
+        function_types[func_name] = ch_type
 
     datum.function_types = frozendict(function_types)
     pass

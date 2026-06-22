@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
+from concept_hierarchy.data.parsers.type_parser import parse_type
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
     ExpandedVariadicTemplateVariable,
@@ -470,3 +471,17 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
     if has_template_dependent_group_elements:
         return TemplateDependentVariadicGroup(t_arg.clean_name, converted_group_elements)
     return InstantiatedVariadicGroup(t_arg.clean_name, converted_group_elements)
+
+
+def parse_convert_type(
+    concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
+) -> InstantiatedType:
+    # check the syntax of the type
+    validated_type = validate_type(
+        parse_type(type_def, location_id, expected_number_of_values=1)[0], validator, location_id
+    )
+    # check the semantics of the type
+    ch_type = convert_template_argument_to_concept_hierarchy_template_argument(concept_name, validated_type, validator)
+    if not isinstance(ch_type, InstantiatedType):
+        raise CHSemanticError(f"Expected an InstantiatedType,  got {ch_type!r}", location_id=location_id)
+    return ch_type

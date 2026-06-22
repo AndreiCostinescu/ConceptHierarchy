@@ -45,7 +45,7 @@ model_data = {
                         "procedure": {"Return<Number>": {"what": {"Add<Number>": {"arg1": "arg", "arg2": 2}}}},
                     },
                     "f4": {
-                        "valueDomain": "CustomFunction2",
+                        "valueDomain": "CustomFunction",
                         "static": True,
                         "default": {
                             "interface": {"arg": "Number", "res": "Number"},
