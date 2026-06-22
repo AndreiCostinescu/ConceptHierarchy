@@ -21,6 +21,7 @@ from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.parsers.type_parser import parse_type
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
+    ConceptHierarchyType,
     ExpandedVariadicTemplateVariable,
     Instantiated,
     InstantiatedType,
@@ -41,7 +42,6 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentVariadicGroup,
     TemplateArgumentWithVariadicId,
 )
-from concept_hierarchy.data.value_domain_type import ConceptHierarchyType
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 
 
