@@ -119,11 +119,23 @@ class TestParseErrors:
         # with pytest.raises(CHSemanticError):  # <- an empty concept hierarchy is allowed
         check_model(ConceptHierarchyModel.create_from_data({"name": "X", "concepts": {}}))
 
+    def test_concepts_without_normal_root_but_with_it_implied_without_data(self):
+        with pytest.raises(
+            CHSyntaxError,
+            match="Every non-root concept must define its data in the \"data\" keyword! Concept 'ValueDomain' "
+            "does not, please add its data!",
+        ):
+            check_model(
+                ConceptHierarchyModel.create_from_data(
+                    {"name": "X", "concepts": {"ValueDomain": {"directParents": ["Concept"]}}}
+                )
+            )
+
     def test_concepts_without_normal_root_but_with_it_implied(self):
         with pytest.raises(CHSemanticError):
             check_model(
                 ConceptHierarchyModel.create_from_data(
-                    {"name": "X", "concepts": {"ValueDomain": {"directParents": ["Concept"]}}}
+                    {"name": "X", "concepts": {"ValueDomain": {"directParents": ["Concept"], "data": {}}}}
                 )
             )
 
@@ -147,7 +159,11 @@ class TestParseErrors:
         )
 
     def test_non_concept_root(self):
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(
+            CHSyntaxError,
+            match="Every non-root concept must define its data in the \"data\" keyword! Concept 'Base' does not, "
+            "please add its data!",
+        ):
             check_model(ConceptHierarchyModel.create_from_data({"name": "X", "concepts": {"Base": {}}}))
         model = ConceptHierarchyModel.create_from_data(
             {
