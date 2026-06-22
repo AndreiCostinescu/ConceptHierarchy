@@ -148,6 +148,38 @@
                 }
             }
         },
+        "Variation": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateArguments": ["T"]
+            }
+        },
+        "SubTypeVariation": {
+            "directParents": ["Variation"],
+            "data": {
+                "templateArguments": {
+                    "order": ["SubT", "T"],
+                    "SubT": "And(T, Not(T))",
+                    "substitutions": {
+                        "T": "T"
+                    }
+                }
+            }
+        },
+        "DifferentTemplateArguments": {
+            "directParents": ["SubTypeVariation"],
+            "data": {
+                "templateArguments": {
+                    "order": ["First", "Second", "Third"],
+                    "Second": "Not(First.)",
+                    "Third": "And(Not(First.), Not(Second.))",
+                    "substitutions": {
+                        "T": "First",
+                        "SubT": "Second"
+                    }
+                }
+            }
+        },
         "CustomFunction": {
             "directParents": ["ValueDomain"],
             "data": {
