@@ -252,6 +252,8 @@ def validate_complete_instantiation_of_concept(
         raise RuntimeError(f"No instantiation arguments provided for formula {formula!r}")
     if formula is None:
         return []
+    if location_id is None:
+        location_id = []
     t_arg_names = validator.get_template_argument_names_of(concept_name)
     assert len(t_arg_names) == len(complete_instantiation)
     complete_instantiation_with_names = tuple((name, value) for name, value in zip(t_arg_names, complete_instantiation))
@@ -267,6 +269,8 @@ def validate_complete_instantiation_of_type(
     validator: TemplateConstraintArgumentValidator,
     location_id: LocationId = None,
 ) -> list[ConceptHierarchyError]:
+    if location_id is None:
+        location_id = []
     assert template_context.empty or template_context.is_unconstrained
     if isinstance(formula, ConstraintGroup):
         if len(formula.group_constraints) != len(complete_instantiation):
