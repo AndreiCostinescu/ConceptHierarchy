@@ -37,7 +37,7 @@ def record(errors: list[ConceptHierarchyError], collect_all_errors: bool, err: C
         raise StopValidation()
 
 
-_UNINITIALIZED = object()
+UNINITIALIZED = object()
 
 
 def lazy_properties(cls):
@@ -52,8 +52,8 @@ def lazy_properties(cls):
 
         def make_property(_private_name, pub_name):
             def getter(self):
-                val = getattr(self, _private_name, _UNINITIALIZED)
-                if val is _UNINITIALIZED:
+                val = getattr(self, _private_name, UNINITIALIZED)
+                if val is UNINITIALIZED:
                     raise RuntimeError(f"{pub_name} not initialized")
                 return val
 
@@ -64,7 +64,7 @@ def lazy_properties(cls):
 
         def make_is_initialized(_private_name):
             def is_initialized(self) -> bool:
-                return getattr(self, _private_name, _UNINITIALIZED) is not _UNINITIALIZED
+                return getattr(self, _private_name, UNINITIALIZED) is not UNINITIALIZED
 
             return is_initialized
 
@@ -73,7 +73,7 @@ def lazy_properties(cls):
 
     def new_init(self, *args, **kwargs):
         for field_name in field_names:
-            setattr(self, f"_{field_name}", _UNINITIALIZED)
+            setattr(self, f"_{field_name}", UNINITIALIZED)
         original_init(self, *args, **kwargs)
 
     cls.__init__ = new_init
