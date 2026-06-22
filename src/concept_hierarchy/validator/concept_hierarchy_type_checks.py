@@ -241,6 +241,21 @@ class ConstraintValidator(TemplateConstraintArgumentValidator):
         self.context = context
         self.allowed_template_variables: set[str] = set()
 
+    def is_subtype(self, a: InstantiatedType, b: InstantiatedType, location_id: LocationId | None = None) -> bool:
+        if not self.context.ch.is_a_subconcept_of_b(a.clean_name, b.clean_name, include_self=True):
+            return False
+        b_subst_t_args: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] = self.create_substitution_for(
+            b.clean_name, a, location_id
+        )
+        assert b_subst_t_args is not None
+        if len(b_subst_t_args) != len(b.template_arguments):
+            raise RuntimeError(
+                f"Mismatch between the number of substituted template argument values {b_subst_t_args!r} and the number"
+                f" of template arguments of {b.full_name!r}."
+            )
+        b_subst_t_args_to_check = tuple(x[1] for x in b_subst_t_args)
+        return b_subst_t_args_to_check == b.template_arguments
+
     # --- Abstract methods of TemplateConstraintArgumentValidator ---
 
     def create_substitution_for(
