@@ -51,18 +51,26 @@ class FunctionDefinition(HiddenImplementationDefinition):
         super().__init__(name, definition_data, definition_location_id)
 
         self.interface: dict = {}
+        """The evaluation interface of the function. Data must be inherited!"""
         self.procedure: dict | None = None
-        # The key is a tuple of template argument constraint formulae (in the order of the template argument definition)
-        # The value is the procedure dictionary mapping argument names to a Function composition value
         self.inversion: dict[tuple[str | None, ...], dict[str, dict]] | None = None
-        # The key is a tuple or argument names which, when they are variations of the current type,
-        #  change this Function call to the Function call defined as value.
-        # The value is str | dict: either a template-instantiated Function name or a Function call
+        """
+        The key is a tuple of template argument constraint formulae (in the order of the template argument definition)
+        The value is the procedure dictionary mapping argument names to a Function composition value
+        """
         self.variations: dict[tuple[str, ...], dict] | None = None
-        # variable name -> (ValueDomain type, whether the new variable name is fixed or comes as an argument)
+        """
+        The key is a tuple or argument names which, when they are variations of the current type,
+         change this Function call to the Function call defined as value.
+        The value is str | dict: either a template-instantiated Function name or a Function call
+        """
         self.add_new_variables_in_existing_scope: dict[str, tuple[str, bool]] = {}
-        # argument name -> (new variable in scope of argument name -> (ValueDomain type, whether the var name is fixed))
+        """variable name -> (ValueDomain type, whether the new variable name is fixed or comes as an argument)"""
         self.sub_scopes: dict[str, dict[str, tuple[str, bool]]] = {}
+        """ 
+        argument name -> (new variable in scope of argument name -> (ValueDomain type, whether the var name is fixed)).
+        Data must be inherited! 
+        """
 
         self.all_evaluation_arguments: dict[str, str] = {}
         """Mapping from all available arguments (incl. the inherited ones) to the concept that defines them."""
