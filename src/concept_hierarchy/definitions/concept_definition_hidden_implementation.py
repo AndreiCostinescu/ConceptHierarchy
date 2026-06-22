@@ -87,23 +87,29 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         # process top-level implementation-related data keywords (abstract/implementation/templateArguments)
         # after processing parent keywords
         check_res = super().location_of_impl(*keywords)
-        self.check_location_id(
-            check_res,
-            HiddenImplementationDefinition.definition_location(self) + [check_res.first_remaining],
-            location_check=self.data,
-            previous_location=ConceptDefinition.concept_definition_data,
-            allow_start_at_this_location=True,
-        )
-        # Saving this value here is needed because there are subclasses
-        # This is the guarantee that the top-level data keywords were found in this function,
-        # so no more processing in subclasses is required!
-        found_keyword_in_here = check_res.check_successful is True
-        # stop the check if reached the leaf-nodes: implementation or abstract
-        if (
-            found_keyword_in_here
-            and check_res.last_consumed != HiddenImplementationDefinition.hidden_template_arguments
-        ):
-            raise StopLocationOfCheck(check_res)
+        found_keyword_in_here = False
+        if check_res.first_remaining in [
+            HiddenImplementationDefinition.hidden_implementation,
+            HiddenImplementationDefinition.hidden_abstract,
+            HiddenImplementationDefinition.hidden_template_arguments,
+        ]:
+            self.check_location_id(
+                check_res,
+                HiddenImplementationDefinition.definition_location(self) + [check_res.first_remaining],
+                location_check=self.data,
+                previous_location=ConceptDefinition.concept_definition_data,
+                allow_start_at_this_location=True,
+            )
+            # Saving this value here is needed because there are subclasses
+            # This is the guarantee that the top-level data keywords were found in this function,
+            # so no more processing in subclasses is required!
+            found_keyword_in_here = check_res.check_successful is True
+            # stop the check if reached the leaf-nodes: implementation or abstract
+            if (
+                found_keyword_in_here
+                and check_res.last_consumed != HiddenImplementationDefinition.hidden_template_arguments
+            ):
+                raise StopLocationOfCheck(check_res)
         # other sub-keywords/-locations that can be processed in this class live in "templateArguments"
         if HiddenImplementationDefinition.hidden_template_arguments not in self.data:
             # if there are no templateArguments defined in the data, there is nothing left to process
