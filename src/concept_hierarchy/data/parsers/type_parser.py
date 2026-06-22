@@ -144,23 +144,28 @@ class TypeParser(StringParser):
             self.skip_whitespace()
             if self.eof() or self.peek() in stop_chars:
                 if expect_value:
-                    raise SyntaxError(f"Expected a value, but finished parsing at index {self.pos} of {self.text!r}!")
+                    raise CHSyntaxError(
+                        f"Expected a value, but finished parsing at index {self.pos} of {self.text!r}!",
+                        location_id=self.location_id,
+                    )
                 break
             pos_before_entry_parse = self.pos
             entry = self._parse_entry(allow_variadic_groups=allow_variadic_groups, allow_literals=allow_literals)
             if not allow_variadic_identifiers and (
                 isinstance(entry, TemplateArgumentWithVariadicId) and entry.has_variadic_identifier
             ):
-                raise SyntaxError(
+                raise CHSyntaxError(
                     f"Variadic group identifiers are only allowed in template arguments! Found at position "
-                    f"{pos_before_entry_parse} of {self.text!r}"
+                    f"{pos_before_entry_parse} of {self.text!r}",
+                    location_id=self.location_id,
                 )
             if not allow_template_expansion_operator and (
                 isinstance(entry, ParsedType) and entry.has_variadic_template_expansion
             ):
-                raise SyntaxError(
+                raise CHSyntaxError(
                     f"Template expansion operator is only allowed in a variadic group or function arguments! Found at "
-                    f"{pos_before_entry_parse} of {self.text!r}"
+                    f"{pos_before_entry_parse} of {self.text!r}",
+                    location_id=self.location_id,
                 )
             entries.append(entry)
             self.skip_whitespace()
@@ -187,12 +192,14 @@ class TypeParser(StringParser):
 
         if self.peek() == "[":
             if not allow_variadic_groups:
-                raise SyntaxError(
-                    f"Variadic groups are only allowed in template arguments! Found at {self.pos} of {self.text!r}"
+                raise CHSyntaxError(
+                    f"Variadic groups are only allowed in template arguments! Found at {self.pos} of {self.text!r}",
+                    location_id=self.location_id,
                 )
             if variadic_id:
-                raise SyntaxError(
-                    f"Variadic group identifier {variadic_id!r} before a bracket group at position {self.pos}."
+                raise CHSyntaxError(
+                    f"Variadic group identifier {variadic_id!r} before a bracket group at position {self.pos}.",
+                    location_id=self.location_id,
                 )
             return self._parse_variadic_group()
 
@@ -273,7 +280,7 @@ class TypeParser(StringParser):
         try:
             self.consume("]")
         except RuntimeError as e:
-            raise SyntaxError(str(e)) from e
+            raise CHSyntaxError(str(e), location_id=self.location_id) from e
         if len(entries) == 0:
             variadic_group: tuple[ParsedType | TemplateArgumentLiteral, ...] = ()
         else:
@@ -294,8 +301,9 @@ class TypeParser(StringParser):
 
         if has_variadic_template_expansion:
             if variadic_id:
-                raise SyntaxError(
-                    f"The variadic template expansion cannot be used with variadic identifiers (here: {variadic_id})!"
+                raise CHSyntaxError(
+                    f"The variadic template expansion cannot be used with variadic identifiers (here: {variadic_id})!",
+                    location_id=self.location_id,
                 )
             clean_name = clean_name[:-3]
 
@@ -308,7 +316,7 @@ class TypeParser(StringParser):
             try:
                 self.consume(">")
             except RuntimeError as e:
-                raise SyntaxError(str(e)) from e
+                raise CHSyntaxError(str(e), location_id=self.location_id) from e
             template_arguments = []
             has_variadic_group_as_entry = False
             has_argument_with_variadic_identifier = False
@@ -319,9 +327,10 @@ class TypeParser(StringParser):
                     has_argument_with_variadic_identifier |= e.has_variadic_identifier
                 template_arguments.append(e)
             if has_variadic_group_as_entry and has_argument_with_variadic_identifier:
-                raise SyntaxError(
+                raise CHSyntaxError(
                     f"Can not define template argument values combining variadic groups and types with variadic "
-                    f"identifiers! Found at {self.text!r}"
+                    f"identifiers! Found at {self.text!r}",
+                    location_id=self.location_id,
                 )
 
         # ── Function-call arguments ─────────────────────────────────────
@@ -333,7 +342,7 @@ class TypeParser(StringParser):
             try:
                 self.consume(")")
             except RuntimeError as e:
-                raise SyntaxError(str(e)) from e
+                raise CHSyntaxError(str(e), location_id=self.location_id) from e
             function_arguments = []
             for e in entries:
                 function_arguments.append(e)
@@ -342,10 +351,11 @@ class TypeParser(StringParser):
         if self.peek(3) == "..." or (
             has_variadic_template_expansion and (template_arguments is not None or function_arguments is not None)
         ):
-            raise SyntaxError(
+            raise CHSyntaxError(
                 f"The variadic template expansion cannot be used with function arguments, template arguments or with "
                 f"variadic identifiers! Found: variadic={variadic_id!r}, template_args={template_arguments!r}, "
-                f"and func_args={function_arguments!r}!"
+                f"and func_args={function_arguments!r}!",
+                location_id=self.location_id,
             )
 
         return ParsedType(
@@ -367,7 +377,10 @@ class TypeParser(StringParser):
             self.pos += 1
         name = self.text[start : self.pos]
         if not name:
-            raise SyntaxError(f"Expected a type name at position {self.pos}; got {self.remaining()[:20]!r}")
+            raise CHSyntaxError(
+                f"Expected a type name at position {self.pos}; got {self.remaining()[:20]!r}",
+                location_id=self.location_id,
+            )
         return name
 
 

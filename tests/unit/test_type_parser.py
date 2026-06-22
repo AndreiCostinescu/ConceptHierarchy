@@ -33,6 +33,7 @@ from frozendict import frozendict
 
 from concept_hierarchy.data.parsers.type_parser import ParsedType, TypeParser, parse_type
 from concept_hierarchy.data.types.parsed_type import TemplateArgumentLiteral, TemplateArgumentVariadicGroup
+from concept_hierarchy.errors import CHSyntaxError
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -40,7 +41,7 @@ from concept_hierarchy.data.types.parsed_type import TemplateArgumentLiteral, Te
 
 
 def _parse(text: str) -> tuple[ParsedType, ...]:
-    return TypeParser(text).parse_types()
+    return TypeParser(text, None).parse_types()
 
 
 def _p1(text: str) -> ParsedType:
@@ -498,42 +499,42 @@ class TestVariadicExpansion:
 
     def test_expansion_not_allowed_at_top_level(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Template expansion operator is only allowed in a variadic group or function arguments",
         ):
             _parse("A...")
 
     def test_expansion_not_allowed_in_template_args(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Template expansion operator is only allowed in a variadic group or function arguments",
         ):
             _p1("T<A...>")
 
     def test_expansion_with_variadic_identifier_forbidden(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"The variadic template expansion cannot be used with variadic identifiers",
         ):
             _p1("T<!a...>")
 
     def test_expansion_with_dollar_identifier_forbidden(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"The variadic template expansion cannot be used with variadic identifiers",
         ):
             _p1("T<$a...>")
 
     def test_expansion_followed_by_template_args_forbidden(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"The variadic template expansion cannot be used with function arguments, template arguments",
         ):
             _p1("T(a...<int>)")
 
     def test_expansion_followed_by_func_args_forbidden(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"The variadic template expansion cannot be used with function arguments, template arguments",
         ):
             _p1("T(a...(b))")
@@ -541,7 +542,7 @@ class TestVariadicExpansion:
     def test_expansion_not_allowed_multiple_in_same_list(self):
         # Each entry is checked separately; first "A..." already triggers the error
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Template expansion operator is only allowed in a variadic group or function arguments",
         ):
             _p1("T<A..., B...>")
@@ -693,7 +694,7 @@ class TestNumberLiterals:
 
     def test_lone_minus_raises(self):
         with pytest.raises(
-            RuntimeError,
+            CHSyntaxError,
             match=r"Expected a numeric literal at position",
         ):
             _p1("T<->")
@@ -717,7 +718,7 @@ class TestStringLiterals:
       clean_name = decoded_content               — the actual Python string value
 
     The double-quote character ``"`` is in ``_STOP`` for ``_parse_type_name``,
-    so a string literal at the domain (top) level causes a SyntaxError,
+    so a string literal at the domain (top) level causes a CHSyntaxError,
     while inside ``<>`` or ``[]`` it is parsed correctly.
     """
 
@@ -782,7 +783,7 @@ class TestStringLiterals:
     def test_backslash_at_end_of_input_unmatched(self):
         # "hello\" in the input → the backslash escapes the closing quote,
         # leaving no terminating '"' → Unterminated
-        with pytest.raises(SyntaxError, match=r"Unterminated quoted string"):
+        with pytest.raises(CHSyntaxError, match=r"Unterminated quoted string"):
             _p1(r'T<"hello\">')  # raw: T<"hello\"> — backslash + closing "
 
     # ── Quote escaping ───────────────────────────────────────────────────────
@@ -917,39 +918,39 @@ class TestStringLiterals:
     # ── Error cases ──────────────────────────────────────────────────────────
 
     def test_unterminated_string_in_template_arg(self):
-        with pytest.raises(SyntaxError, match=r"Unterminated quoted string"):
+        with pytest.raises(CHSyntaxError, match=r"Unterminated quoted string"):
             _p1('T<"hello>')  # missing closing "
 
     def test_unterminated_string_at_eof(self):
-        with pytest.raises(SyntaxError, match=r"Unterminated quoted string"):
+        with pytest.raises(CHSyntaxError, match=r"Unterminated quoted string"):
             _p1('T<"hello')  # neither " nor > to close
 
     def test_unclosed_template_after_complete_string_literal(self):
         # The literal itself is fine; the enclosing <> is unclosed
-        with pytest.raises(SyntaxError, match=r"Expected '>'"):
+        with pytest.raises(CHSyntaxError, match=r"Expected '>'"):
             _p1('T<"hello"')  # missing closing >
 
     def test_invalid_escape_sequence(self):
-        with pytest.raises(SyntaxError, match=r"Invalid escape sequence in quoted string"):
+        with pytest.raises(CHSyntaxError, match=r"Invalid escape sequence in quoted string"):
             _p1(r'T<"\q">')
 
     def test_invalid_escape_x_sequence(self):
         # \x is not valid JSON (unlike Python); JSON only allows \uXXXX
-        with pytest.raises(SyntaxError, match=r"Invalid escape sequence in quoted string"):
+        with pytest.raises(CHSyntaxError, match=r"Invalid escape sequence in quoted string"):
             _p1(r'T<"\x41">')
 
     def test_string_literal_not_allowed_in_func_args(self):
-        # '"' is in _STOP; _parse_type_name returns empty → SyntaxError
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        # '"' is in _STOP; _parse_type_name returns empty → CHSyntaxError
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _p1('T("hello")')
 
     def test_string_literal_not_allowed_at_top_level(self):
         # Same mechanism: '"' causes _parse_type_name to see an empty name
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _parse('"hello"')
 
     def test_string_literal_not_allowed_as_second_top_level(self):
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _parse('T, "hello"')
 
 
@@ -1198,20 +1199,20 @@ class TestTrailingComma:
         assert t.template_args == ("42",)
 
     def test_trailing_comma_disallowed_by_default_in_template_args(self):
-        with pytest.raises(SyntaxError, match=r"Expected a value, but finished parsing"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a value, but finished parsing"):
             _p1("T<A,>")
 
     def test_trailing_comma_disallowed_by_default_in_func_args(self):
-        with pytest.raises(SyntaxError, match=r"Expected a value, but finished parsing"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a value, but finished parsing"):
             _p1("T(a,)")
 
     def test_trailing_comma_disallowed_by_default_at_top_level(self):
-        with pytest.raises(SyntaxError, match=r"Expected a value, but finished parsing"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a value, but finished parsing"):
             _parse("A,")
 
     def test_double_trailing_comma_still_errors_even_with_allow(self):
         # "T<A,,>" – the second comma causes _parse_type_name to see a stop-char
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             TypeParser("T<A,,>", allow_trailing_comma=True).parse_types()
 
 
@@ -1266,114 +1267,114 @@ class TestErrorCasesGeneral:
     # ── Unexpected trailing content ──────────────────────────────────────────
 
     def test_stray_closing_angle_bracket(self):
-        with pytest.raises(SyntaxError, match=r"Unexpected trailing content after input"):
+        with pytest.raises(CHSyntaxError, match=r"Unexpected trailing content after input"):
             _parse("T>")
 
     def test_stray_closing_paren(self):
-        with pytest.raises(SyntaxError, match=r"Unexpected trailing content after input"):
+        with pytest.raises(CHSyntaxError, match=r"Unexpected trailing content after input"):
             _parse("T)")
 
     def test_two_types_without_separator(self):
         # "A B" — after parsing "A", the parser sees " B" which is not consumed
-        with pytest.raises(SyntaxError, match=r"Unexpected trailing content after input"):
+        with pytest.raises(CHSyntaxError, match=r"Unexpected trailing content after input"):
             _parse("A B")
 
     # ── Empty / missing type name ────────────────────────────────────────────
 
     def test_stray_closing_bracket_at_start(self):
-        # ']' is in _STOP → _parse_type_name immediately returns empty → SyntaxError
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        # ']' is in _STOP → _parse_type_name immediately returns empty → CHSyntaxError
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _parse("]")
 
     def test_opening_angle_without_name(self):
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _p1("<T>")
 
     def test_opening_paren_without_name(self):
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _p1("(a)")
 
     def test_leading_comma(self):
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _parse(",T")
 
     def test_leading_comma_in_template_args(self):
-        with pytest.raises(SyntaxError, match=r"Expected a type name at position"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position"):
             _p1("T<,>")
 
     # ── Unclosed delimiters ──────────────────────────────────────────────────
 
     def test_unclosed_template_args(self):
-        with pytest.raises(SyntaxError, match=r"Expected '>'"):
+        with pytest.raises(CHSyntaxError, match=r"Expected '>'"):
             _p1("T<")
 
     def test_unclosed_func_args(self):
-        with pytest.raises(SyntaxError, match=r"Expected '\)'"):
+        with pytest.raises(CHSyntaxError, match=r"Expected '\)'"):
             _p1("T(")
 
     def test_unclosed_variadic_group_closed_by_angle(self):
         # '[A' in template args; ']' expected but '>' found
-        with pytest.raises(SyntaxError, match=r"Expected '\]'"):
+        with pytest.raises(CHSyntaxError, match=r"Expected '\]'"):
             _p1("T<[A>")
 
     def test_unclosed_variadic_group_at_eof(self):
-        with pytest.raises(SyntaxError, match=r"Expected '\]'"):
+        with pytest.raises(CHSyntaxError, match=r"Expected '\]'"):
             _p1("T<[A")
 
     # ── Trailing comma without a following value ─────────────────────────────
 
     def test_trailing_comma_in_template_args(self):
-        with pytest.raises(SyntaxError, match=r"Expected a value, but finished parsing"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a value, but finished parsing"):
             _p1("T<A,>")
 
     def test_trailing_comma_in_func_args(self):
-        with pytest.raises(SyntaxError, match=r"Expected a value, but finished parsing"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a value, but finished parsing"):
             _p1("T(a,)")
 
     def test_trailing_comma_at_top_level(self):
-        with pytest.raises(SyntaxError, match=r"Expected a value, but finished parsing"):
+        with pytest.raises(CHSyntaxError, match=r"Expected a value, but finished parsing"):
             _parse("A,")
 
     # ── Variadic identifier misuse ───────────────────────────────────────────
 
     def test_var_id_at_top_level(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic group identifiers are only allowed in template arguments",
         ):
             _parse("!T")
 
     def test_dollar_var_id_at_top_level(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic group identifiers are only allowed in template arguments",
         ):
             _parse("$T")
 
     def test_var_id_in_func_args(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic group identifiers are only allowed in template arguments",
         ):
             _p1("T(!a)")
 
     def test_var_id_in_variadic_group(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic group identifiers are only allowed in template arguments",
         ):
             _p1("T<[$a]>")
 
     def test_var_id_immediately_before_bracket_group(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic group identifier '!' before a bracket group",
         ):
             _p1("T<![A]>")
 
     def test_dollar_var_id_immediately_before_bracket_group(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic group identifier '\$' before a bracket group",
         ):
             _p1("T<$[A]>")
@@ -1382,21 +1383,21 @@ class TestErrorCasesGeneral:
 
     def test_group_at_top_level(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic groups are only allowed in template arguments",
         ):
             _parse("[A]")
 
     def test_group_in_func_args(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic groups are only allowed in template arguments",
         ):
             _p1("T([A])")
 
     def test_nested_group_inside_group(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Variadic groups are only allowed in template arguments",
         ):
             _p1("T<[[A]]>")
@@ -1405,7 +1406,7 @@ class TestErrorCasesGeneral:
 
     def test_mixing_group_and_var_id__first_group(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Can not define template argument values combining variadic groups and types with variadic "
             r"identifiers",
         ):
@@ -1413,7 +1414,7 @@ class TestErrorCasesGeneral:
 
     def test_mixing_group_and_var_id__first_var_id(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Can not define template argument values combining variadic groups and types with variadic "
             r"identifiers",
         ):
@@ -1423,21 +1424,21 @@ class TestErrorCasesGeneral:
 
     def test_expansion_not_allowed_in_template_args(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Template expansion operator is only allowed in a variadic group or function arguments",
         ):
             _p1("T<A...>")
 
     def test_expansion_not_allowed_at_top_level(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"Template expansion operator is only allowed in a variadic group or function arguments",
         ):
             _parse("A...")
 
     def test_expansion_with_var_id_forbidden(self):
         with pytest.raises(
-            SyntaxError,
+            CHSyntaxError,
             match=r"The variadic template expansion cannot be used with variadic identifiers",
         ):
             _p1("T<!a...>")
