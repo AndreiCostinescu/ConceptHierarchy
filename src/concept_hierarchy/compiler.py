@@ -121,12 +121,15 @@ def ch_compile_from_json(
     return compile_impl(model, target, output_path)
 
 
-def check_impl(ch: ConceptHierarchyModel) -> bool:
-    try:
-        check_model(ch)  # parse definition and validate it
-    except ConceptHierarchyError as e:
-        print("There was an error in validating the Concept Hierarchy definition:\n", e.print(1), sep="")
-        return False
+def check_impl(ch: ConceptHierarchyModel, *, raise_errors: bool = False) -> bool:
+    if raise_errors:
+        check_model(ch)  # To let the errors pass through
+    else:
+        try:
+            check_model(ch)  # parse definition and validate it
+        except ConceptHierarchyError as e:
+            print("There was an error in validating the Concept Hierarchy definition:\n", e.print(1), sep="")
+            return False
     print("The Concept Hierarchy definition is valid!")
     return True
 
