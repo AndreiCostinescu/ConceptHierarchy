@@ -546,6 +546,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         #    valid instantiated types or literals or variadic groups
         #       that satisfy the constraints of the parent template type!
         #    TYPE CHECK
+        #       - done in concept_hierarchy_type_checks.py
 
     def name_with_template_variables(self):
         if not self.is_templatable():

@@ -942,6 +942,7 @@ class DomainConceptDefinition(ConceptDefinition):
         #  - property constraints subtype of property types
         #    REQUIRES: constraint expression to be processed
         #    TYPE CHECK
+        #    EXPRESSION CHECK
         #  - hooks: correctly template-instantiated Function name, correct argument name
         #      (and type of this property must be a subtype of the argument's type)
         #      and the FunctionComposition hook expression

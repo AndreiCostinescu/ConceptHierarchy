@@ -160,6 +160,10 @@ class FunctionDefinition(HiddenImplementationDefinition):
 
         assert check_res.check_successful
 
+        # try to consume "variations" data
+
+        # try to consume "inversion" data
+
         # try to consume data inside "subScopes"
         if check_res.last_consumed == FunctionDefinition.function_sub_scopes:
             sub_scopes_data = self.data[FunctionDefinition.function_sub_scopes]
@@ -399,6 +403,10 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # missing checks:
         # - function evaluation argument types
         #   TYPE CHECK
+        #       - done in concept_hierarchy_type_checks.py
+        # - function evaluation result types
+        #   TYPE CHECK
+        #       - done in concept_hierarchy_type_checks.py
         # - function evaluation default arguments
         #   EXPRESSION CHECK
         # - function arguments not doubly-defined
@@ -627,6 +635,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # missing checks:
         #  - types of new variables are valid
         #    TYPE CHECK
+        #       - done in concept_hierarchy_type_checks.py
 
         # check "subScopes"
         self.sub_scopes = self.data.get(FunctionDefinition.function_sub_scopes, {})
@@ -660,6 +669,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # missing checks:
         #  - types of new variables are valid
         #    TYPE CHECK
+        #        - done in concept_hierarchy_type_checks.py
 
     @property
     def returns_something(self):

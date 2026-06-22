@@ -182,7 +182,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
 
         self.check_instantiation()
         # missing checks:
-        #  - template constraints of "instantiation" specializations
+        #  - template constraints of "instantiation" specializations ("instantiation" is template-dependent!)
         #    TYPE CHECK
         #       (check valid constraint def. + warn if definition intersected with t-arg-constraint is empty)
         #  - json-schema specification formulae (including correctly template-instantiated types in its specification)
