@@ -616,6 +616,7 @@ def check_types_in_hidden_implementation_definition(
                 )
 
     datum.parent_template_variable_substitution = frozendict(substitution_values)
+    datum.instantiable = c.abstract
 
 
 def check_types_in_value_domain_definition(

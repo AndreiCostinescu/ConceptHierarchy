@@ -46,6 +46,10 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
 
         self.implementation: str | None = None
         self.abstract: bool | None = None
+        """
+        An abstract ValueDomain can not be instantiated. 
+        An abstract Function can not be instantiated and does not have to define its interface (but it can)!
+        """
         self.template_arguments: tuple[str, ...] | dict | None = None
 
         # if template_argument_order is (), then there are no template arguments
