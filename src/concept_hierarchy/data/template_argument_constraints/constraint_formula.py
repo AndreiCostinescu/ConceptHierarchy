@@ -62,6 +62,14 @@ class TemplateConstraintFormulaValidator(ABC):
     def is_template_variable(self, name: str):
         pass
 
+    @abstractmethod
+    def get_existing_template_variables(self) -> set[str]:
+        pass
+
+    @abstractmethod
+    def update_existing_template_variables(self, new_template_variables: set[str]):
+        pass
+
 
 """
 TemplateConstraintFormulae are either:

@@ -27,10 +27,10 @@ from concept_hierarchy.errors import CHSemanticError
 
 
 class ConstraintFormulaValidator(TemplateConstraintFormulaValidator):
-    def __init__(self, context: ConceptHierarchyContext, t_arg_context: set[str]):
+    def __init__(self, context: ConceptHierarchyContext):
         self.ch_context = context
         # contains all template arguments available in the ValueDomain concept that defines the constraints
-        self.t_arg_context: set[str] = t_arg_context
+        self.t_arg_context: set[str] = set()
 
     def full_type_name(self, name: str) -> str:
         if self.is_concept(name):
@@ -52,6 +52,12 @@ class ConstraintFormulaValidator(TemplateConstraintFormulaValidator):
     def is_template_variable(self, name: str):
         return name in self.t_arg_context
 
+    def get_existing_template_variables(self) -> set[str]:
+        return self.t_arg_context
+
+    def update_existing_template_variables(self, new_template_variables: set[str]):
+        self.t_arg_context = new_template_variables
+
 
 def check_value_domain_template_constraint_formulae(context: ConceptHierarchyContext):
     # value domain name -> template argument name -> template argument constraint formula
@@ -63,7 +69,8 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
         assert isinstance(vd, HiddenImplementationDefinition)
         # parse template argument constraints;
         # iterate in definition order because newer arguments have the older arguments as variables
-        validator = ConstraintFormulaValidator(context, set(vd.template_argument_order))
+        validator = ConstraintFormulaValidator(context)
+        validator.update_existing_template_variables(set(vd.template_argument_order))
         constraint = None
         constraints: list[NonStructureConstraintFormula] = []
         for t_arg in vd.template_argument_order:
