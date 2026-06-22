@@ -679,7 +679,7 @@ def _validate_type(
             continue
         if check_formula.is_template_variable:
             raise RuntimeError(
-                "[FEATURE-REQUEST] To process this, we should support constraints of the type "
+                "[Feature-Request] To process this, we should support constraints of the type "
                 '"Sequence<T2> should be member of T1", where both T2 and T1 are unknown template-variables.'
             )
         # Check the template argument constraints of the literal_type

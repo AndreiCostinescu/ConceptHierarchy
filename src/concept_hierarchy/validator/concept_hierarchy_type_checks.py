@@ -181,7 +181,7 @@ def substitute_and_validate_constraints(
             raise CHSemanticError("Substitution does not satisfy the constraints?!", causes=errors)
         res_template_context.merge_in_place(instantiation_template_context, location_id)
     else:
-        raise RuntimeError("[FEATURE-REQUEST] Did not yet implement partial substitution!")
+        raise RuntimeError("[Feature-Request] Did not yet implement partial substitution!")
     return res_template_context
 
 
@@ -463,20 +463,23 @@ def check_types_in_hidden_implementation_definition(
                 location_id = c.location_of(subst_location_key, f"{parent_t_arg}")
             else:
                 location_id = c.location_of(subst_location_key, f"{parent}:{parent_t_arg}")
-            # Converts json object to TemplateArgumentValue
+            # Start validation of the syntax of the substitution value:
+            #  1) Convert json object to TemplateArgumentValue
             parsed_t_arg_value = TemplateArgumentParser(subst_value, location_id).parse()
-            # Validates nr. template args, creates variadic groups from var.ids., does not validate template constraints
+            #  2) Validate nr. template args, create variadic groups from var.ids., don't validate template constraints
             validated_t_arg_value = validate_template_argument_value(
                 parsed_t_arg_value,
                 type_validator,
                 location_id,
                 parent_t_arg in parent_def_data.variadic_template_arguments,
             )
-            # Convert TemplateArgumentValue to TemplateDependent vs. Instantiated // VariadicTemplateVar. or TemplateVar
+            # syntax of the substitution value is validated from now on;
+            # Start checking semantic of the value
+            #  1) TemplateArgumentValue => (TemplateDependent / Instantiated) and (VariadicTemplateVar. / TemplateVar)
             ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
                 datum.name, validated_t_arg_value, type_validator
             )
-            # Validate the template constraints of subtypes
+            #  2) Validate the template constraints of subtypes
             errors = validate_template_argument_constraints_in_instantiated_types(
                 ch_t_arg_value, datum.template_context, constraint_validator, location_id
             )
@@ -492,7 +495,9 @@ def check_types_in_hidden_implementation_definition(
 
         location_id = c.location_of(HiddenImplementationDefinition.hidden_template_arguments_substitutions)
         sub_template_context = datum.template_context.create_unconstrained_context(location_id)
-        # Validate the template constraints of the Parent concept based on the substitution
+        # Validate that the substitution is semantically valid:
+        #  verify that the template constraints of the Parent concept are satisfied by the substitution
+        #  + update the constraints on the template variables
         errors = validate_complete_instantiation_of_concept(
             parent,
             tuple(instantiation_values_of_parent_template_variables),
@@ -505,11 +510,12 @@ def check_types_in_hidden_implementation_definition(
                 f"Substitution values for parent {parent} defined in {c.name} does not satisfy its constraints",
                 causes=errors,
             )
-        # Update the constraints of this concept with the identified constraints on the template variables from parent
+        # Update the constraints of the template variables of this concept with the identified constraints
+        # when checking that the substitution produces a valid instantiation
         datum.template_context.merge_in_place(sub_template_context, location_id)
 
-        # Computed the substitution values for the direct parent;
-        #  now iterate through all parents and substitute their ``parent_template_variable_substitution`` entries.
+        # Computed the substitution values for the direct parent.
+        # Now iterate through all parents and substitute their ``parent_template_variable_substitution`` entries.
         # If there are two ways to get to the same template argument/parent: throw ERROR, process later!
         for parent_t_key, parent_sub_value in parent_model_data.parent_template_variable_substitution.items():
             if parent_t_key in substitution_values:
