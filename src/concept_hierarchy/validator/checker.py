@@ -47,6 +47,9 @@ from concept_hierarchy.utils import (
     tab,
     topological_sort,
 )
+from concept_hierarchy.validator.concept_hierarchy_type_checks import (
+    check_types_in_concept_hierarchy,
+)
 from concept_hierarchy.validator.domain_concept_specialization_checks import (
     process_specialization_for_domain_concepts,
 )
@@ -588,7 +591,14 @@ class ConceptHierarchyChecker:
 
     def check_types(self):
         context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
+        # 1) check all template constraints of templated ValueDomains
         check_value_domain_template_constraint_formulae(context)
+        # 2) check all the types used in the ConceptHierarchy:
+        #   - Function arguments,
+        #   - ValueDomain literal formulae
+        #   - Domain Concept property and function types
+        #   - ValueDomain template substitution values
+        check_types_in_concept_hierarchy(context)
 
     def check(self):
         self.check_structure()
