@@ -63,6 +63,8 @@ class FunctionDefinition(HiddenImplementationDefinition):
         # argument name -> (new variable in scope of argument name -> (ValueDomain type, whether the var name is fixed))
         self.sub_scopes: dict[str, dict[str, tuple[str, bool]]] = {}
 
+        self.all_evaluation_arguments: dict[str, str] = {}
+        """Mapping from all available arguments (incl. the inherited ones) to the concept that defines them."""
         self.evaluation_interface: tuple[str, ...] = ()
         self.evaluation_argument_types: dict[str, str] = {}
         self.evaluation_argument_reference_types: dict[str, str] = {}
@@ -82,6 +84,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
         domain_concept.add_new_variables_in_existing_scope = {}
         domain_concept.sub_scopes = {}
 
+        domain_concept.all_evaluation_arguments = {}
         domain_concept.evaluation_interface = ()
         domain_concept.evaluation_argument_types = {}
         domain_concept.evaluation_argument_reference_types = {}
@@ -339,6 +342,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
         #   (can't check here because this Function can define default values for arguments of the parent Function)
         #   REQUIRES: all concepts initialized (arguments can be inherited from parent functions)
         #   STRUCTURE CHECK
+        #       - done in checker.py
 
         # check "procedure"
         self.procedure = self.data.get(FunctionDefinition.function_procedure, None)
