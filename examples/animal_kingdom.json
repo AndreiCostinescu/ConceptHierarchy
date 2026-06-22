@@ -239,7 +239,25 @@
                     }
                 },
                 "interface": {
-                    "arg1": [""]
+                    "arg1": ["Integer"],
+                    "arg2": ["Integer"],
+                    "res": "Integer"
+                }
+            }
+        },
+        "Increment": {
+            "directParents": ["Add"],
+            "data": {
+                "templateArguments": {
+                    "order": ["T"],
+                    "substitutions": {
+                        "T": "T"
+                    }
+                },
+                "interface": {
+                    "_defaultArgumentValues": {
+                        "arg2": 1
+                    }
                 }
             }
         }
