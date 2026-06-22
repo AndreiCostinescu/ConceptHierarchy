@@ -537,9 +537,11 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         #       only if two parent templated ValueDomains do not define the same template argument name
         #    REQUIRES all concepts to be initialized (parents with their value domains)
         #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
         #  - check that all parent template arguments are substituted in this concept
         #    REQUIRES all concepts to be initialized
         #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
         #  - valid template substitution values
         #    valid instantiated types or literals or variadic groups
         #       that satisfy the constraints of the parent template type!

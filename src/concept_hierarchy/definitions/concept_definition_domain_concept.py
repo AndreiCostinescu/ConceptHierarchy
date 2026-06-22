@@ -958,8 +958,8 @@ class DomainConceptDefinition(ConceptDefinition):
         #    EXPRESSION CHECK
         #  - specialization keyword (structure and content; can't specialize ValueDomain, description or static-ness)!
         #    REQUIRES: all parent concepts to be processed (because they are the ones from which data is inherited)
-        #    PROCESS AFTER: all concept data represented, all types parsed, all expressions processed
         #    STRUCTURE CHECK
+        #       - done in domain_concept_specialization_checks
         #  - whether DEFAULT_INSTANCE_NAME can be true (check that the property type contains instances in its type!)
         #    TYPE CHECK
 
@@ -1035,6 +1035,7 @@ class DomainConceptDefinition(ConceptDefinition):
         #    REQUIRES: all parent concepts to be processed (because they are the ones from which data is inherited)
         #    PROCESS AFTER: all concept data represented, all types parsed, all expressions processed
         #    STRUCTURE CHECK
+        #       - done in domain_concept_specialization_checks
 
         self.management = self.data.get(DomainConceptDefinition.domain_concept_management, {})
         if not isinstance(self.management, dict):
