@@ -362,7 +362,7 @@ OptionalValueDomainSerialization
 ValueDomainSerialization
         ::= Json
 InheritedValueDisambiguation
-        ::= ws '"inheritFrom:' upperCaseName '"' ws
+        ::= ws '"inheritFrom:' upperCaseName? '"' ws
 ValueDomainCreation
         ::= ws '{' InstantiatedValueDomain ':' ws '{'
                 (ws | (ValueDomainMemberCreation (',' ValueDomainMemberCreation)*))
