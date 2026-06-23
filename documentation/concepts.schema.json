@@ -302,7 +302,7 @@
           ]
         },
         "assumptions": {
-          "oneOf":[
+          "oneOf": [
             { "$ref": "#/$defs/anyValue" },
             { "$ref": "#/$defs/inheritedValueDisambiguation" }
           ]
@@ -353,7 +353,7 @@
           ]
         },
         "assumptions": {
-          "oneOf":[
+          "oneOf": [
             { "$ref": "#/$defs/anyValue" },
             { "$ref": "#/$defs/inheritedValueDisambiguation" }
           ]
