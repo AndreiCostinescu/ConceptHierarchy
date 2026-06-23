@@ -1,11 +1,11 @@
 {
     "name": "AnimalKingdom",
     "metadata": {
-        "version": "1.0",
+        "version": "v1.0",
         "author": "Your Name"
     },
     "concepts": {
-        "Concept": {},
+        "Concept": { },
         "Animal": {
             "directParents": ["Concept"],
             "data": "external_animal_data.json"
@@ -32,7 +32,7 @@
                     }
                 },
                 "functions": {
-                    "f1": {},
+                    "f1": { },
                     "f2": {
                         "Add<Number>": {
                             "arg1": 2,
