@@ -1,37 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/AndreiCostinescu/ConceptHierarchy/tree/main/documentation/instances.schema.json",
+  "$id": "https://cdn.jsdelivr.net/gh/AndreiCostinescu/ConceptHierarchy@develop/documentation/instances.schema.json",
   "title": "Concept Hierarchy - Definition of Instances",
   "description": "JSON Schema for validating instance definitions in the Concept Hierarchy",
-  "type": "object",
-  "patternProperties": {
-    "^[A-Za-z][A-Za-z0-9_]*$": {
-      "description": "Instance = Global variable (can start with upper or lowercase letter)",
-      "$ref": "#/$defs/instanceDefinition"
-    }
-  },
-  "additionalProperties": false,
-
-  "$defs": {
-    "instanceDefinition": {
-      "description": "Value of an instance: can be any JSON value, ValueDomain creation, Function procedure, or reference to another instance",
-      "oneOf": [
-        { "type": "null" },
-        { "type": "boolean" },
-        { "type": "number" },
-        {
-          "type": "string",
-          "description": "Either a string literal (with s: prefix) or reference to another instance"
-        },
-        {
-          "type": "array",
-          "items": { "$ref": "#/$defs/instanceDefinition" }
-        },
-        {
-          "type": "object",
-          "description": "Could be: plain JSON object, ValueDomain creation, Function procedure, or CustomFunction definition. RECURSION POINT - add maxDepth here if needed"
-        }
-      ]
-    }
-  }
+  "$ref": "concept_hierarchy.schema.json#/$defs/instances"
 }
