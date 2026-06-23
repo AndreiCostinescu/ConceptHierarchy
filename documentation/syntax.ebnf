@@ -125,6 +125,7 @@ DomainFunctionInterfaceDefinition
             '}' ws
 DomainFunctionDefinitionElement
         ::= Description
+          | (ws '"valueDomain"' ws ':' InstantiatedValueDomain)
           | (ws '"static"' ws ':' ws boolean ws)
           | (ws '"default"' ws ':' DomainFunctionCustomProcedure)
 FunctionsSpecializationDefinitionContainer

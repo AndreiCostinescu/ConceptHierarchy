@@ -458,6 +458,7 @@
               "type": "object",
               "properties": {
                 "description": { "type": "string" },
+                "valueDomain": { "type": "string" },
                 "default": {
                   "oneOf": [
                     { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
