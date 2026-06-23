@@ -23,7 +23,7 @@ from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 
 model_data = {
     "name": "AnimalKingdom",
-    "metadata": {"version": "1.0", "author": "Your Name"},
+    "metadata": {"version": "v1.0", "author": "Your Name"},
     "concepts": {
         "Concept": {"data": None},
         "Animal": {"directParents": ["Concept"], "data": "external_animal_data.json"},
@@ -61,6 +61,7 @@ model_data = {
         "DogClone": "Dog",
         "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
         "Integer": {"directParents": ["ValueDomain"], "data": {"instantiation": "integer"}},
+        "Duration": {"directParents": ["ValueDomain"], "data": {}},
         "String": {
             "directParents": ["ValueDomain"],
             "data": {"defaultSerialization": "string", "instantiation": "string"},
@@ -125,7 +126,6 @@ external_data: dict[str, object] = {
                 "description": "Test property",
                 "hooks": {},
                 "confidenceHalfDecayTime": [2, "d"],
-                "nameDefaultInstanceValuesWithThisInstanceName": True,
             },
             "_specializations": {
                 "_forThis": {"age": {"constraint": {"ClosedInterval<Integer>": {"min": 0, "max": 14}}}}

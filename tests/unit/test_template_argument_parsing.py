@@ -31,7 +31,7 @@ from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 class TestTemplateArgumentParsing:
     _model_data = {
         "name": "AnimalKingdom",
-        "metadata": {"version": "1.0", "author": "Your Name"},
+        "metadata": {"version": "v1.0", "author": "Your Name"},
         "concepts": {
             "Concept": {"data": None},
             "Animal": {
@@ -46,7 +46,6 @@ class TestTemplateArgumentParsing:
                             "description": "Test property",
                             "hooks": {},
                             "confidenceHalfDecayTime": [2, "d"],
-                            "nameDefaultInstanceValuesWithThisInstanceName": True,
                         },
                         "_specializations": {
                             "_forThis": {"age": {"constraint": {"ClosedInterval<Integer>": {"min": 0, "max": 14}}}}
@@ -88,6 +87,7 @@ class TestTemplateArgumentParsing:
             "DogClone": "Dog",
             "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
             "Integer": {"directParents": ["ValueDomain"], "data": {"instantiation": "integer"}},
+            "Duration": {"directParents": ["ValueDomain"], "data": {}},
             "String": {
                 "directParents": ["ValueDomain"],
                 "data": {"defaultSerialization": "string", "instantiation": "string"},
