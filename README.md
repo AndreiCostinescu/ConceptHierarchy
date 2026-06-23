@@ -76,38 +76,6 @@ code = ch_compile("animal_kingdom.json", target="cpp")
 print(code)
 ```
 
-## Project layout
-
-```
-src/concept_hierarchy/
-├── __init__.py                                     # Public API: exports version and the ch_check and ch_compile functions
-├── cli.py                                          # CLI entry point (compile / validate subcommands)
-├── compiler.py                                     # Pipeline orchestrator: parse → validate → codegen
-├── errors.py                                       # CHSyntaxError / CHSemanticError with location tracking
-├── models.py                                       # ConceptHierarchyModel: root data structure from parsing
-├── utils.py                                        # Path helpers, string utilities, tab constant
-│
-├── definitions/                                    # Parsed and validated definition objects
-│   ├── definition.py                               # Abstract base: name validation and location tracking
-│   ├── concept_definition.py                       # ConceptDefinition: parents, description, raw data
-│   ├── concept_definition_hidden_implementation.py # HiddenImplementationDefinition: template args, abstract flag, impl path
-│   ├── concept_definition_value_domain.py          # ValueDomainDefinition: instantiation and serialization config
-│   ├── concept_definition_functions.py             # FunctionDefinition: interface, procedure, inversion, variations, scopes
-│   ├── concept_definition_domain_concept.py        # DomainConceptDefinition + PropertyDefinition: properties and functions
-│   ├── global_variable_definition.py               # GlobalVariableDefinition: global instance variables
-│   └── utils.py                                    # check_ch_name: identifier naming rules
-│
-├── validator/                                      # Semantic validation
-│   └── checker.py                                  # check_model: full syntax and semantic checks on the model
-│
-├── codegen/                                        # Code generation dispatch
-│   └── generator.py                                # generate(model, target): routes to the appropriate backend
-│
-└── backends/                                       # Language-specific code generators
-    ├── base.py                                     # BaseBackend: abstract interface (generate(model) → str)
-    └── cpp.py                                      # C++ backend: emits .hpp header with class hierarchies
-```
-
 ## Supported backends
 
 | Target | Flag           | Output               |
