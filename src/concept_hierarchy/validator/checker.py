@@ -54,6 +54,9 @@ from concept_hierarchy.validator.concept_hierarchy_type_checks import (
 from concept_hierarchy.validator.domain_concept_specialization_checks import (
     process_specialization_for_domain_concepts,
 )
+from concept_hierarchy.validator.expression_checks import (
+    check_expressions_in_concept_hierarchy,
+)
 from concept_hierarchy.validator.value_domain_template_constraint_checks import (
     check_value_domain_template_constraint_formulae,
 )
@@ -704,11 +707,16 @@ class ConceptHierarchyChecker:
         #   - ValueDomain template substitution values
         check_types_in_concept_hierarchy(context)
 
+    def check_expressions(self):
+        context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
+        check_expressions_in_concept_hierarchy(context)
+
     def check(self):
         self.check_structure()
         self.check_after_parsing_concepts()
         self.check_specializations()
         self.check_types()
+        self.check_expressions()
 
 
 def check_model(model: ConceptHierarchyModel) -> None:
@@ -721,7 +729,7 @@ def check_model(model: ConceptHierarchyModel) -> None:
 
     Raises
     ------
-    concept_hierarchy.errors.SyntaxError
-    concept_hierarchy.errors.SemanticError
+    concept_hierarchy.errors.CHSyntaxError
+    concept_hierarchy.errors.CHSemanticError
     """
     ConceptHierarchyChecker(model).check()
