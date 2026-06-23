@@ -27,7 +27,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
     hidden_abstract: str = "abstract"
     hidden_template_arguments: str = "templateArguments"
     hidden_template_arguments_order: str = "order"
-    hidden_template_arguments_substitutions: str = "substitutions"
+    hidden_template_arguments_substitutions: str = "substitution"
     hidden_template_arguments_variadic_ids: str = "variadicGroupIdentifiers"
     default_template_argument_constraint: str = "ValueDomain"
     variadic_group_identifier_characters: str = "!$"

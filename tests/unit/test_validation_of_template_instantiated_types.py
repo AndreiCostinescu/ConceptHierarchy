@@ -88,7 +88,7 @@ class TestTemplateArgumentParsing:
         "SubTemplate1_Templated": {
             "directParents": ["Template1"],
             "data": {
-                "templateArguments": {"order": ["T1", "T2"], "substitutions": {"Template1:T": "T1"}},
+                "templateArguments": {"order": ["T1", "T2"], "substitution": {"Template1:T": "T1"}},
             },
         },
     }
@@ -132,7 +132,7 @@ class TestTemplateArgumentParsing:
         }
         with pytest.raises(
             CHSemanticError,
-            match=r'Missing "substitutions" definition in SubTemplatedTemplateConceptWithoutSubstitution, '
+            match=r'Missing "substitution" definition in SubTemplatedTemplateConceptWithoutSubstitution, '
             r'because it must define a substitution for "Template1:T"!',
         ):
             self.get_model(new_model)
@@ -142,13 +142,13 @@ class TestTemplateArgumentParsing:
         new_model["SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution"] = {
             "directParents": ["Template1", "Template3_Template"],
             "data": {
-                "templateArguments": {"order": ["T"], "substitutions": {"T": "T"}},
+                "templateArguments": {"order": ["T"], "substitution": {"T": "T"}},
             },
         }
         with pytest.raises(
             CHSemanticError,
             match=r'\["concepts": "SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution": "data": '
-            r'"templateArguments": "substitutions" \(key\)\] \n    The substitution specification of template '
+            r'"templateArguments": "substitution" \(key\)\] \n    The substitution specification of template '
             r"argument T is ambiguous in SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution because "
             r"the parent concepts \[\'Template1\', \'Template3_Template\'\] define the template argument with the"
             r' same name. Use the "<ParentConceptName>:<ParentTemplateArgumentName>" syntax to define the '
@@ -161,13 +161,13 @@ class TestTemplateArgumentParsing:
         new_model["SubTemplatedConceptWithAmbiguousShorthandSubstitution"] = {
             "directParents": ["Template1", "Template3_NonTemplate"],
             "data": {
-                "templateArguments": {"substitutions": {"T": "NonTemplate1"}},
+                "templateArguments": {"substitution": {"T": "NonTemplate1"}},
             },
         }
         with pytest.raises(
             CHSemanticError,
             match=r'\["concepts": "SubTemplatedConceptWithAmbiguousShorthandSubstitution": "data": "templateArguments":'
-            r' "substitutions" \(key\)\] \n    The substitution specification of template argument T is ambiguous'
+            r' "substitution" \(key\)\] \n    The substitution specification of template argument T is ambiguous'
             r" in SubTemplatedConceptWithAmbiguousShorthandSubstitution because the parent concepts "
             r"\[\'Template1\', \'Template3_NonTemplate\'\] define the template argument with the same name. Use "
             r'the "<ParentConceptName>:<ParentTemplateArgumentName>" syntax to define the unambiguous '

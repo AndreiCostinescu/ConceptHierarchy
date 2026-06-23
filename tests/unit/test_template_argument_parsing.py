@@ -156,7 +156,7 @@ class TestTemplateArgumentParsing:
             "Add": {
                 "directParents": ["FunctionReturning"],
                 "data": {
-                    "templateArguments": {"order": ["T"], "substitutions": {"T": "T"}},
+                    "templateArguments": {"order": ["T"], "substitution": {"T": "T"}},
                     "interface": {"arg1": "T", "arg2": "T", "res": "T"},
                 },
             },

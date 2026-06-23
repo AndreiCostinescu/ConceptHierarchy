@@ -160,7 +160,7 @@
                 "templateArguments": {
                     "order": ["SubT", "T"],
                     "SubT": "And(T, Not(T))",
-                    "substitutions": {
+                    "substitution": {
                         "T": "T"
                     }
                 }
@@ -173,7 +173,7 @@
                     "order": ["First", "Second", "Third"],
                     "Second": "Not(First.)",
                     "Third": "And(Not(First.), Not(Second.))",
-                    "substitutions": {
+                    "substitution": {
                         "T": "First",
                         "SubT": "Second"
                     }
@@ -234,7 +234,7 @@
                 "templateArguments": {
                     "order": ["T"],
                     "T": "ValueDomain",
-                    "substitutions": {
+                    "substitution": {
                         "FunctionReturning:T": "T"
                     }
                 },
@@ -250,7 +250,7 @@
             "data": {
                 "templateArguments": {
                     "order": ["T"],
-                    "substitutions": {
+                    "substitution": {
                         "T": "T"
                     }
                 },
