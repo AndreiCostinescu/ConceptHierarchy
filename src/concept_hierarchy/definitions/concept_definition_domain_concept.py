@@ -969,6 +969,9 @@ class DomainConceptDefinition(ConceptDefinition):
         #    REQUIRES: all parent concepts to be processed (because they are the ones from which data is inherited)
         #    STRUCTURE CHECK
         #       - done in domain_concept_specialization_checks
+        #  - whether CONFIDENCE can be used (check that the Duration type is defined in the ConceptHierarchy
+        #    STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
         #  - whether DEFAULT_INSTANCE_NAME can be true (check that the property type contains instances in its type!)
         #    TYPE CHECK
 
