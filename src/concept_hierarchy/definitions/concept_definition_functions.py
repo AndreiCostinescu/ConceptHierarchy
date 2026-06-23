@@ -160,9 +160,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
 
         assert check_res.check_successful
 
-        # try to consume "variations" data
-
-        # try to consume "inversion" data
+        if check_res.last_consumed in [FunctionDefinition.function_variations, FunctionDefinition.function_inversion]:
+            # Can't consume anything further for variations and inversions...
+            raise StopLocationOfCheck(check_res)
 
         # try to consume data inside "subScopes"
         if check_res.last_consumed == FunctionDefinition.function_sub_scopes:
