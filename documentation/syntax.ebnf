@@ -42,7 +42,7 @@ ConceptPropertyContainerDefinition
                 (ws | (PropertyContentDefinition (',' PropertyContentDefinition)*))
             '}' ws
 PropertyContentDefinition
-        ::= PropertyDefinition | PropertySpecializationDefinitionContainer
+        ::= PropertyDefinition | PropertiesSpecializationDefinitionContainer
 
 PropertyDefinition
         ::= PropertyReference ':' PropertyDomainDefinition
@@ -74,19 +74,16 @@ PreHookDefinition
 PostHookDefinition
         ::= ws '"post"' ws ':' FunctionComposition
 
-PropertySpecializationDefinitionContainer
+PropertiesSpecializationDefinitionContainer
         ::= ws '"_specializations"' ws ':' ws '{'
-                (ws | (PropertySpecializationDefinition (',' PropertySpecializationDefinition)*))
+                (ws | (PropertiesSpecializationDefinition (',' PropertiesSpecializationDefinition)*))
             '}' ws
+PropertiesSpecializationDefinition
+        ::= ForThisSpecializationDefinition | PropertySpecializationDefinition
+ForThisSpecializationDefinition
+        ::= ws '{' (ws | (PropertySpecializationDefinition (',' PropertySpecializationDefinition)*)) '}' ws
 PropertySpecializationDefinition
         ::= PropertyReference ':' ws '{'
-                (ws | (PropertySpecializationItem (',' PropertySpecializationItem)*))
-            '}' ws
-PropertySpecializationItem
-        ::= SpecializablePropertyDefinitionElement
-          | (ws '"_forThis"' ws ':' PropertySpecializationContainer)
-PropertySpecializationContainer
-        ::= ws '{'
                 (ws | (SpecializablePropertyDefinitionElement (',' SpecializablePropertyDefinitionElement)*))
             '}' ws
 SpecializablePropertyDefinitionElement
@@ -107,7 +104,7 @@ ConceptFunctionContainerDefinition
                 (ws | (DomainFunctionDefinitionContent (',' DomainFunctionDefinitionContent)*))
             '}' ws
 DomainFunctionDefinitionContent
-        ::= DomainFunctionDefinition | DomainFunctionSpecialization
+        ::= DomainFunctionDefinition | FunctionsSpecializationDefinitionContainer
 DomainFunctionDefinition
         ::= ConceptFunctionReference ':'
             (DomainFunctionCustomProcedure |
@@ -130,21 +127,18 @@ DomainFunctionDefinitionElement
         ::= Description
           | (ws '"static"' ws ':' ws boolean ws)
           | (ws '"default"' ws ':' DomainFunctionCustomProcedure)
-DomainFunctionSpecialization
+FunctionsSpecializationDefinitionContainer
         ::= ws '"_specializations"' ws ':' ws '{'
-                (ws | (DomainFunctionSpecializationElement (',' DomainFunctionSpecializationElement)*))
+                (ws | (FunctionsSpecializationDefinition (',' FunctionsSpecializationDefinition)*))
             '}' ws
-DomainFunctionSpecializationElement
+FunctionsSpecializationDefinition
+        ::= ForThisFunctionSpecializationDefinition | FunctionSpecializationDefinition
+ForThisFunctionSpecializationDefinition
+        ::= ws '{' (ws | (FunctionSpecializationDefinition (',' FunctionSpecializationDefinition)*)) '}' ws
+FunctionSpecializationDefinition
         ::= ConceptFunctionReference ':' (DomainFunctionCustomProcedure | InheritedValueDisambiguation | (ws '{'
-                (ws | (DomainFunctionSpecializationItem (',' DomainFunctionSpecializationItem)*))
-            '}' ws))
-DomainFunctionSpecializationItem
-        ::= FunctionSpecializationValueDefinition
-          | (ws '"_forThis"' ws ':' FunctionSpecializationKindContent)
-FunctionSpecializationKindContent
-        ::= DomainFunctionCustomProcedure | InheritedValueDisambiguation | (ws '{'
                 (ws | (FunctionSpecializationValueDefinition (',' FunctionSpecializationValueDefinition)*))
-            '}' ws)
+            '}' ws))
 FunctionSpecializationValueDefinition
         ::= (ws '"default"' ws ':' (DomainFunctionCustomProcedure | InheritedValueDisambiguation))
 
