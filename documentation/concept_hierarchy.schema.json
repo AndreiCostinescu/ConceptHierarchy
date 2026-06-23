@@ -142,7 +142,7 @@
                 "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
                 "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
                 "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
-                "instantiation": { "$ref": "#/$defs/concepts/$defs/instantiation" }
+                "instantiation": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
               },
               "additionalProperties": false
             }, {
@@ -175,7 +175,7 @@
             "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
             "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
             "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
-            "instantiation": { "$ref": "#/$defs/concepts/$defs/instantiation" },
+            "instantiation": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
             "interface": { "$ref": "#/$defs/concepts/$defs/functionInterface" },
             "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
             "variations": { "$ref": "#/$defs/concepts/$defs/functionVariations" },
@@ -248,9 +248,151 @@
           ]
         },
 
-        "instantiation": {
-          "description": "",
-          "type": ["object", "boolean", "string"]
+        "CHSchema": {
+          "title": "CH schema",
+          "description": "A CH schema value. Accepts boolean (draft-07 boolean schema), string (type-name shorthand), array (custom-type + ref-kind shorthand), or full object form. Custom type validity and ref-placement rules are enforced at runtime by CHSchemaContext.",
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "string", "minLength": 1 },
+            { "$ref": "#/$defs/concepts/$defs/CHSchemaArrayShorthand" },
+            { "$ref": "#/$defs/concepts/$defs/CHSchemaObject" }
+          ]
+        },
+        "CHSchemaArrayShorthand": {
+          "title": "CH array shorthand",
+          "description": "['<custom type name>', 'Reference'|'NoRef'] — valid only when the type name is NOT a draft-07 builtin. Builtin-type array shorthands are rejected at runtime.",
+          "type": "array",
+          "items": [
+            { "type": "string", "minLength": 1 },
+            { "type": "string", "enum": ["Reference", "NoRef"] }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "CHSchemaObject": {
+          "title": "CH schema object",
+          "description": "Full object form. Adds 'ref' (Reference|NoRef) and treats 'default' as an unvalidated expression for custom types. All sub-schema positions accept CHSchema, including the string and array shorthands. additionalProperties:false enforces the keyword allowlist; stricter semantic rules (ref only on custom types, custom type name validity, etc.) are enforced at runtime.",
+          "type": "object",
+          "properties": {
+            "$ref": {
+              "type": "string", "pattern": "^#/(\\$defs|definitions)/[^/]+$",
+              "description": "Local, top-level references only: '#/$defs/<name>' or '#/definitions/<name>'."
+            },
+            "$id": { "type": "string", "format": "uri-reference" },
+            "$schema": { "type": "string", "format": "uri" },
+            "$comment": { "type": "string" },
+
+            "type": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["null", "boolean", "integer", "number", "string", "array", "object"]
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              ]
+            },
+
+            "ref": {
+              "type": "string",
+              "enum": ["Reference", "NoRef"],
+              "description": "CH extension. Only valid when 'type' is a single custom type name; enforced at runtime."
+            },
+
+            "const": { },
+            "enum": { "type": "array", "minItems": 1, "uniqueItems": true },
+
+            "default": { },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "examples": { "type": "array" },
+            "readOnly": { "type": "boolean" },
+            "writeOnly": { "type": "boolean" },
+
+            "multipleOf": { "type": "number", "exclusiveMinimum": 0 },
+            "maximum": { "type": "number" },
+            "exclusiveMaximum": { "type": "number" },
+            "minimum": { "type": "number" },
+            "exclusiveMinimum": { "type": "number" },
+
+            "maxLength": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "minLength": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "pattern": { "type": "string", "format": "regex" },
+            "format": { "type": "string" },
+            "contentMediaType": { "type": "string" },
+            "contentEncoding": { "type": "string" },
+
+            "items": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+                { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 }
+              ]
+            },
+            "additionalItems": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "maxItems": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "minItems": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "uniqueItems": { "type": "boolean" },
+            "contains": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+
+            "maxProperties": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "minProperties": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "required": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "properties": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+            },
+            "patternProperties": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+            },
+            "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "propertyNames": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "dependencies": {
+              "type": "object",
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+                ]
+              }
+            },
+
+            "allOf": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 },
+            "anyOf": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 },
+            "oneOf": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 },
+            "not": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "if": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "then": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "else": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+
+            "definitions": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+            },
+            "$defs": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "nonNegativeInteger": {
+          "type": "integer",
+          "minimum": 0
         },
 
         "fromJsonLiteral": {

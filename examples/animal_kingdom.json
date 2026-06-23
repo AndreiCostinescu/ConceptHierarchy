@@ -197,7 +197,7 @@
                         },
                         "procedure": "FunctionComposition"
                     },
-                    "requiredProperties": ["procedure"],
+                    "required": ["procedure"],
                     "additionalProperties": false,
                     "$defs": {
                         "argumentTypeDefinition": {
