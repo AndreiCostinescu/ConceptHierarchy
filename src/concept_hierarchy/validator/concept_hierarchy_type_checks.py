@@ -468,6 +468,7 @@ def check_types_in_domain_concept_definition(
     constraint_validator = ConstraintValidator(context)
     property_types: dict[str, InstantiatedType] = {}
     value_domain_type: InstantiatedType | None = None
+    instance_base_type: InstantiatedType | None = None
     domain_concept_function_type: InstantiatedType | None = None
     for prop_name, prop_def_data in c.properties.items():
         if PropertyDefinition.VALUE_DOMAIN in prop_def_data:
@@ -497,11 +498,48 @@ def check_types_in_domain_concept_definition(
                     f"The defined ValueDomain of property {prop_name} is not a subtype of ValueDomain!",
                     location_id=location_id,
                 )
-
         else:
             # missing checks: infer the type from the expression that is the constraint!...
             #  but this can only be done later because we can't parse expressions yet...
             assert PropertyDefinition.CONSTRAINT in prop_def_data
+        if (
+            PropertyDefinition.DEFAULT_INSTANCE_NAMING in prop_def_data
+            and prop_def_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING] is True
+        ):
+            default_instance_naming_location_id = c.location_of(
+                DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.DEFAULT_INSTANCE_NAMING
+            )
+            # check whether DEFAULT NAMING OF INSTANCES is true but there is no Instance type in the property's type
+            if not context.ch.is_concept("InstanceBase"):
+                raise CHSemanticError(
+                    f"The InstanceBase concept is not defined in the Concept Hierarchy => can not use "
+                    f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}".\nPlease define the "InstanceBase" concept as '
+                    f"a subconcept of ValueDomain (and as a parent concept of Instance, if defined) or remove the "
+                    f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" keyword from all property definitions and '
+                    f"specializations!",
+                    location_id=default_instance_naming_location_id,
+                    part=PathPart.KEY,
+                )
+            if prop_name in property_types:
+                prop_type = property_types[prop_name]
+                if instance_base_type is None:
+                    instance_base_type = parse_convert_type(None, "InstanceBase", type_validator, None)
+                found_instance_subtype = False
+                for type_name in prop_type.registry:
+                    if constraint_validator.is_subtype(
+                        parse_convert_type(None, type_name, type_validator, default_instance_naming_location_id),
+                        instance_base_type,
+                        default_instance_naming_location_id,
+                    ):
+                        found_instance_subtype = True
+                        break
+                if found_instance_subtype:
+                    raise CHSemanticError(
+                        f'Can not set "{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" for a property whose type does '
+                        f"not contain any instance type: {prop_type.full_name!r}!",
+                        location_id=default_instance_naming_location_id,
+                        part=PathPart.VALUE,
+                    )
     datum.property_types = frozendict(property_types)
     function_types: dict[str, InstantiatedType] = {}
     for func_name, func_def_data in c.functions.items():

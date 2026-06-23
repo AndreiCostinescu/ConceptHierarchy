@@ -974,6 +974,7 @@ class DomainConceptDefinition(ConceptDefinition):
         #       - done in checker.py - check_after_parsing_concepts
         #  - whether DEFAULT_INSTANCE_NAME can be true (check that the property type contains instances in its type!)
         #    TYPE CHECK
+        #       - done in concept_hierarchy_type_checks.py
 
         self.initialize_domain_concept_data(
             ForPropertyOrFunction.FUNCTION,
