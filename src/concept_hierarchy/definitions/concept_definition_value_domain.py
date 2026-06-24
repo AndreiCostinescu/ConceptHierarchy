@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-from types import NoneType
 from typing import TypeAlias
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
@@ -26,7 +25,7 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId,
 InstantiationDefinition: TypeAlias = str | dict
 # the instantiation definition can differ depending on the template arguments
 # the string value in the template-order-tuple is a template-constraint formula!
-TemplateDependentInstantiationDefinition: TypeAlias = dict[tuple[str | None, ...], InstantiationDefinition]
+TemplateDependentInstantiationDefinition: TypeAlias = list[tuple[tuple[str, ...], InstantiationDefinition]]
 
 
 class ValueDomainDefinition(HiddenImplementationDefinition):
@@ -44,7 +43,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         super().__init__(name, definition_data, definition_location_id)
 
         self.default_serialization: str | None = None
-        # if the ValueDomain has no template arguments, the tuple dict entry will be empty: ()
+        # if the ValueDomain has no template arguments, the list entry's tuple's first element will be empty: ()
         self.instantiation: TemplateDependentInstantiationDefinition | None = None
 
     @classmethod
@@ -104,9 +103,9 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                 self.location_id(ValueDomainDefinition.value_domain_instantiation),
                 part=PathPart.KEY,
             )
-        self.instantiation = self.data.get(ValueDomainDefinition.value_domain_instantiation, None)
-        if self.instantiation is not None:
-            if not isinstance(self.instantiation, (bool, str, dict, list)):
+        instantiation_data = self.data.get(ValueDomainDefinition.value_domain_instantiation, None)
+        if instantiation_data is not None:
+            if not isinstance(instantiation_data, (bool, dict, list, str)):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s instantiation deserialization structure must be:\n"
                     f"\ta JSON boolean value\n\ta JSON string,\n"
@@ -117,65 +116,75 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     self.location_id(ValueDomainDefinition.value_domain_instantiation),
                     part=PathPart.VALUE,
                 )
-            elif not isinstance(self.instantiation, list):
+            elif not isinstance(instantiation_data, list):
                 # if there are no template arguments, template_argument_order is an empty tuple
-                self.instantiation = {tuple(None for _ in self.template_argument_order): self.instantiation}
+                self.instantiation = [(tuple("" for _ in self.template_argument_order), instantiation_data)]
             else:
-                instantiation_dict: dict[tuple[str | None, ...], str | dict] = {}
-                for entry_index, instantiation_entry in enumerate(self.instantiation):
-                    if len(instantiation_entry) != 2:
-                        raise CHSyntaxError(
-                            f"Invalid entry in template-specific instantiation definition:\n\tmust be a "
-                            f"2-element array mapping template argument constraints to JSON (string or object) "
-                            f"deserialization structures, not {instantiation_entry!r} for the {self.definition_type()} "
-                            f"{self.name}",
-                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index),
-                        )
-                    # check template constraints
-                    if not isinstance(instantiation_entry[0], list):
-                        raise CHSyntaxError(
-                            f"Invalid entry in template-specific instantiation definition:\n\tthe first entry of the "
-                            f"2-element array must be a JSON array of string (template argument constraint formulae) or"
-                            f" null (unconstrained) values for each template argument.\n\t"
-                            f"Got {instantiation_entry[0]!r}",
-                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 0),
-                        )
-                    elif len(instantiation_entry[0]) != len(self.template_argument_order):
-                        raise CHSyntaxError(
-                            f"Invalid entry in template-specific instantiation definition:\n\tthe first entry of the "
-                            f"2-element array must be a JSON array of string (template argument constraint formulae) or"
-                            f" null (unconstrained) values of length {len(self.template_argument_order)}.\n\t\t"
-                            f"An entry for each template argument!\n\tGot {instantiation_entry[0]!r} of length "
-                            f"{len(instantiation_entry[0])}",
-                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 0),
-                        )
-                    else:
-                        for constraint_index, template_arg_constraint in instantiation_entry[0]:
-                            if not isinstance(template_arg_constraint, (str, NoneType)):
-                                raise CHSyntaxError(
-                                    f"Invalid entry in template-specific instantiation definition:\n\tthe first entry"
-                                    f" of the 2-element array must be a JSON array of string (template argument "
-                                    f"constraint formulae) or null (unconstrained) values for each template argument."
-                                    f"\n\tGot {template_arg_constraint!r}",
-                                    self.location_id(
-                                        ValueDomainDefinition.value_domain_instantiation,
-                                        entry_index,
-                                        0,
-                                        constraint_index,
-                                    ),
-                                )
-                    # check deserialization structure specification (just its outer structure, not its content)
-                    if not isinstance(instantiation_entry[1], (str, dict)):
-                        raise CHSyntaxError(
-                            f"Invalid entry in template-specific instantiation definition:\n\tthe second entry of the"
-                            f"2-element array must be a JSON (string or object) deserialization structures, not "
-                            f"{instantiation_entry[1]!r}.",
-                            self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 1),
-                        )
-                    # add data to dictionary
-                    instantiation_dict[tuple(instantiation_entry[0])] = instantiation_entry[1]
-                self.instantiation = instantiation_dict
-            assert isinstance(self.instantiation, dict) and all(isinstance(x, tuple) for x in self.instantiation)
+                assert isinstance(instantiation_data, list)
+                if (
+                    len(instantiation_data) == 2
+                    and all(isinstance(x, str) for x in instantiation_data)
+                    and instantiation_data[1] in ValueDomainDefinition.argument_reference_types
+                ):
+                    self.instantiation = [(tuple("" for _ in self.template_argument_order), instantiation_data)]
+                else:
+                    for entry_index, instantiation_entry in enumerate(instantiation_data):
+                        if len(instantiation_entry) != 2:
+                            raise CHSyntaxError(
+                                f"Invalid entry in template-specific instantiation definition:\n\tmust be a "
+                                f"2-element array mapping template argument constraints to JSON (string or object) "
+                                f"deserialization structures, not {instantiation_entry!r} for the "
+                                f"{self.definition_type()} {self.name!r}",
+                                self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index),
+                            )
+                        # check template constraints
+                        if not isinstance(instantiation_entry[0], list):
+                            raise CHSyntaxError(
+                                f"Invalid entry in template-specific instantiation definition:\n\tthe first entry of "
+                                f"the 2-element array must be a JSON array of string (template argument constraint "
+                                f"formulae) values for each template argument.\n\t"
+                                f"Got {instantiation_entry[0]!r}",
+                                self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 0),
+                            )
+                        elif len(instantiation_entry[0]) != len(self.template_argument_order):
+                            raise CHSyntaxError(
+                                f"Invalid entry in template-specific instantiation definition:\n\tthe first entry of "
+                                f"the 2-element array must be a JSON array of string (template argument constraint "
+                                f"formulae) values of length {len(self.template_argument_order)}.\n\t\tAn entry for "
+                                f"each template argument!\n\tGot {instantiation_entry[0]!r} of length "
+                                f"{len(instantiation_entry[0])}",
+                                self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 0),
+                            )
+                        else:
+                            for constraint_index, template_arg_constraint in instantiation_entry[0]:
+                                if not isinstance(template_arg_constraint, str):
+                                    raise CHSyntaxError(
+                                        f"Invalid entry in template-specific instantiation definition:\n\tthe first "
+                                        f"entry of the 2-element array must be a JSON array of string (template "
+                                        f"argument constraint formulae) values for each template argument.\n\tGot "
+                                        f"{template_arg_constraint!r}",
+                                        self.location_id(
+                                            ValueDomainDefinition.value_domain_instantiation,
+                                            entry_index,
+                                            0,
+                                            constraint_index,
+                                        ),
+                                    )
+                        # check deserialization structure specification (just its outer structure, not its content)
+                        if not isinstance(instantiation_entry[1], (bool, dict, list, str)):
+                            raise CHSyntaxError(
+                                f"Invalid entry in template-specific instantiation definition:\n\tthe second entry of "
+                                f"the 2-element array must be a JSON (boolean, array, string or object) deserialization"
+                                f" structures, not {instantiation_entry[1]!r}.",
+                                self.location_id(ValueDomainDefinition.value_domain_instantiation, entry_index, 1),
+                            )
+                        # add data to order template order
+                        self.instantiation.append((tuple(instantiation_entry[0]), instantiation_entry[1]))
+            assert (
+                isinstance(self.instantiation, list)
+                and all(isinstance(x, tuple) for x in self.instantiation)
+                and all(isinstance(y, str) for x in self.instantiation for y in x[0])
+            )
 
     def concept_data_check(self):
         super().concept_data_check()

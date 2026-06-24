@@ -19,11 +19,16 @@ from enum import Enum
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
-from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType, TypeValue
+from concept_hierarchy.data.jsonschema import CHSchemaNode
+from concept_hierarchy.data.template_argument_constraints.constraint_formula import ConstraintGroup
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ConceptHierarchyTemplateArgument,
+    InstantiatedType,
+    TypeValue,
+)
 from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.models import ConceptHierarchyModel
 
-from .types.concept_hierarchy_types import ConceptHierarchyTemplateArgument
 from .utils import lazy_properties
 
 
@@ -69,7 +74,10 @@ class ValueDomainArgumentReference(Enum):
     REF = "Reference"
 
 
+@lazy_properties
 class ValueDomainData(TypeData):
+    instantiation: list[tuple[ConstraintGroup, CHSchemaNode]]
+
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 
