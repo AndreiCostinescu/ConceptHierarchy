@@ -157,6 +157,25 @@ class CHSchemaNode:
     def is_boolean_schema(self) -> bool:
         return isinstance(self.canonical, bool)
 
+    @property
+    def is_template_dependent(self):
+        if (
+            self.custom_type.depends_on_templates
+            or self.min_items_def is not None
+            or self.max_items_def is not None
+            or self.min_properties_def is not None
+            or self.max_properties_def is not None
+            or self.min_length_def is not None
+            or self.max_length_def is not None
+            or self.minimum_def is not None
+            or self.maximum_def is not None
+            or self.exclusive_minimum_def is not None
+            or self.exclusive_maximum_def is not None
+            or self.multiple_of_def is not None
+        ):
+            return True
+        return any(child.is_template_dependent for _, child in self.iter_children())
+
     def iter_children(self) -> Iterator[tuple[tuple[PathSegment, ...], CHSchemaNode]]:
         """
         Yield ``(relative_path, child_node)`` for every direct child schema node of this node,
@@ -259,3 +278,13 @@ class CHSchemaNode:
         for index, custom_concept_data_constraint in enumerate(self.custom_concept_data_constraints):
             res.custom_concept_data_constraints[index].value = f(custom_concept_data_constraint.value)
         return res
+
+    def short_repr(self) -> str:
+        if self.is_boolean_schema:
+            kind = f"bool({self.canonical})"
+        elif self.is_custom_type:
+            kind = f"custom:{self.custom_type.full_name}({self.ref})"
+        else:
+            kind = f"type={self.type_value!r}" if self.type_value is not None else "composite"
+        location_id_str = ", ".join(f'"{x}"' for x in self.location_id)
+        return f"  [{location_id_str}]: {kind}"
