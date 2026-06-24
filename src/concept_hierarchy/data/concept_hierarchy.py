@@ -14,11 +14,15 @@
 
 from __future__ import annotations
 
-from enum import Enum
-
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
+from concept_hierarchy.data.expressions.expression_utils import (
+    FunctionArgumentModifier,
+    FunctionArgumentReference,
+    FunctionResultModifier,
+    ValueDomainArgumentReference,
+)
 from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import ConstraintGroup
 from concept_hierarchy.data.types.concept_hierarchy_types import (
@@ -69,34 +73,12 @@ class TypeData(ConceptData):
         super().__init__(name, parents)
 
 
-class ValueDomainArgumentReference(Enum):
-    NO_REF = "NoRef"
-    REF = "Reference"
-
-
 @lazy_properties
 class ValueDomainData(TypeData):
     instantiation: list[tuple[ConstraintGroup, CHSchemaNode]]
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
-
-
-class FunctionArgumentReference(Enum):
-    NO_REF = "NoRef"
-    REF = "Reference"
-    EMPTY_REF = "EmptyReference"
-
-
-class FunctionResultModifier(Enum):
-    GET = "Get"
-    MOD = "Modify"
-
-
-class FunctionArgumentModifier(Enum):
-    GET = "Get"
-    MOD = "Modify"
-    GET_MOD = "GetModify"
 
 
 @lazy_properties
