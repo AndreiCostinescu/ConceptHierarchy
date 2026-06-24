@@ -16,7 +16,10 @@ from __future__ import annotations
 
 from frozendict import frozendict
 
-from concept_hierarchy.data.types.parsed_type import ParsedType
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    TYPE_VALUE_IS_INSTANCE_CHECK,
+    TypeValue,
+)
 
 
 class VariableContext:
@@ -28,7 +31,7 @@ class VariableContext:
 
     def __init__(
         self,
-        context: frozendict[str, ParsedType | dict] | dict[str, ParsedType | dict] | None = None,
+        context: frozendict[str, TypeValue | dict] | dict[str, TypeValue | dict] | None = None,
     ):
         self.context = frozendict(context if context is not None else {})
 
@@ -45,15 +48,15 @@ class VariableContext:
     def has_variable(self, variable_name) -> bool:
         return variable_name in self.context
 
-    def get(self, var_name: str) -> ParsedType:
+    def get(self, var_name: str) -> TypeValue:
         var_type_datum = self.context.get(var_name)
-        if isinstance(var_type_datum, ParsedType):
+        if isinstance(var_type_datum, TYPE_VALUE_IS_INSTANCE_CHECK):
             return var_type_datum
         assert isinstance(var_type_datum, dict)
         return var_type_datum.get("inferredValueDomain", var_type_datum["valueDomain"])
 
     def set_inferred_type_for(
-        self, var_name: str, inferred_value_domain: ParsedType, allow_new_variables: bool = False
+        self, var_name: str, inferred_value_domain: TypeValue, allow_new_variables: bool = False
     ) -> VariableContext:
         if var_name not in self.context:
             if allow_new_variables:
@@ -65,13 +68,13 @@ class VariableContext:
         new_context = {}
         new_context.update(self.context)
         var_type_datum = self.context[var_name]
-        if isinstance(var_type_datum, ParsedType):
+        if isinstance(var_type_datum, TYPE_VALUE_IS_INSTANCE_CHECK):
             new_context[var_name] = {"valueDomain": var_type_datum, "inferredValueDomain": inferred_value_domain}
         else:
             new_context[var_name]["inferredValueDomain"] = inferred_value_domain
         return VariableContext(new_context)
 
-    def add_variable(self, var_name, value_domain: ParsedType) -> VariableContext:
+    def add_variable(self, var_name, value_domain: TypeValue) -> VariableContext:
         if var_name in self.context:
             raise RuntimeError(
                 "Variable {} already exists in VariableContext {}! Can't add again!".format(var_name, self)
@@ -80,7 +83,7 @@ class VariableContext:
         new_context.update(self.context)
         return VariableContext(new_context)
 
-    def add_variables(self, new_variables: dict[str, ParsedType | dict]) -> VariableContext:
+    def add_variables(self, new_variables: dict[str, TypeValue | dict]) -> VariableContext:
         for var_name in new_variables:
             if var_name in self.context:
                 raise RuntimeError(

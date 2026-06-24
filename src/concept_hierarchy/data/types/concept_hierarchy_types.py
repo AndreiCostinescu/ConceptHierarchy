@@ -334,4 +334,10 @@ class TemplateDependentVariadicGroup(TemplateDependent, ConceptHierarchyVariadic
             )
 
 
-TypeValue: TypeAlias = InstantiatedType | TemplateDependentType | NonVariadicTemplateVariable | VariadicTemplateVariable
+TypeValue: TypeAlias = InstantiatedType | NonVariadicTemplateVariable | TemplateDependentType | VariadicTemplateVariable
+TYPE_VALUE_IS_INSTANCE_CHECK = (
+    InstantiatedType,
+    NonVariadicTemplateVariable,
+    TemplateDependentType,
+    VariadicTemplateVariable,
+)

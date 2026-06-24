@@ -17,7 +17,7 @@ from __future__ import annotations
 from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext
-from concept_hierarchy.data.parsers.type_parser import ParsedType
+from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.errors import LocationId
 from concept_hierarchy.models import ConceptHierarchyModel
 
@@ -63,12 +63,12 @@ class ConceptHierarchyContext:
             self.variable_context,
         )
 
-    def add_new_variable(self, variable: str, variable_type: ParsedType) -> ConceptHierarchyContext:
+    def add_new_variable(self, variable: str, variable_type: TypeValue) -> ConceptHierarchyContext:
         return ConceptHierarchyContext(
             self.model, self.template_context, self.variable_context.add_variable(variable, variable_type)
         )
 
-    def add_new_variables(self, variables: dict[str, ParsedType | dict]) -> ConceptHierarchyContext:
+    def add_new_variables(self, variables: dict[str, TypeValue | dict]) -> ConceptHierarchyContext:
         return ConceptHierarchyContext(
             self.model, self.template_context, self.variable_context.add_variables(variables)
         )

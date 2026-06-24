@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.parsers.type_parser import parse_type
 from concept_hierarchy.data.types.concept_hierarchy_types import (
+    TYPE_VALUE_IS_INSTANCE_CHECK,
     ConceptHierarchyTemplateArgument,
     ConceptHierarchyType,
     ExpandedVariadicTemplateVariable,
@@ -501,9 +502,7 @@ def parse_convert_type_in_template_context(
     concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
 ) -> TypeValue:
     ch_type = _parse_convert_no_check(concept_name, type_def, validator, location_id)
-    if not isinstance(
-        ch_type, (InstantiatedType, TemplateDependentType, NonVariadicTemplateVariable, VariadicTemplateVariable)
-    ):
+    if not isinstance(ch_type, TYPE_VALUE_IS_INSTANCE_CHECK):
         raise CHSemanticError(
             f"Expected an InstantiatedType, a TemplateDependentType, a NonVariadicTemplateVariable or a "
             f"VariadicTemplateVariable, but got {ch_type!r}",
