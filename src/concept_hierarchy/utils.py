@@ -216,6 +216,14 @@ def get_items_of_single_entry_dict(d: dict) -> tuple:
     raise RuntimeError("Dictionary is empty... can't get single-entry!")
 
 
+def get_dict_without_items(d: dict, *keys) -> dict:
+    exclude = set(keys)
+    missing = exclude - d.keys()
+    if missing:
+        raise KeyError(f"Key{'s' if len(missing) > 1 else ''} {missing!r} not found in dict!")
+    return {k: v for k, v in d.items() if k not in exclude}
+
+
 def replace_template_chars(x: str) -> str:
     return x.replace("<", "__").replace(">", "").replace(", ", "_").replace("!", "not")
 
