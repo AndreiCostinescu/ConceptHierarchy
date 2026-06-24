@@ -103,6 +103,22 @@ class CHSchemaContext(ABC):
             ``None`` if ``type_name`` is valid, otherwise a :class:`CHSemanticError` explaining why it isn't.
         """
 
+    @abstractmethod
+    def is_boolean_template_variable(self, template_variable_candidate: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_integer_template_variable(self, template_variable_candidate: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_number_template_variable(self, template_variable_candidate: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_string_template_variable(self, template_variable_candidate: str) -> bool:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -375,6 +391,46 @@ def _finish_builtin_node(
     def child(value: object, *suffix: PathSegment) -> CHSchemaNode:
         return _build_node(value, location_id + list(suffix), context, errors, collect_all_errors)
 
+    # --- values that can be literal template variables --------------------
+    possibly_literal_template_variable_key_mapping: dict[str, tuple[str, str]] = {
+        "minProperties": ("min_properties_def", "integer"),
+        "maxProperties": ("max_properties_def", "integer"),
+        "minLength": ("min_length_def", "integer"),
+        "maxLength": ("max_length_def", "integer"),
+        "minItems": ("min_items_def", "integer"),
+        "maxItems": ("max_items_def", "integer"),
+        "minimum": ("minimum_def", "number"),
+        "maximum": ("maximum_def", "number"),
+        "exclusiveMinimum": ("exclusive_minimum_def", "number"),
+        "exclusiveMaximum": ("exclusive_maximum_def", "number"),
+        "multipleOf": ("multiple_of_def", "number"),
+    }
+    for key, (node_field_key, literal_type) in possibly_literal_template_variable_key_mapping.items():
+        # if the data at key is not a string, then let it be processed by the normal validator of the json schema!
+        if key in work and isinstance(work[key], str):
+            template_variable_candidate = work.pop(key)
+            template_type_check_success = True
+            if literal_type == "number" and not context.is_number_template_variable(template_variable_candidate):
+                template_type_check_success = False
+            elif literal_type == "integer" and not context.is_integer_template_variable(template_variable_candidate):
+                template_type_check_success = False
+            elif literal_type == "string" and not context.is_string_template_variable(template_variable_candidate):
+                template_type_check_success = False
+            elif literal_type == "boolean" and not context.is_boolean_template_variable(template_variable_candidate):
+                template_type_check_success = False
+            if not template_type_check_success:
+                record(
+                    errors,
+                    collect_all_errors,
+                    CHSemanticError(
+                        f"Can not use a non {literal_type} template variable literal {template_variable_candidate} as a"
+                        f' value for "{key}"!',
+                        location_id=location_id + [key],
+                    ),
+                )
+            else:
+                object.__setattr__(node, node_field_key, template_variable_candidate)
+
     # --- object structure -------------------------------------------------
     if "properties" in work:
         props = work.pop("properties")
@@ -507,7 +563,7 @@ def _finish_builtin_node(
     # is a "plain" draft-07 keyword.
     node.extra_keywords = work
 
-    node.safe_canonical = _build_safe_canonical(node)
+    node.safe_canonical = _build_safe_canonical(node, work)
     # shallow_canonical only ever needs to check THIS node's own, non-structural keywords (type for builtins, enum,
     # const, minimum, pattern, format, minItems/maxItems/uniqueItems, minProperties/maxProperties, multipleOf,
     # property-list "dependencies", ...).
@@ -516,7 +572,7 @@ def _finish_builtin_node(
     # -- including them here (even as `True` placeholders) would either duplicate errors (e.g. "required",
     # "additionalProperties": false) or actively produce *wrong* results (e.g. "not": true always fails, since every
     # value matches the placeholder schema `true`).
-    node.shallow_canonical = dict(node.extra_keywords)
+    node.shallow_canonical = dict(work)  # shallow-copy
     return node
 
 
@@ -531,10 +587,10 @@ def _safe_child(child: bool | CHSchemaNode) -> dict | bool:
     return child.safe_canonical
 
 
-def _build_safe_canonical(node: CHSchemaNode) -> dict:
+def _build_safe_canonical(node: CHSchemaNode, remaining_keywords: dict) -> dict:
     """Build the full, recursive draft-07-equivalent of ``node``, with every custom-type subtree replaced by ``True``.
     Used only for the structural (meta-schema) check of the schema definition."""
-    out = dict(node.extra_keywords)
+    out = dict(remaining_keywords)  # shallow-copy
 
     if node.properties:
         out["properties"] = {k: _safe_child(v) for k, v in node.properties.items()}

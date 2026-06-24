@@ -401,14 +401,49 @@
             "readOnly": { "type": "boolean" },
             "writeOnly": { "type": "boolean" },
 
-            "multipleOf": { "type": "number", "exclusiveMinimum": 0 },
-            "maximum": { "type": "number" },
-            "exclusiveMaximum": { "type": "number" },
-            "minimum": { "type": "number" },
-            "exclusiveMinimum": { "type": "number" },
+            "multipleOf": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number", "exclusiveMinimum": 0 }
+              ]
+            },
+            "maximum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
+            "exclusiveMaximum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
+            "minimum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
+            "exclusiveMinimum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
 
-            "maxLength": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
-            "minLength": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "maxLength": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "minLength": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
             "pattern": { "type": "string", "format": "regex" },
             "format": { "type": "string" },
             "contentMediaType": { "type": "string" },
@@ -421,13 +456,33 @@
               ]
             },
             "additionalItems": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
-            "maxItems": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
-            "minItems": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "maxItems": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "minItems": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
             "uniqueItems": { "type": "boolean" },
             "contains": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
 
-            "maxProperties": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
-            "minProperties": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "maxProperties": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "minProperties": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
             "requireAllKeysFromProperties": { "type": "boolean" },
             "required": {
               "type": "array",
@@ -478,6 +533,11 @@
             }
           },
           "additionalProperties": false
+        },
+        "literalTemplateVariable": {
+          "type": "string",
+          "description": "Template variable that has a Literal: constraint!",
+          "minLength": 1
         },
         "nonNegativeInteger": {
           "type": "integer",

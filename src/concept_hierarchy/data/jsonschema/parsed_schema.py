@@ -81,6 +81,22 @@ class CHSchemaNode:
     additional_items: CHSchemaNode | bool | None = None
     contains: CHSchemaNode | None = None
 
+    # --- values that could be literal template variables --------------
+    # Once a complete substitution is done, these values will be set to None
+    #  and the substituted values will be set in the extra_keywords and
+    #  shallow_canonical to be validated against the regular JSON Schema V7 validator.
+    min_items_def: str | None = None  # must be non-negative integer
+    max_items_def: str | None = None  # must be non-negative integer
+    min_properties_def: str | None = None  # must be non-negative integer
+    max_properties_def: str | None = None  # must be non-negative integer
+    min_length_def: str | None = None  # must be non-negative integer
+    max_length_def: str | None = None  # must be non-negative integer
+    minimum_def: str | None = None
+    maximum_def: str | None = None
+    exclusive_minimum_def: str | None = None
+    exclusive_maximum_def: str | None = None
+    multiple_of_def: str | None = None  # must be positive number
+
     # --- composition --------------------------------------------------
     all_of: list[CHSchemaNode] = field(default_factory=list)
     any_of: list[CHSchemaNode] = field(default_factory=list)
