@@ -491,8 +491,16 @@
               "uniqueItems": true
             },
             "properties": {
-              "type": "object",
-              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+                }, { "$ref": "#/$defs/concepts/$defs/customConceptRelatedObjectKeys" }, {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "$ref": "#/$defs/concepts/$defs/customConceptRelatedObjectKeys" }
+                }
+              ]
             },
             "patternProperties": {
               "type": "object",
@@ -533,6 +541,22 @@
             }
           },
           "additionalProperties": false
+        },
+        "customConceptRelatedObjectKeys": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            {
+              "type": "string",
+              "pattern": "^(props|funcs)((\\\\+\\\\([A-Z][A-Za-z0-9_]*(,\\\\s[A-Z][A-Za-z0-9_]*)*\\\\))|(\\\\([A-Z][A-Za-z0-9_]*(,\\\\s[A-Z][A-Za-z0-9_]*)*\\\\))?)$"
+            }, {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/CHSchemaArrayShorthand" },
+                { "type": "string", "minLength": 1 }
+              ]
+            }
+          ]
         },
         "literalTemplateVariable": {
           "type": "string",
