@@ -53,9 +53,11 @@ from abc import ABC, abstractmethod
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression_utils import ValueDomainArgumentReference
-from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
+from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode, CustomConceptDataConstraint
+from concept_hierarchy.data.parsers.string_parser import StringParser
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
+from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import (
     CHSemanticError,
     CHSyntaxError,
@@ -76,7 +78,7 @@ _REF_PATTERN = re.compile(r"^#/(definitions|\$defs)/([^/]+)$")
 _MISSING = object()
 
 
-class CHSchemaContext(ABC):
+class CHSchemaValidator(ABC):
     """
     Context protocol.
 
@@ -95,7 +97,9 @@ class CHSchemaContext(ABC):
     }
 
     @abstractmethod
-    def parse_custom_type(self, type_name: str, location_id: LocationId) -> TypeValue:
+    def parse_custom_type(
+        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool
+    ) -> TypeValue:
         """
         Parse ``type_name`` into a valid type value in this context.
 
@@ -103,6 +107,7 @@ class CHSchemaContext(ABC):
             type_name: The custom type name as written in the schema (i.e. the value of the ``"type"`` keyword).
             location_id: Location of the ``"type"`` keyword in the *original* (shorthand) schema,
                 for use in the returned error's ``path``.
+            allow_x_as_template_variable: whether to accept x as a template variable or not
 
         Returns:
             ``None`` if ``type_name`` is invalid, otherwise a :class:`CHSemanticError` explaining why it isn't.
@@ -110,6 +115,10 @@ class CHSchemaContext(ABC):
         Raises:
             CHSyntaxError or CHSemanticError upon failure in parsing
         """
+
+    @abstractmethod
+    def is_concept(self, concept_name: str) -> bool:
+        pass
 
     @abstractmethod
     def is_boolean_template_variable(self, template_variable_candidate: str) -> bool:
@@ -132,14 +141,14 @@ class CHSchemaContext(ABC):
 # Public entry point
 # ---------------------------------------------------------------------------
 def parse_schema(
-    schema: object, context: CHSchemaContext, location_id: LocationId = None, collect_all_errors: bool = True
+    schema: object, validator: CHSchemaValidator, location_id: LocationId = None, collect_all_errors: bool = True
 ) -> tuple[CHSchemaNode | None, list[ConceptHierarchyError]]:
     """Parse and validate ``schema``.
 
     Args:
         schema: The raw schema definition
             (using the shorthand notations described in the module docstring, plus full draft-07).
-        context: Used to validate custom type names (see :class:`~ch_schema.context.CHSchemaContext`).
+        validator: Used to validate custom type names (see :class:`~ch_schema.context.CHSchemaContext`).
         location_id: The location in a Concept Hierarchy where the schema is defined (and parsed)
         collect_all_errors: If ``True`` (default), collect every error found. If ``False``, stop at the first error.
 
@@ -156,7 +165,9 @@ def parse_schema(
     try:
         if location_id is None:
             location_id = []
-        node = _build_node(schema, location_id, context, errors, collect_all_errors)
+        node = _build_node(
+            schema, location_id, validator, errors, collect_all_errors, allow_x_as_template_variable=False
+        )
         _resolve_local_refs(node, errors, collect_all_errors)
         _check_meta_schema(node, errors, collect_all_errors)
     except StopValidation:
@@ -177,7 +188,7 @@ def _expand_string_shorthand(raw: str) -> dict:
 def _expand_array_shorthand(
     raw: list,
     location_id: LocationId,
-    context: CHSchemaContext,
+    validator: CHSchemaValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> dict | bool:
@@ -185,7 +196,7 @@ def _expand_array_shorthand(
         len(raw) == 2
         and isinstance(raw[0], str)
         and isinstance(raw[1], str)
-        and raw[1] in context.argument_reference_types
+        and raw[1] in validator.argument_reference_types
     )
     if not valid_shape:
         record(
@@ -234,9 +245,10 @@ def _expand_array_shorthand(
 def _build_node(
     raw: object,
     location_id: LocationId,
-    context: CHSchemaContext,
+    validator: CHSchemaValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
+    allow_x_as_template_variable: bool,
 ) -> CHSchemaNode:
     if isinstance(raw, bool):
         node = CHSchemaNode(location_id=location_id, raw=raw, canonical=raw)
@@ -247,7 +259,7 @@ def _build_node(
     if isinstance(raw, str):
         canonical: dict | bool = _expand_string_shorthand(raw)
     elif isinstance(raw, list):
-        canonical = _expand_array_shorthand(raw, location_id, context, errors, collect_all_errors)
+        canonical = _expand_array_shorthand(raw, location_id, validator, errors, collect_all_errors)
     elif isinstance(raw, dict):
         canonical = raw
     else:
@@ -268,17 +280,8 @@ def _build_node(
         node.shallow_canonical = canonical
         return node
 
-    return _build_object_node(raw, canonical, location_id, context, errors, collect_all_errors)
+    # ------ BUILD OBJECT NODE ----------------------------------------------
 
-
-def _build_object_node(
-    raw: object,
-    canonical: dict,
-    location_id: LocationId,
-    context: CHSchemaContext,
-    errors: list[ConceptHierarchyError],
-    collect_all_errors: bool,
-) -> CHSchemaNode:
     node = CHSchemaNode(location_id=location_id, raw=raw, canonical=canonical)
     work = dict(canonical)  # local working copy we can pop() from
 
@@ -315,10 +318,12 @@ def _build_object_node(
                 work.pop("type", None)
 
     if is_custom:
-        _finish_custom_type_node(node, type_value, work, location_id, context, errors, collect_all_errors)
+        _finish_custom_type_node(
+            node, type_value, work, location_id, validator, errors, collect_all_errors, allow_x_as_template_variable
+        )
         return node
 
-    return _finish_builtin_node(node, work, location_id, context, errors, collect_all_errors)
+    return _finish_builtin_node(node, work, location_id, validator, errors, collect_all_errors)
 
 
 def _finish_custom_type_node(
@@ -326,14 +331,15 @@ def _finish_custom_type_node(
     type_name: str,
     work: dict,
     location_id: LocationId,
-    validator: CHSchemaContext,
+    validator: CHSchemaValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
+    allow_x_as_template_variable: bool,
 ) -> None:
     node.is_custom_type = True
 
     try:
-        node.custom_type = validator.parse_custom_type(type_name, location_id + ["type"])
+        node.custom_type = validator.parse_custom_type(type_name, location_id + ["type"], allow_x_as_template_variable)
     except ConceptHierarchyError as e:
         record(errors, collect_all_errors, e)
 
@@ -376,11 +382,53 @@ def _finish_custom_type_node(
     node.shallow_canonical = True
 
 
+def _parse_custom_concept_data_constraint(
+    constraint: str, value_schema: CHSchemaNode, validator: CHSchemaValidator, location_id: LocationId
+) -> CustomConceptDataConstraint:
+    custom_concept_data_parser = StringParser(constraint, location_id)
+    if custom_concept_data_parser.try_consume("props"):
+        for_properties_of_functions = ForPropertyOrFunction.PROPERTY
+    elif custom_concept_data_parser.try_consume("funcs"):
+        for_properties_of_functions = ForPropertyOrFunction.FUNCTION
+    else:
+        raise CHSyntaxError(f'Expected either "props" or "funcs" at the beginning of {constraint}')
+    include_parent_data = custom_concept_data_parser.try_consume("+")
+    if include_parent_data:
+        custom_concept_data_parser.consume("(")
+        has_concept_restriction = True
+    else:
+        has_concept_restriction = custom_concept_data_parser.try_consume("(")
+    concept_restriction = []
+    if has_concept_restriction:
+        # process list of uppercase names separated by ', '
+        concept_name = custom_concept_data_parser.parse_upper_case_name()
+        if not validator.is_concept(concept_name):
+            # FIXME: possibly extend to allow an expanded variadic template argument here
+            raise CHSemanticError(
+                f"{concept_name} is not a valid concept in this Concept Hierarchy!",
+                location_id=location_id,
+            )
+        concept_restriction.append(concept_name)
+        while custom_concept_data_parser.try_consume(", "):
+            concept_name = custom_concept_data_parser.parse_upper_case_name()
+            if not validator.is_concept(concept_name):
+                # FIXME: possibly extend to allow an expanded variadic template argument here
+                raise CHSemanticError(
+                    f"{concept_name} is not a valid concept in this Concept Hierarchy!",
+                    location_id=location_id,
+                )
+            concept_restriction.append(concept_name)
+        custom_concept_data_parser.consume(")")
+    return CustomConceptDataConstraint(
+        for_properties_of_functions, include_parent_data, concept_restriction, value_schema
+    )
+
+
 def _finish_builtin_node(
     node: CHSchemaNode,
     work: dict,
     location_id: LocationId,
-    context: CHSchemaContext,
+    validator: CHSchemaValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> CHSchemaNode:
@@ -399,7 +447,10 @@ def _finish_builtin_node(
     # "default" is a normal draft-07 annotation keyword here; leave it in extra_keywords untouched.
 
     def child(value: object, *suffix: PathSegment) -> CHSchemaNode:
-        return _build_node(value, location_id + list(suffix), context, errors, collect_all_errors)
+        return _build_node(value, location_id + list(suffix), validator, errors, collect_all_errors, False)
+
+    def child_with_x(value: object, *suffix: PathSegment) -> CHSchemaNode:
+        return _build_node(value, location_id + list(suffix), validator, errors, collect_all_errors, True)
 
     # --- values that can be literal template variables --------------------
     possibly_literal_template_variable_key_mapping: dict[str, tuple[str, str]] = {
@@ -420,13 +471,13 @@ def _finish_builtin_node(
         if key in work and isinstance(work[key], str):
             template_variable_candidate = work.pop(key)
             template_type_check_success = True
-            if literal_type == "number" and not context.is_number_template_variable(template_variable_candidate):
+            if literal_type == "number" and not validator.is_number_template_variable(template_variable_candidate):
                 template_type_check_success = False
-            elif literal_type == "integer" and not context.is_integer_template_variable(template_variable_candidate):
+            elif literal_type == "integer" and not validator.is_integer_template_variable(template_variable_candidate):
                 template_type_check_success = False
-            elif literal_type == "string" and not context.is_string_template_variable(template_variable_candidate):
+            elif literal_type == "string" and not validator.is_string_template_variable(template_variable_candidate):
                 template_type_check_success = False
-            elif literal_type == "boolean" and not context.is_boolean_template_variable(template_variable_candidate):
+            elif literal_type == "boolean" and not validator.is_boolean_template_variable(template_variable_candidate):
                 template_type_check_success = False
             if not template_type_check_success:
                 record(
@@ -447,11 +498,51 @@ def _finish_builtin_node(
         if isinstance(props, dict):
             for key, sub in props.items():
                 node.properties[key] = child(sub, "properties", key)
+        elif isinstance(props, list):
+            # parse properties+/functions+ formula
+            if not (len(props) == 2 and isinstance(props[0], str)) and not (
+                all((len(x) == 2 and isinstance(x[0], str)) for x in props)
+            ):
+                record(
+                    errors,
+                    collect_all_errors,
+                    CHSyntaxError(
+                        f'"properties" must be an object, a 2-elem array specifying concept-related data, or an array '
+                        f"of 2-elem arrays that is interpreted as a union of concept-related data!\nGot {props!r}",
+                        location_id=location_id + ["properties"],
+                    ),
+                )
+            elif len(props) == 2 and all(isinstance(x, str) for x in props):
+                try:
+                    node.custom_concept_data_constraints.append(
+                        _parse_custom_concept_data_constraint(
+                            props[0], child_with_x(props[1], "custom concept data", 1), validator, location_id
+                        )
+                    )
+                except ConceptHierarchyError as e:
+                    record(errors, collect_all_errors, e)
+            else:
+                for custom_entry_index, custom_constraint_entry in enumerate(props):
+                    try:
+                        node.custom_concept_data_constraints.append(
+                            _parse_custom_concept_data_constraint(
+                                custom_constraint_entry[0],
+                                child_with_x(custom_constraint_entry[1], "custom concept data", custom_entry_index, 1),
+                                validator,
+                                location_id,
+                            )
+                        )
+                    except ConceptHierarchyError as e:
+                        record(errors, collect_all_errors, e)
         else:
             record(
                 errors,
                 collect_all_errors,
-                CHSyntaxError('"properties" must be an object', location_id + ["properties"]),
+                CHSyntaxError(
+                    f'"properties" must be an object, a 2-elem array specifying concept-related data, or an array of '
+                    f"2-elem arrays that is interpreted as a union of concept-related data!\nGot {props!r}",
+                    location_id=location_id + ["properties"],
+                ),
             )
 
     if "patternProperties" in work:
