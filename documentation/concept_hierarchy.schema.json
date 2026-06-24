@@ -142,7 +142,29 @@
                 "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
                 "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
                 "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
-                "instantiation": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+                "instantiation": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                      }, {
+                        "$ref": "#/$defs/concepts/$defs/CHSchema"
+                      }
+                    ]
+                  }
+                }, {
+                  "$ref": "#/$defs/concepts/$defs/CHSchema"
+                }
+              ]
+            }
               },
               "additionalProperties": false
             }, {
@@ -155,7 +177,29 @@
                 "interface": { "$ref": "#/$defs/concepts/$defs/functionInterface" },
                 "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
                 "variations": { "$ref": "#/$defs/concepts/$defs/functionVariations" },
-                "inversion": { "$ref": "#/$defs/concepts/$defs/functionInversion" },
+                "inversion": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                      }, {
+                        "$ref": "#/$defs/concepts/$defs/functionInversion"
+                      }
+                    ]
+                  }
+                }, {
+                  "$ref": "#/$defs/concepts/$defs/functionInversion"
+                }
+              ]
+            },
                 "addNewVariablesInExistingScope": { "$ref": "#/$defs/concepts/$defs/functionUpdateScope" },
                 "subScopes": { "$ref": "#/$defs/concepts/$defs/functionSubScopes" }
               },
@@ -175,11 +219,55 @@
             "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
             "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
             "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
-            "instantiation": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "instantiation": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                      }, {
+                        "$ref": "#/$defs/concepts/$defs/CHSchema"
+                      }
+                    ]
+                  }
+                }, {
+                  "$ref": "#/$defs/concepts/$defs/CHSchema"
+                }
+              ]
+            },
             "interface": { "$ref": "#/$defs/concepts/$defs/functionInterface" },
             "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
             "variations": { "$ref": "#/$defs/concepts/$defs/functionVariations" },
-            "inversion": { "$ref": "#/$defs/concepts/$defs/functionInversion" },
+            "inversion": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                      }, {
+                        "$ref": "#/$defs/concepts/$defs/functionInversion"
+                      }
+                    ]
+                  }
+                }, {
+                  "$ref": "#/$defs/concepts/$defs/functionInversion"
+                }
+              ]
+            },
             "addNewVariablesInExistingScope": { "$ref": "#/$defs/concepts/$defs/functionUpdateScope" },
             "subScopes": { "$ref": "#/$defs/concepts/$defs/functionSubScopes" }
           },
@@ -1001,67 +1089,11 @@
         },
 
         "functionInversion": {
-          "description": "Function inversion definitions: either simple object mapping arguments to procedures, or array with template restrictions",
-          "oneOf": [
-            {
-              "description": "Simple inversion without template restriction",
-              "$ref": "#/$defs/concepts/$defs/functionInversionNoTemplateRestriction"
-            },
-            {
-              "description": "Inversion with template restrictions (array of blocks)",
-              "type": "array",
-              "items": { "$ref": "#/$defs/concepts/$defs/functionInversionSpecificationBlock" },
-              "minItems": 1
-            }
-          ]
-        },
-
-        "functionInversionNoTemplateRestriction": {
           "type": "object",
           "description": "Maps function arguments to their inversion procedures",
           "patternProperties": {
             "^[a-z][A-Za-z0-9_]*$": {
               "$ref": "#/$defs/concepts/$defs/functionProcedure"
-            }
-          },
-          "additionalProperties": false
-        },
-
-        "functionInversionSpecificationBlock": {
-          "type": "object",
-          "description": "Inversion block with optional template instantiation and procedure",
-          "properties": {
-            "procedure": {
-              "$ref": "#/$defs/concepts/$defs/functionInversionNoTemplateRestriction"
-            }
-          },
-          "patternProperties": {
-            "^[A-Z][A-Za-z0-9_]*$": {
-              "description": "Template argument instantiation",
-              "oneOf": [
-                {
-                  "description": "Specialized type template argument value",
-                  "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain"
-                }, {
-                  "description": "Specialized literal template argument value",
-                  "oneOf": [
-                    {
-                      "description": "Specialized number template argument literal",
-                      "type": "number"
-                    }, {
-                      "description": "Specialized boolean template argument literal",
-                      "type": "boolean"
-                    }, {
-                      "description": "Specialized string template argument literal",
-                      "type": "string",
-                      "pattern": "^\".*\"$"
-                    }
-                  ]
-                }, {
-                  "description": "No specialized value",
-                  "type": "null"
-                }
-              ]
             }
           },
           "additionalProperties": false

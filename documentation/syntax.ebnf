@@ -164,7 +164,7 @@ ValueDomainDataEntry
         ::= ValueDomainImplementation
           | ValueDomainAbstract
           | ValueDomainDefaultSerialization
-          | ValueDomainFromJsonLiteral
+          | ValueDomainInstantiation
           | ValueDomainInterface
           | TemplateArgumentDefinitionBlock
 ValueDomainImplementation
@@ -174,13 +174,12 @@ ValueDomainAbstract
 ValueDomainDefaultSerialization
         ::= ws '"defaultSerialization"' ws ':' ws
             ('null' | '"null"' | '"boolean"' | '"integer"' | '"number"' | '"string"') ws
-ValueDomainFromJsonLiteral
-        ::= ws '"fromJsonLiteral"' ws ':' FromJsonLiteralFormula
-ValueDomainInterface
-        ::= ws '"creation"' ws ':' ws '{'
-                (ws | (ValueDomainCreationInterfaceArgumentDefinition
-                           (',' ValueDomainCreationInterfaceArgumentDefinition)*))
-            '}' ws
+ValueDomainInstantiation
+        ::= ws '"instantiation"' ws ':' InstantiationDefinition
+InstantiationDefinition
+        ::= CustomJsonSchema | (ws '[' InstantiationListEntry (',' InstantiationListEntry)* ']' ws)
+InstantiationListEntry
+        ::= ws '[' TemplateConstraintSpecialization ',' CustomJsonSchema ']' ws
 TemplateArgumentDefinitionBlock
         ::= ws '"templateArguments"' ws ':'
             (TemplateOrderContent | ExplicitTemplateArgumentDefinitionBlock)
@@ -240,26 +239,13 @@ FunctionInterface
                           (',' FunctionEvaluationInterfaceArgumentDefinition)*))
             '}' ws
 FunctionInversion
-        ::= ws '"inversion"' ws ':' (FunctionInversionSpecificationNoTemplateRestriction |
-                                     FunctionInversionSpecificationWithTemplateRestriction)
-FunctionInversionSpecificationNoTemplateRestriction
-        ::= ws '{'
-                (ws | (FunctionInversionForArgument (',' FunctionInversionForArgument)*))
-            '}' ws
-FunctionInversionSpecificationWithTemplateRestriction
-        ::= ws '['
-                (ws | (FunctionInversionSpecificationBlock (',' FunctionInversionSpecificationBlock)*))
-            ']' ws
-FunctionInversionSpecificationBlock
-        ::= ws '{'
-                (ws | (FunctionInversionBlockItem (',' FunctionInversionBlockItem)*))
-            '}' ws
-FunctionInversionBlockItem
-        ::= (FunctionInversionBlockTemplateInstantiation | FunctionInversionBlockProcedure)
-FunctionInversionBlockTemplateInstantiation
-        ::= TemplateArgumentReference ':' TemplateArgumentConstraintFormula | (ws 'null' ws)
-FunctionInversionBlockProcedure
-        ::= ws '"procedure"' ws ':' FunctionInversionSpecificationNoTemplateRestriction
+        ::= ws '"inversion"' ws ':' (FunctionInversionSpecializationDefinition | FunctionInversionDefinition)
+FunctionInversionSpecializationDefinition
+        ::= ws '[' FunctionInversionSpecializationEntry (',' FunctionInversionSpecializationEntry)* ']' ws
+FunctionInversionSpecializationEntry
+        ::= ws '[' TemplateConstraintSpecialization ',' FunctionInversionDefinition ']' ws
+FunctionInversionDefinition
+        ::= ws '{' (ws | (FunctionInversionForArgument (',' FunctionInversionForArgument)*)) '}' ws
 FunctionInversionForArgument
         ::= FunctionArgumentReference ':' FunctionComposition
 FunctionProcedure
@@ -305,10 +291,6 @@ GlobalVariableDefinitionEntry
         ::= VariableNameReference ':' ConceptHierarchyValue
 
 //// Function Interface Definition Syntax
-ValueDomainCreationInterfaceArgumentDefinition
-        ::= DefinitionOfArguments
-          | ValueDomainCreationArgumentDefinition
-          | DefinitionOfDefaultArgumentValues
 FunctionEvaluationInterfaceArgumentDefinition
         ::= FunctionEvaluationArgumentDefinition
           | FunctionEvaluationResultDefinition
@@ -316,11 +298,6 @@ FunctionEvaluationInterfaceArgumentDefinition
 SimpleFunctionEvaluationInterfaceArgumentDefinition
         ::= FunctionEvaluationArgumentDefinition
           | FunctionEvaluationResultDefinition
-ValueDomainCreationArgumentDefinition
-        ::= ArgumentReference ':' (
-                InstantiatedValueDomain |
-                (ws '[' InstantiatedValueDomain (',' BaseReferenceTypes)? ']' ws)
-            )
 FunctionEvaluationArgumentDefinition
         ::= ArgumentReference ':' (
                 InstantiatedValueDomain |
@@ -408,7 +385,10 @@ nonEmptyConceptList
         ::= upperCaseName (', ' uppercaseName)*
 
 //// Template Argument Constraint Formula
+TemplateConstraintSpecialization
+        :: ws '[' ( TemplateArgumentConstraintFormula (',' TemplateArgumentConstraintFormula)* )? ']' ws
 // No variadic group constraint: all template values of the variadic group must satisfy the same constraint!
+// Do not differentiate syntactically the places where Unconstrained, i.e. '', is allowed; checked semantically
 TemplateArgumentConstraintFormula
         ::= (ws '"' (literalTemplateConstraint | templateArgumentConstraint | '') '"' ws) | LiteralValue
 literalTemplateConstraint
@@ -518,6 +498,9 @@ upperCaseName
         ::= [A-Z] ([A-Z] | [a-z] | digit | '_')*
 lowerCaseName
         ::= [a-z] ([A-Z] | [a-z] | digit | '_')*
+
+//// Custom JSON Schema (not expanded here)
+CustomJsonSchema ::= ws (boolean | string | ('[' ws string ws ',' BaseReferenceTypes ']') | object) ws
 
 //// JSON Grammar
 Json ::= Element  // with capital letter because it processes whitespaces correctly
