@@ -143,28 +143,28 @@
                 "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
                 "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
                 "instantiation": {
-              "oneOf": [
-                {
-                  "type": "array",
-                  "minItems": 1,
-                  "items": {
-                    "type": "array",
-                    "minItems": 2,
-                    "maxItems": 2,
-                    "items": [
-                      {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
                         "type": "array",
-                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
-                      }, {
-                        "$ref": "#/$defs/concepts/$defs/CHSchema"
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": [
+                          {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                          }, {
+                            "$ref": "#/$defs/concepts/$defs/CHSchema"
+                          }
+                        ]
                       }
-                    ]
-                  }
-                }, {
-                  "$ref": "#/$defs/concepts/$defs/CHSchema"
+                    }, {
+                      "$ref": "#/$defs/concepts/$defs/CHSchema"
+                    }
+                  ]
                 }
-              ]
-            }
               },
               "additionalProperties": false
             }, {
@@ -178,28 +178,28 @@
                 "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
                 "variations": { "$ref": "#/$defs/concepts/$defs/functionVariations" },
                 "inversion": {
-              "oneOf": [
-                {
-                  "type": "array",
-                  "minItems": 1,
-                  "items": {
-                    "type": "array",
-                    "minItems": 2,
-                    "maxItems": 2,
-                    "items": [
-                      {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
                         "type": "array",
-                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
-                      }, {
-                        "$ref": "#/$defs/concepts/$defs/functionInversion"
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": [
+                          {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                          }, {
+                            "$ref": "#/$defs/concepts/$defs/functionInversion"
+                          }
+                        ]
                       }
-                    ]
-                  }
-                }, {
-                  "$ref": "#/$defs/concepts/$defs/functionInversion"
-                }
-              ]
-            },
+                    }, {
+                      "$ref": "#/$defs/concepts/$defs/functionInversion"
+                    }
+                  ]
+                },
                 "addNewVariablesInExistingScope": { "$ref": "#/$defs/concepts/$defs/functionUpdateScope" },
                 "subScopes": { "$ref": "#/$defs/concepts/$defs/functionSubScopes" }
               },
