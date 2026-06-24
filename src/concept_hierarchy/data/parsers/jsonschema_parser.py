@@ -331,7 +331,6 @@ def _finish_custom_type_node(
     collect_all_errors: bool,
 ) -> None:
     node.is_custom_type = True
-    node.custom_type_name = type_name
 
     try:
         node.custom_type = validator.parse_custom_type(type_name, location_id + ["type"])

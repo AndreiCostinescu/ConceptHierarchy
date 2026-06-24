@@ -20,7 +20,7 @@ A node either:
 
 * is a **boolean schema** (``True``/``False``, as in draft-07) -- a leaf, with no further structure;
 * is a **custom-type node** (``is_custom_type=True``) -- a leaf as far as JSON-Schema structure is concerned
-  (it carries no ``properties``/``items`` etc. of its own), but carries ``custom_type_name``, ``referenceType`` and an
+  (it carries no ``properties``/``items`` etc. of its own), but carries ``custom_type``, ``referenceType`` and an
   optional, *unvalidated* ``default_expr``;
 * is a **builtin/composite node** -- carries the (recursively parsed) draft-07 structure:
   ``properties``, ``items``, ``allOf``/``anyOf``/..., etc., plus any other draft-07 keywords
@@ -36,7 +36,28 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
+from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import LocationId, PathSegment
+
+
+class CustomConceptDataConstraint:
+    def __init__(
+        self,
+        for_properties_or_functions: ForPropertyOrFunction,
+        include_parent_data: bool,
+        concept_restriction: list[str],
+        value: CHSchemaNode,
+    ):
+        self.for_properties_or_functions = for_properties_or_functions
+        self.include_parent_data = include_parent_data
+        self.concept_restriction = concept_restriction
+        self.value = value
+
+    @property
+    def is_template_dependent(self):
+        # FIXME: also check the list of concept restrictions for (expanded variadic) template arguments
+        return self.value.is_template_dependent
 
 
 @dataclass
@@ -56,7 +77,7 @@ class CHSchemaNode:
 
     # --- custom types -------------------------------------------------
     is_custom_type: bool = False
-    custom_type_name: str | None = None
+    custom_type: TypeValue | None = None
     ref: str | None = None  # "Reference" | "NoRef", only set if is_custom_type
     has_default: bool = False
     default_expr: object = None
@@ -70,6 +91,7 @@ class CHSchemaNode:
 
     # --- object structure ---------------------------------------------
     properties: dict[str, CHSchemaNode] = field(default_factory=dict)
+    custom_concept_data_constraints: list[CustomConceptDataConstraint] = field(default_factory=list)
     pattern_properties: dict[str, CHSchemaNode] = field(default_factory=dict)
     additional_properties: CHSchemaNode | bool | None = None
     property_names: CHSchemaNode | None = None
@@ -181,6 +203,9 @@ class CHSchemaNode:
         for key, child in self.dependent_schemas.items():
             yield ("dependencies", key), child
 
+        for index, custom_concept_data_constraint in enumerate(self.custom_concept_data_constraints):
+            yield ("properties", index), custom_concept_data_constraint.value
+
     def walk(self) -> Iterator[CHSchemaNode]:
         """
         Depth-first iterator over this node and all of its descendants (custom-type and boolean-schema leaves included).
@@ -231,4 +256,6 @@ class CHSchemaNode:
         for key, child in self.dependent_schemas.items():
             res.dependent_schemas[key] = f(child)
 
+        for index, custom_concept_data_constraint in enumerate(self.custom_concept_data_constraints):
+            res.custom_concept_data_constraints[index].value = f(custom_concept_data_constraint.value)
         return res

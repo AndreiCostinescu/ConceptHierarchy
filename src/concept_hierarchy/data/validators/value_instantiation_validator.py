@@ -37,6 +37,7 @@ from abc import ABC, abstractmethod
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
+from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
@@ -73,7 +74,7 @@ class CHValueContext(ABC):
     @abstractmethod
     def check_value(
         self,
-        type_name: str,
+        type_name: TypeValue,
         ref: str,
         default_expr: object,
         value: object,
@@ -160,7 +161,7 @@ def _validate(
     # --- custom type: delegate to the value context ----------------------
     if node.is_custom_type:
         default_expr = node.default_expr if node.has_default else MISSING
-        err = context.check_value(node.custom_type_name, node.ref, default_expr, value, value_path)
+        err = context.check_value(node.custom_type, node.ref, default_expr, value, value_path)
         if err is not None:
             record(errors, collect_all_errors, err)
         return
@@ -280,7 +281,7 @@ def _validate_object(
             if node.property_names.is_custom_type:
                 default_expr = node.property_names.default_expr if node.property_names.has_default else MISSING
                 err = context.check_value(
-                    node.property_names.custom_type_name, node.property_names.ref, default_expr, key, value_path + [key]
+                    node.property_names.custom_type, node.property_names.ref, default_expr, key, value_path + [key]
                 )
                 if err is not None:
                     err.part = PathPart.KEY
