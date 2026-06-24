@@ -511,9 +511,9 @@ boolean ::= 'true' | 'false'
 
 object ::= '{' (ws | (member (',' member)*)) '}'
 
-member ::= ws string ws ':' element
+member ::= ws string ws ':' Element
 
-array ::= '[' (ws  | (element (',' element)*)) ']'
+array ::= '[' (ws  | (Element (',' Element)*)) ']'
 
 Element ::= ws value ws
 
