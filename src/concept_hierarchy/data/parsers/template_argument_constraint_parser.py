@@ -42,8 +42,8 @@ from concept_hierarchy.errors import CHSyntaxError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
 
-def parse_constraint_string(
-    text: str, validator: TemplateConstraintFormulaValidator, location_id: LocationId
+def parse_constraint_definition(
+    constraint_def: bool | int | float | str, validator: TemplateConstraintFormulaValidator, location_id: LocationId
 ) -> TemplateConstraintFormula:
     """
     Parse a bare constraint expression (no surrounding quotes) and return the corresponding TemplateConstraintFormula.
@@ -51,7 +51,7 @@ def parse_constraint_string(
     Raises CHSyntaxError if there is unexpected trailing content after a valid formula,
     which usually indicates a syntax error.
     """
-    parser = ConstraintParser(text, validator, location_id)
+    parser = ConstraintParser(constraint_def, validator, location_id)
     formula = parser.parse_constraint()
     parser.check_finished()
     return formula
@@ -94,8 +94,16 @@ class ConstraintParser(StringParser):
         ("string", "string"),
     ]
 
-    def __init__(self, text: str, validator: TemplateConstraintFormulaValidator, location_id: LocationId) -> None:
-        super().__init__(text, location_id)
+    def __init__(
+        self,
+        constraint_def: bool | int | float | str,
+        validator: TemplateConstraintFormulaValidator,
+        location_id: LocationId,
+    ) -> None:
+        constraint_str = str(constraint_def)
+        if isinstance(constraint_def, bool):
+            constraint_str = "true" if constraint_def else "false"
+        super().__init__(constraint_str, location_id)
         self.validator = validator
 
     # ------------------------------------------------------------------
