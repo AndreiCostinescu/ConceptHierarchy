@@ -33,7 +33,7 @@ A node either:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterator
+from typing import Callable, Iterator
 
 from concept_hierarchy.errors import LocationId, PathSegment
 
@@ -171,3 +171,47 @@ class CHSchemaNode:
         yield self
         for _, child in self.iter_children():
             yield from child.walk()
+
+    def apply(self, f: Callable[[CHSchemaNode], CHSchemaNode]) -> CHSchemaNode:
+        if self.is_boolean_schema:
+            return self
+
+        res = self
+
+        for key, child in self.properties.items():
+            res.properties[key] = f(child)
+        for key, child in self.pattern_properties.items():
+            res.pattern_properties[key] = f(child)
+        if isinstance(self.additional_properties, CHSchemaNode):
+            res.additional_properties = f(self.additional_properties)
+        if self.property_names is not None:
+            res.property_names = f(self.property_names)
+
+        if isinstance(self.items, list):
+            for i, child in enumerate(self.items):
+                res.items[i] = f(child)
+        elif isinstance(self.items, CHSchemaNode):
+            res.items = f(self.items)
+        if isinstance(self.additional_items, CHSchemaNode):
+            res.additional_items = f(self.additional_items)
+        if self.contains is not None:
+            res.contains = f(self.contains)
+
+        for res_list, branches in ((res.all_of, self.all_of), (res.any_of, self.any_of), (res.one_of, self.one_of)):
+            for i, child in enumerate(branches):
+                res_list[i] = f(child)
+        if self.not_ is not None:
+            res.not_ = f(self.not_)
+        if self.if_ is not None:
+            res.if_ = f(self.if_)
+        if self.then_ is not None:
+            res.then_ = f(self.then_)
+        if self.else_ is not None:
+            res.else_ = f(self.else_)
+
+        for key, child in self.definitions.items():
+            res.definitions[key] = f(child)
+        for key, child in self.dependent_schemas.items():
+            res.dependent_schemas[key] = f(child)
+
+        return res
