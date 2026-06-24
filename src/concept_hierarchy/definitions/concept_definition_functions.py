@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-from types import NoneType
 from typing import Callable
 
 from concept_hierarchy.data.utils import UNINITIALIZED
@@ -53,9 +52,10 @@ class FunctionDefinition(HiddenImplementationDefinition):
         self.interface: dict = {}
         """The evaluation interface of the function. Data must be inherited!"""
         self.procedure: dict | None = None
-        self.inversion: dict[tuple[str | None, ...], dict[str, dict]] | None = None
+        self.inversion: list[tuple[tuple[str, ...], dict[str, dict]]] | None = None
         """
-        The key is a tuple of template argument constraint formulae (in the order of the template argument definition)
+        The first tuple entry (of each list element) is a tuple of template argument constraint formulae 
+        (in the order of the template argument definition).
         The value is the procedure dictionary mapping argument names to a Function composition value
         """
         self.variations: dict[tuple[str, ...], dict] | None = None
@@ -437,58 +437,67 @@ class FunctionDefinition(HiddenImplementationDefinition):
         #   EXPRESSION CHECK
 
         # check "inversion"
-        self.inversion = self.data.get(FunctionDefinition.function_inversion, None)
-        if self.inversion is not None:
-            if not isinstance(self.inversion, (dict, list)):
+        inversion_data = self.data.get(FunctionDefinition.function_inversion, None)
+        if inversion_data is not None:
+            if not isinstance(inversion_data, (dict, list)):
                 raise CHSyntaxError(
-                    f"The inversion of a {self.definition_type()} must be a JSON object, not {self.inversion!r}",
+                    f"The inversion of a {self.definition_type()} must be a JSON object, not {inversion_data!r}",
                     location_id=self.location_id(FunctionDefinition.function_inversion),
                     part=PathPart.VALUE,
                 )
-            if isinstance(self.inversion, dict):
+            if isinstance(inversion_data, dict):
                 self.check_inversion_arguments(
-                    self.inversion, lambda x: self.location_id(FunctionDefinition.function_inversion, x)
+                    inversion_data, lambda x: self.location_id(FunctionDefinition.function_inversion, x)
                 )
-                self.inversion = {tuple(None for _ in self.template_argument_order): self.inversion}
+                self.inversion = [(tuple("" for _ in self.template_argument_order), inversion_data)]
             else:
-                curated_inversion_definition = {}
-                for inversion_index, inversion_def in enumerate(self.inversion):
-                    if (
-                        not isinstance(inversion_def, dict)
-                        or FunctionDefinition.function_procedure not in inversion_def
-                    ):
+                already_defined_specializations: set[tuple[str, ...]] = set()
+                for inversion_index, inversion_def in enumerate(inversion_data):
+                    if not isinstance(inversion_def, list) or not len(inversion_def) == 2:
                         raise CHSyntaxError(
                             f"The template specialization syntax for {self.definition_type()} inversion definition "
-                            f"should be a JSON array of JSON objects containing:"
-                            f"\n\tfor each {self.definition_type()} template argument a template constraint formula, "
-                            f"and\n\tthe inversion Function composition procedure (at the "
-                            f'"{FunctionDefinition.function_procedure}" key of the object) for that template '
-                            f"specialization!\nGot {inversion_def!r}",
+                            f"should be a JSON array of 2-element JSON arrays containing:"
+                            f"\n\tat the first element, a constraint formula specification for each "
+                            f"{self.definition_type()} template argument, and\n\tat the second element, the inversion "
+                            f"Function composition procedure for that template constraint specialization!\n"
+                            f"Got {inversion_def!r}",
                             location_id=self.location_id(FunctionDefinition.function_inversion, inversion_index),
                         )
-                    for t_arg, t_arg_constraint in inversion_def.items():
-                        # assertion, not check because this is a key of a JSON object
-                        assert isinstance(t_arg, str)
-                        if t_arg not in self.template_arguments:
-                            raise CHSemanticError(
-                                f"{t_arg} is not a template argument of the {self.definition_type()} {self.name}! "
-                                f"Can't define an inversion for this specialization!",
-                                location_id=self.location_id(
-                                    FunctionDefinition.function_inversion, inversion_index, t_arg
-                                ),
-                                part=PathPart.KEY,
-                            )
-                        if not isinstance(t_arg_constraint, (str, NoneType)):
-                            raise CHSyntaxError(
-                                f"Specialization of template constraint formulae for {self.definition_type()} inversion"
-                                f" procedure must be a JSON string or null (if that template argument is not to be "
-                                f"specialized).\n\tGot {t_arg_constraint!r}",
-                                location_id=self.location_id(
-                                    FunctionDefinition.function_inversion, inversion_index, t_arg
-                                ),
-                                part=PathPart.VALUE,
-                            )
-                    procedure_def = inversion_def[FunctionDefinition.function_procedure]
+                    if not isinstance(inversion_def[0], list):
+                        raise CHSyntaxError(
+                            f"Invalid entry in template-specific inversion definition:\n\tthe first entry of "
+                            f"the 2-element array must be a JSON array of string (template argument constraint "
+                            f"formulae) values for each template argument.\n\t"
+                            f"Got {inversion_def[0]!r}",
+                            self.location_id(FunctionDefinition.function_inversion, inversion_index, 0),
+                        )
+                    if len(inversion_def[0]) != len(self.template_argument_order):
+                        raise CHSemanticError(
+                            f"Invalid entry in template-specific inversion definition:\n\tthe first entry of "
+                            f"the 2-element array must be a JSON array of string (template argument constraint "
+                            f"formulae) values of length {len(self.template_argument_order)}.\n\t\tAn entry for "
+                            f"each template argument!\n\tGot {inversion_def[0]!r} of length {len(inversion_def[0])}",
+                            self.location_id(FunctionDefinition.function_inversion, inversion_index, 0),
+                        )
+                    else:
+                        for constraint_index, template_arg_constraint in inversion_def[0]:
+                            if not isinstance(template_arg_constraint, str):
+                                raise CHSyntaxError(
+                                    f"Invalid entry in template-specific inversion definition:\n\tthe first entry of "
+                                    f"the 2-element array must be a JSON array of string (template argument constraint "
+                                    f"formulae) values for each template argument.\n\tGot {template_arg_constraint!r}",
+                                    self.location_id(
+                                        FunctionDefinition.function_inversion, inversion_index, 0, constraint_index
+                                    ),
+                                )
+                    inversion_specialization_key = tuple(inversion_def[0])
+                    if inversion_specialization_key in already_defined_specializations:
+                        raise CHSemanticError(
+                            f"Doubly-defined template-specific {self.definition_type()} inversion key "
+                            f"{inversion_specialization_key!r}",
+                            location_id=self.location_id(FunctionDefinition.function_inversion, inversion_index),
+                        )
+                    procedure_def = inversion_def[1]
                     if not isinstance(procedure_def, dict):
                         raise CHSyntaxError(
                             f"The {self.definition_type()} inversion procedure definition in the template-"
@@ -502,7 +511,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
                             part=PathPart.VALUE,
                         )
                     self.check_inversion_arguments(
-                        inversion_def[FunctionDefinition.function_procedure],
+                        procedure_def,
                         lambda x: self.location_id(
                             FunctionDefinition.function_inversion,
                             inversion_index,
@@ -510,11 +519,9 @@ class FunctionDefinition(HiddenImplementationDefinition):
                             x,
                         ),
                     )
-                    specialization_id = tuple(inversion_def.get(x, None) for x in self.template_argument_order)
-                    curated_inversion_definition[specialization_id] = inversion_def[
-                        FunctionDefinition.function_procedure
-                    ]
-                self.inversion = curated_inversion_definition
+                    # add data to ordered inversion list
+                    already_defined_specializations.add(inversion_specialization_key)
+                    self.inversion.append((inversion_specialization_key, procedure_def))
         # missing checks:
         #  - inversions are valid FunctionComposition expressions
         #    EXPRESSION CHECK
