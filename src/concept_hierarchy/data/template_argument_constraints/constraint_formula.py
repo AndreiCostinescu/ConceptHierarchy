@@ -726,15 +726,27 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
     def __init__(self, constraint_type: str, location_id: LocationId):
         super().__init__(location_id)
         self.constraint_type = constraint_type
-        if self.constraint_type not in {"int", "float", "bool", "string"}:
+        if self.constraint_type not in {"bool", "int", "float", "string"}:
             raise RuntimeError(f"Unknown literal constraint type: {self.constraint_type}")
 
     def __repr__(self):
         return "Literal:" + self.constraint_type
 
     @property
+    def is_boolean_constraint(self) -> bool:
+        return self.constraint_type == "bool"
+
+    @property
+    def is_integer_constraint(self) -> bool:
+        return self.constraint_type == "int"
+
+    @property
     def is_numeric_constraint(self) -> bool:
         return self.constraint_type in {"int", "float"}
+
+    @property
+    def is_string_constraint(self) -> bool:
+        return self.constraint_type == "string"
 
     @property
     def is_unconstrained(self):
