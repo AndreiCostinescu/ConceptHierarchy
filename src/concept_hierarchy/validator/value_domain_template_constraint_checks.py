@@ -14,49 +14,14 @@
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
-from concept_hierarchy.data.parsers.template_argument_constraint_parser import (
-    TemplateConstraintFormulaValidator,
-    parse_constraint_string,
-)
+from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_string
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     ConstraintGroup,
     NonStructureConstraintFormula,
 )
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.errors import CHSemanticError
-
-
-class ConstraintFormulaValidator(TemplateConstraintFormulaValidator):
-    def __init__(self, context: ConceptHierarchyContext):
-        self.ch_context = context
-        # contains all template arguments available in the ValueDomain concept that defines the constraints
-        self.t_arg_context: set[str] = set()
-
-    def full_type_name(self, name: str) -> str:
-        if self.is_concept(name):
-            type_def_data = self.ch_context.ch.concepts[name]
-            if isinstance(type_def_data, HiddenImplementationDefinition):
-                return type_def_data.name_with_template_variables()
-        return name
-
-    def get_nr_template_arguments(self, concept_name: str) -> int:
-        if self.is_concept(concept_name):
-            type_def_data = self.ch_context.ch.concepts[concept_name]
-            if isinstance(type_def_data, HiddenImplementationDefinition):
-                return len(type_def_data.template_argument_order)
-        return 0
-
-    def is_concept(self, name: str) -> bool:
-        return self.ch_context.ch.is_concept(name)
-
-    def is_template_variable(self, name: str):
-        return name in self.t_arg_context
-
-    def get_existing_template_variables(self) -> set[str]:
-        return self.t_arg_context
-
-    def update_existing_template_variables(self, new_template_variables: set[str]):
-        self.t_arg_context = new_template_variables
+from concept_hierarchy.validator.validators.constraint_formula_validator import ConstraintFormulaValidator
 
 
 def check_value_domain_template_constraint_formulae(context: ConceptHierarchyContext):
