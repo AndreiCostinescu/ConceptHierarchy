@@ -75,7 +75,7 @@ class StringParser:
 
     # --- Low-level lexers ---
 
-    def _parse_string_literal(self, surround_result_with_quotes: bool) -> str:
+    def parse_string_literal(self, surround_result_with_quotes: bool) -> str:
         """
         Parse a JSON-style double-quoted string; return the unescaped content.
 
@@ -107,7 +107,7 @@ class StringParser:
             return content
         return '"' + content + '"'
 
-    def _parse_bool_literal(self) -> str:
+    def parse_bool_literal(self) -> str:
         """
         Parse 'true' or 'false' (JSON boolean syntax).
 
@@ -128,7 +128,7 @@ class StringParser:
             f"Expected 'true' or 'false' at position {self.pos}, got {self.remaining()!r}", location_id=self.location_id
         )
 
-    def _parse_number_literal(self) -> str:
+    def parse_number_literal(self) -> str:
         """
         Parse an integer or floating-point literal, including optional leading '-'.
 
@@ -160,7 +160,7 @@ class StringParser:
 
         return raw
 
-    def _parse_natural(self) -> str:
+    def parse_natural(self) -> str:
         m = re.match(r"\d+", self.remaining())
         if not m:
             raise CHSyntaxError(
@@ -170,7 +170,7 @@ class StringParser:
         self.pos += len(m.group())
         return m.group()
 
-    def _parse_upper_case_name(self) -> str:
+    def parse_upper_case_name(self) -> str:
         m = re.match(r"[A-Z][A-Za-z0-9_]*", self.remaining())
         if not m:
             raise CHSyntaxError(
@@ -180,7 +180,7 @@ class StringParser:
         self.pos += len(m.group())
         return m.group()
 
-    def _consume_balanced(self, open_ch: str, close_ch: str) -> str:
+    def consume_balanced(self, open_ch: str, close_ch: str) -> str:
         """
         Consume a balanced delimited sequence (handles nesting).
         Returns the full matched text including the delimiters.

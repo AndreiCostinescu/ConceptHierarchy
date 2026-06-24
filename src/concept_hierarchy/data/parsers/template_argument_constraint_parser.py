@@ -144,14 +144,14 @@ class ConstraintParser(StringParser):
 
         # Literal *value* constraints  â†’  "...", true, false, 3, -1, 3.14
         if self.peek() == '"':
-            return LiteralValueConstraintFormula("string", self._parse_string_literal(True), self.location_id)
+            return LiteralValueConstraintFormula("string", self.parse_string_literal(True), self.location_id)
         if self.starts_with("true") or self.starts_with("false"):
-            return LiteralValueConstraintFormula("bool", self._parse_bool_literal(), self.location_id)
+            return LiteralValueConstraintFormula("bool", self.parse_bool_literal(), self.location_id)
         if self.peek().isdigit() or (
             self.peek() == "-" and self.pos + 1 < len(self.text) and self.text[self.pos + 1].isdigit()
         ):
             start = self.pos
-            raw = self._parse_number_literal()
+            raw = self.parse_number_literal()
             # Prefer integer to float when both match (e.g. bare "3")
             ref = Reference()
             if is_integer(raw, ref):

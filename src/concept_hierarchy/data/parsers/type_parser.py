@@ -251,13 +251,13 @@ class TypeParser(StringParser):
         """
         if self.peek() == '"':
             # Decode via the parent-class helper (handles \", \\, \uXXXX, etc.)
-            clean_name = self._parse_string_literal(surround_result_with_quotes=False)
+            clean_name = self.parse_string_literal(surround_result_with_quotes=False)
             literal_type = "string"
         elif self.starts_with("true") or self.starts_with("false"):
-            clean_name = self._parse_bool_literal()
+            clean_name = self.parse_bool_literal()
             literal_type = "bool"
         else:
-            clean_name = self._parse_number_literal()
+            clean_name = self.parse_number_literal()
             literal_type = "int" if is_integer(clean_name) else "float"
 
         return TemplateArgumentLiteral(
