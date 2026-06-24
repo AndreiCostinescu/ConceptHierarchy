@@ -32,6 +32,7 @@ A node either:
 
 from __future__ import annotations
 
+from copy import copy
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
@@ -192,7 +193,7 @@ class CHSchemaNode:
         if self.is_boolean_schema:
             return self
 
-        res = self
+        res = copy(self)
 
         for key, child in self.properties.items():
             res.properties[key] = f(child)
