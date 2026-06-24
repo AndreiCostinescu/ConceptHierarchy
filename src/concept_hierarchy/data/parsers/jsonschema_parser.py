@@ -54,6 +54,7 @@ from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression_utils import ValueDomainArgumentReference
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
+from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import (
     CHSemanticError,
@@ -94,9 +95,9 @@ class CHSchemaContext(ABC):
     }
 
     @abstractmethod
-    def check_custom_type(self, type_name: str, location_id: LocationId) -> CHSemanticError | None:
+    def parse_custom_type(self, type_name: str, location_id: LocationId) -> TypeValue:
         """
-        Check whether ``type_name`` is a valid custom type in this context.
+        Parse ``type_name`` into a valid type value in this context.
 
         Args:
             type_name: The custom type name as written in the schema (i.e. the value of the ``"type"`` keyword).
@@ -104,7 +105,10 @@ class CHSchemaContext(ABC):
                 for use in the returned error's ``path``.
 
         Returns:
-            ``None`` if ``type_name`` is valid, otherwise a :class:`CHSemanticError` explaining why it isn't.
+            ``None`` if ``type_name`` is invalid, otherwise a :class:`CHSemanticError` explaining why it isn't.
+
+        Raises:
+            CHSyntaxError or CHSemanticError upon failure in parsing
         """
 
     @abstractmethod
@@ -322,19 +326,20 @@ def _finish_custom_type_node(
     type_name: str,
     work: dict,
     location_id: LocationId,
-    context: CHSchemaContext,
+    validator: CHSchemaContext,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> None:
     node.is_custom_type = True
     node.custom_type_name = type_name
 
-    err = context.check_custom_type(type_name, location_id + ["type"])
-    if err is not None:
-        record(errors, collect_all_errors, err)
+    try:
+        node.custom_type = validator.parse_custom_type(type_name, location_id + ["type"])
+    except ConceptHierarchyError as e:
+        record(errors, collect_all_errors, e)
 
     ref = work.get("referenceType", ValueDomainArgumentReference.NO_REF.value)
-    if "referenceType" in work and work["referenceType"] not in context.argument_reference_types:
+    if "referenceType" in work and work["referenceType"] not in validator.argument_reference_types:
         record(
             errors,
             collect_all_errors,
