@@ -27,6 +27,7 @@ from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+    NonStructureConstraintFormula,
     StructureConstraintFormula,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import (
@@ -429,6 +430,21 @@ class ConceptHierarchyTypeValidator(TypeValidator):
 
     def get_available_template_variables(self) -> list[str]:
         return list(self.context.template_context.variables)
+
+    def add_template_variable(
+        self,
+        template_variable_name: str,
+        template_variable_constraint: NonStructureConstraintFormula,
+        location_id: LocationId,
+    ):
+        self.context.template_context = self.context.template_context.add_template_variable(
+            template_variable_name, False, template_variable_constraint, location_id
+        )
+
+    def delete_template_variable(self, template_variable_name: str, location_id: LocationId):
+        self.context.template_context = self.context.template_context.delete_template_variable(
+            template_variable_name, location_id
+        )
 
 
 def validate_template_argument_constraints_in_instantiated_types(

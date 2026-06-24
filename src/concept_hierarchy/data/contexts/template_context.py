@@ -23,6 +23,7 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     StructureDisjunction,
     StructureNegation,
     TemplateConstraintAnd,
+    TemplateConstraintFormula,
     TypeTemplateConstraintFormula,
     Unconstrained,
 )
@@ -146,7 +147,7 @@ class TemplateContext:
         return StructureConjunction(location_id, (self.constraint, new_constraint))
 
     def add_template_variable(
-        self, variable_name: str, is_variadic: bool, constraint: StructureConstraintFormula, location_id: LocationId
+        self, variable_name: str, is_variadic: bool, constraint: TemplateConstraintFormula, location_id: LocationId
     ) -> TemplateContext:
         if variable_name in self.variables:
             raise RuntimeError(
@@ -156,8 +157,36 @@ class TemplateContext:
             )
         new_variables = self.variables + (variable_name,)
         new_variadic_variables = self.variadic_variables | ({variable_name} if is_variadic else set())
+        if isinstance(constraint, NonStructureConstraintFormula):
+            constraint = ConstraintGroup(location_id, (constraint,))
+        assert isinstance(constraint, StructureConstraintFormula)
         self.check_invariant(1, constraint)  # removes Neg from structure and pushes it inward
-        new_constraint = self.extend_constraint(constraint, location_id)
+        if self.empty:
+            new_constraint = constraint
+        else:
+            new_constraint = self.extend_constraint(constraint, location_id)
+        return TemplateContext(new_variables, new_variadic_variables, new_constraint)
+
+    def delete_template_variable(self, template_variable_name: str, location_id: LocationId) -> TemplateContext:
+        # FIXME: update procedure to work not only with the last template variable!
+        if template_variable_name != self.variables[-1]:
+            raise RuntimeError(
+                f"Can't remove template variable {template_variable_name} which is not the last-added template "
+                f"variable. All template variables: {self.variables}"
+            )
+        new_variables = self.variables[:-1]
+        new_variadic_variables: set[str] = set(self.variadic_variables.copy())
+        new_variadic_variables.discard(template_variable_name)
+        # FIXME: update procedure to not depend on the constraint being a ConstraintGroup!
+        if not isinstance(self.constraint, ConstraintGroup):
+            raise RuntimeError(
+                f"Can't remove template variable from non-ConstraintGroup constraint {self.constraint!r}"
+            )
+        if len(self.variables) == 1:
+            new_constraint = None
+        else:
+            # FIXME: make sure that the remaining variables to not depend on the variable being removed!
+            new_constraint = ConstraintGroup(location_id, self.constraint.group_constraints[:-1])
         return TemplateContext(new_variables, new_variadic_variables, new_constraint)
 
     def add_context(self, context: TemplateContext, location_id: LocationId) -> TemplateContext:
