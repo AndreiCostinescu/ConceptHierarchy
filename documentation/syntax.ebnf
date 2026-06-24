@@ -412,7 +412,7 @@ nonEmptyConceptList
 TemplateArgumentConstraintFormula
         ::= (ws '"' (literalTemplateConstraint | templateArgumentConstraint) '"' ws) | LiteralValue
 literalTemplateConstraint
-        ::= ('Literal:' ('boolean' | 'int' | 'number' | 'string'))
+        ::= ('Literal:' ('boolean' | 'integer' | 'number' | 'string'))
 templateArgumentConstraint
         ::= templateArgumentConstraintLiteral | templateArgumentConstraintOperatorCall
 templateArgumentConstraintOperatorCall

@@ -90,7 +90,7 @@ class ConstraintParser(StringParser):
     _LITERAL_TOKENS = [
         ("boolean", "bool"),
         ("number", "float"),
-        ("int", "int"),
+        ("integer", "int"),
         ("string", "string"),
     ]
 

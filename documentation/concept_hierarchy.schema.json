@@ -748,12 +748,38 @@
                 }
               },
               "patternProperties": {
-                "^[A-Z][A-Za-z0-9_]*$": {
-                  "type": "string",
-                  "description": "Template argument constraint or literal type"
-                }
+                "^[A-Z][A-Za-z0-9_]*$": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
               },
               "additionalProperties": false
+            }
+          ]
+        },
+
+        "templateArgumentConstraintValue": {
+          "description": "The value that can be written wherever a template variable constraint is expected.",
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Template variable literal constraint",
+              "pattern": "^Literal:(boolean|integer|number|string)$"
+            }, {
+              "type": "integer",
+              "description": "Template variable literal value constraint of type Literal:integer"
+            }, {
+              "type": "number",
+              "description": "Template variable literal value constraint of type Literal:number",
+              "not": { "type": "integer" }
+            }, {
+              "type": "boolean",
+              "description": "Template variable literal value constraint of type Literal:boolean"
+            }, {
+              "type": "string",
+              "pattern": "^\".*\"$",
+              "description": "Template variable literal value constraint of type Literal:string"
+            }, {
+              "type": "string",
+              "description": "Template variable type constraint (including the empty string that maps to unconstrained)",
+              "pattern": "^(?!Literal:(boolean|integer|number|string)$)(?!\".*\"$)"
             }
           ]
         },
