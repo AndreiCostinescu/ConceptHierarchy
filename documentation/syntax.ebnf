@@ -509,9 +509,9 @@ value ::= object | array | string | number | boolean | "null"
 
 boolean ::= 'true' | 'false'
 
-object ::= '{' (ws | (member (',' member)*)) '}'
+object ::= '{' (ws | (Member (',' Member)*)) '}'
 
-member ::= ws string ws ':' Element
+Member ::= ws string ws ':' Element
 
 array ::= '[' (ws  | (Element (',' Element)*)) ']'
 
