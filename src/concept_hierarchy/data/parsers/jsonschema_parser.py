@@ -52,6 +52,7 @@ from abc import ABC, abstractmethod
 
 from jsonschema import Draft7Validator
 
+from concept_hierarchy.data.expressions.expression_utils import ValueDomainArgumentReference
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import (
@@ -87,7 +88,10 @@ class CHSchemaContext(ABC):
     while a schema is being *defined*.
     """
 
-    argument_reference_types: set[str]
+    argument_reference_types: set[str] = {
+        ValueDomainArgumentReference.NO_REF.value,
+        ValueDomainArgumentReference.REF.value,
+    }
 
     @abstractmethod
     def check_custom_type(self, type_name: str, location_id: LocationId) -> CHSemanticError | None:
@@ -163,7 +167,7 @@ def _expand_string_shorthand(raw: str) -> dict:
     if raw in BUILTIN_TYPES:
         return {"type": raw}
     # Bare custom type name -> no default, NoRef.
-    return {"type": raw, "referenceType": "NoRef"}
+    return {"type": raw, "referenceType": ValueDomainArgumentReference.NO_REF.value}
 
 
 def _expand_array_shorthand(
@@ -184,7 +188,8 @@ def _expand_array_shorthand(
             errors,
             collect_all_errors,
             CHSyntaxError(
-                'Array shorthand must be of the form [<Concept Hierarchy type name>, "Reference"|"NoRef"]',
+                f"Array shorthand must be of the form [<Concept Hierarchy type name>, "
+                f'"{ValueDomainArgumentReference.REF.value}"|"{ValueDomainArgumentReference.NO_REF.value}"]',
                 location_id,
             ),
         )
@@ -328,17 +333,18 @@ def _finish_custom_type_node(
     if err is not None:
         record(errors, collect_all_errors, err)
 
-    ref = work.get("referenceType", "NoRef")
+    ref = work.get("referenceType", ValueDomainArgumentReference.NO_REF.value)
     if "referenceType" in work and work["referenceType"] not in context.argument_reference_types:
         record(
             errors,
             collect_all_errors,
             CHSyntaxError(
-                f'"referenceType" must be "Reference" or "NoRef", got {work["referenceType"]!r}',
+                f'"referenceType" must be "{ValueDomainArgumentReference.REF.value}" or '
+                f'"{ValueDomainArgumentReference.NO_REF.value}", got {work["referenceType"]!r}',
                 location_id + ["referenceType"],
             ),
         )
-        ref = "NoRef"
+        ref = ValueDomainArgumentReference.NO_REF.value
     node.ref = ref
 
     if "default" in work:
