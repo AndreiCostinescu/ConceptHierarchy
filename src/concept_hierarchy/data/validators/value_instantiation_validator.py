@@ -36,7 +36,7 @@ from abc import ABC, abstractmethod
 
 from jsonschema import Draft7Validator
 
-from concept_hierarchy.data.jsonschema.ast_nodes import CHSchemaNode
+from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
@@ -150,7 +150,7 @@ def _validate(
         return
 
     # --- boolean schema --------------------------------------------------
-    if node.is_boolean_schema():
+    if node.is_boolean_schema:
         if node.canonical is False:
             record(
                 errors, collect_all_errors, CHSemanticError("no value is allowed here (schema is `false`)", value_path)

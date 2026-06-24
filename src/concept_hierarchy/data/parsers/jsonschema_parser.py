@@ -52,7 +52,7 @@ from abc import ABC, abstractmethod
 
 from jsonschema import Draft7Validator
 
-from concept_hierarchy.data.jsonschema.ast_nodes import CHSchemaNode
+from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import (
     CHSemanticError,

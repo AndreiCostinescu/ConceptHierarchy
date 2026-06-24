@@ -26,6 +26,6 @@ See :mod:`ch_schema.schema_validator` and :mod:`ch_schema.value_validator` for d
 and :mod:`ch_schema.context` for the two context protocols that need to be implemented by callers.
 """
 
-from concept_hierarchy.data.jsonschema.ast_nodes import CHSchemaNode
+from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 
 __all__ = ["CHSchemaNode"]

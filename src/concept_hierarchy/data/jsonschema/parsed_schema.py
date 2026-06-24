@@ -51,7 +51,7 @@ class CHSchemaNode:
     """
     ``raw`` after shorthand expansion: 
     either a bool (draft-07 boolean schema) or a dict with an explicit ``"type"`` (if any).
-     """
+    """
 
     # --- custom types -------------------------------------------------
     is_custom_type: bool = False
@@ -65,9 +65,9 @@ class CHSchemaNode:
     """
 
     # --- "type" keyword (builtin / multi-type only) -------------------
-    type_value: object = None  # str | List[str] | None
+    type_value: str | list[str] | None = None
 
-    # --- object structure ----------------------------------------------
+    # --- object structure ---------------------------------------------
     properties: dict[str, CHSchemaNode] = field(default_factory=dict)
     pattern_properties: dict[str, CHSchemaNode] = field(default_factory=dict)
     additional_properties: CHSchemaNode | bool | None = None
@@ -75,12 +75,12 @@ class CHSchemaNode:
     required: list[str] = field(default_factory=list)
     dependent_schemas: dict[str, CHSchemaNode] = field(default_factory=dict)
 
-    # --- array structure -------------------------------------------------
+    # --- array structure ----------------------------------------------
     items: CHSchemaNode | list[CHSchemaNode] | None = None
     additional_items: CHSchemaNode | bool | None = None
     contains: CHSchemaNode | None = None
 
-    # --- composition -------------------------------------------------
+    # --- composition --------------------------------------------------
     all_of: list[CHSchemaNode] = field(default_factory=list)
     any_of: list[CHSchemaNode] = field(default_factory=list)
     one_of: list[CHSchemaNode] = field(default_factory=list)
@@ -94,10 +94,10 @@ class CHSchemaNode:
     ref_string: str | None = None
     ref_resolved: CHSchemaNode | None = None
 
-    # --- everything else (enum, const, minimum, pattern, format, ...) --
+    # --- everything else (enum, const, minimum, pattern, format, ...) -
     extra_keywords: dict = field(default_factory=dict)
 
-    # --- derived, jsonschema-Draft7-compatible forms --------------------
+    # --- derived, jsonschema-Draft7-compatible forms ------------------
     safe_canonical: dict | bool = True
     """
     Full recursive draft-07 schema equivalent to this node, with every *custom-type* subtree replaced by ``True``. 
@@ -113,6 +113,7 @@ class CHSchemaNode:
     """
 
     # ------------------------------------------------------------------
+    @property
     def is_boolean_schema(self) -> bool:
         return isinstance(self.canonical, bool)
 
@@ -122,7 +123,7 @@ class CHSchemaNode:
         regardless of which keyword it came from.
         ``relative_path`` is a tuple of path segments to append to this node's :attr:`path` to get the child's path.
         """
-        if self.is_boolean_schema():
+        if self.is_boolean_schema:
             return
 
         for key, child in self.properties.items():
