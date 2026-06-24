@@ -54,8 +54,8 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
 
         # if template_argument_order is (), then there are no template arguments
         self.template_argument_order: tuple[str, ...] = ()
-        # unparsed template constraint formulae, must be strings
-        self.template_argument_constraints: dict[str, str] = {}
+        # unparsed template constraint formulae, must be strings or literal values (bool, int, float)
+        self.template_argument_constraints: dict[str, bool | int | float | str] = {}
         # mapping from (parent VD, parent template arg name) -> string value or list of strings variadic value
         self.substitution_of_template_arguments: dict[tuple[str | None, str], str | list[str]] = {}
         self.variadic_template_arguments: set[str] = set()
@@ -504,10 +504,10 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                             ),
                             part=PathPart.KEY,
                         )
-                    if not isinstance(t_arg_constraint, str):
+                    if not isinstance(t_arg_constraint, (bool, int, float, str)):
                         raise CHSyntaxError(
-                            f"The definition of a {self.definition_type()} template argument constraint formulae must "
-                            f"be a JSON string, got {t_arg_constraint!r}",
+                            f"The definition of a {self.definition_type()} template argument constraint formula must "
+                            f"be a JSON string, boolean, integer or number. Got {t_arg_constraint!r}",
                             location_id=self.location_id(
                                 HiddenImplementationDefinition.hidden_template_arguments, t_arg_constraint
                             ),
