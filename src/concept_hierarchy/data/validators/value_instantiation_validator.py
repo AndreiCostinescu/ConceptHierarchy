@@ -178,7 +178,11 @@ def _validate(
                 record(
                     errors,
                     collect_all_errors,
-                    CHSemanticError("required property is missing", value_path + [key], part=PathPart.KEY),
+                    CHSemanticError(
+                        f'Required property "{key}" is missing in {value!r}',
+                        location_id=value_path,
+                        part=PathPart.VALUE,
+                    ),
                 )
 
     # --- object structure --------------------------------------------------
@@ -227,7 +231,16 @@ def _validate_object(
 
     for key, child in node.properties.items():
         matched_keys.add(key)
-        _validate(child, value.get(key), key in value, value_path + [key], context, errors, collect_all_errors)
+        if node.require_all_properties and key not in value:
+            record(
+                errors,
+                collect_all_errors,
+                CHSemanticError(
+                    f'Required property "{key}" is missing in {value!r}', location_id=value_path, part=PathPart.VALUE
+                ),
+            )
+        else:
+            _validate(child, value.get(key), key in value, value_path + [key], context, errors, collect_all_errors)
 
     for pattern, child in node.pattern_properties.items():
         regex = re.compile(pattern)

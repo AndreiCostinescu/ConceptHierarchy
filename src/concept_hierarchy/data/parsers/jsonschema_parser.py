@@ -410,6 +410,9 @@ def _finish_builtin_node(
     if "propertyNames" in work:
         node.property_names = child(work.pop("propertyNames"), "propertyNames")
 
+    if "requireAllKeysFromProperties" in work:
+        node.require_all_properties = work.pop("requireAllKeysFromProperties")
+
     if "required" in work:
         req = work.pop("required")
         if isinstance(req, list) and all(isinstance(x, str) for x in req):
@@ -418,7 +421,7 @@ def _finish_builtin_node(
             record(
                 errors,
                 collect_all_errors,
-                CHSyntaxError('"required" must be an array of strings', location_id + ["required"]),
+                CHSyntaxError('"required" must be an array of strings', location_id=location_id + ["required"]),
             )
 
     if "dependencies" in work:
@@ -617,7 +620,4 @@ def _check_meta_schema(root: CHSchemaNode, errors: list[ConceptHierarchyError], 
     """
     meta_validator = Draft7Validator(Draft7Validator.META_SCHEMA)
     for err in meta_validator.iter_errors(root.safe_canonical):
-        print(type(err))
-        print(err.path)
-        assert False
-        record(errors, collect_all_errors, CHSyntaxError(err.message, list(err.path)))
+        record(errors, collect_all_errors, CHSyntaxError(err.message, root.location_id + list(err.path)))

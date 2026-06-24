@@ -428,6 +428,7 @@
 
             "maxProperties": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
             "minProperties": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+            "requireAllKeysFromProperties": { "type": "boolean" },
             "required": {
               "type": "array",
               "items": { "type": "string" },
@@ -797,6 +798,7 @@
               "description": "Full definition with order, constraints, substitution",
               "properties": {
                 "order": {
+                  "description": "The order in which template variable are to be specified in instantiations of this type.",
                   "type": "array",
                   "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentDefinition" }
                 },
