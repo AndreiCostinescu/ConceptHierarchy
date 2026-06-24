@@ -410,7 +410,7 @@ nonEmptyConceptList
 //// Template Argument Constraint Formula
 // No variadic group constraint: all template values of the variadic group must satisfy the same constraint!
 TemplateArgumentConstraintFormula
-        ::= (ws '"' (literalTemplateConstraint | templateArgumentConstraint) '"' ws) | LiteralValue
+        ::= (ws '"' (literalTemplateConstraint | templateArgumentConstraint | '') '"' ws) | LiteralValue
 literalTemplateConstraint
         ::= ('Literal:' ('boolean' | 'integer' | 'number' | 'string'))
 templateArgumentConstraint
@@ -425,7 +425,7 @@ templateArgumentConstraintLiteral
 templateArgumentConstraintLiteralName
         ::= upperCaseName ('<' (ws | (templateConstraintFormula (', ' templateConstraintFormula)*)) '>')?
 templateConstraintFormula
-        ::= literalTemplateConstraint | literalValue | templateArgumentConstraint
+        ::= literalTemplateConstraint | literalValue | templateArgumentConstraint | ''
 
 //// Template-Instantiated Types
 // ── Entry point ─────────────────────────────────────────────────────────────

@@ -45,7 +45,9 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
                 location_id = []
             else:
                 location_id = vd.location_of(t_arg)
-            t_arg_constraint = parse_constraint_definition(t_arg_constraint_formula, validator, location_id)
+            t_arg_constraint = parse_constraint_definition(
+                t_arg_constraint_formula, validator, location_id, allow_unconstrained=False
+            )
             if not isinstance(t_arg_constraint, NonStructureConstraintFormula):
                 raise CHSemanticError(
                     f"Found a non structure constraint formula {t_arg_constraint} when defining the constraint of "

@@ -38,12 +38,16 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TypeTemplateConstraintFormula,
     Unconstrained,
 )
-from concept_hierarchy.errors import CHSyntaxError, LocationId
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
 
 def parse_constraint_definition(
-    constraint_def: bool | int | float | str, validator: TemplateConstraintFormulaValidator, location_id: LocationId
+    constraint_def: bool | int | float | str,
+    validator: TemplateConstraintFormulaValidator,
+    location_id: LocationId,
+    *,
+    allow_unconstrained: bool,
 ) -> TemplateConstraintFormula:
     """
     Parse a bare constraint expression (no surrounding quotes) and return the corresponding TemplateConstraintFormula.
@@ -52,7 +56,7 @@ def parse_constraint_definition(
     which usually indicates a syntax error.
     """
     parser = ConstraintParser(constraint_def, validator, location_id)
-    formula = parser.parse_constraint()
+    formula = parser.parse_constraint(allow_unconstrained)
     parser.check_finished()
     return formula
 
@@ -110,18 +114,20 @@ class ConstraintParser(StringParser):
     # Grammar rules
     # ------------------------------------------------------------------
 
-    def parse_constraint(self) -> TemplateConstraintFormula:
+    def parse_constraint(self, allow_unconstrained: bool) -> TemplateConstraintFormula:
         """Entry point for a single constraint expression."""
         self.skip_whitespace()
         if any(self.starts_with(x) for x in ["Conj(", "Disj(", "Neg(", "<"]):
-            return self._parse_structure_constraint()
-        return self._parse_non_structure_constraint()
+            return self._parse_structure_constraint(allow_unconstrained)
+        return self._parse_non_structure_constraint(allow_unconstrained)
 
-    def _parse_non_structure_constraint(self) -> NonStructureConstraintFormula:
+    def _parse_non_structure_constraint(self, allow_unconstrained: bool) -> NonStructureConstraintFormula:
         self.skip_whitespace()
 
         # Empty / whitespace-only input or a closing delimiter means "no constraint".
         if self.eof() or self.peek() in (")", ">", ","):
+            if not allow_unconstrained:
+                raise CHSemanticError("An unconstrained constraint is not allowed here", location_id=self.location_id)
             return Unconstrained(self.location_id)
 
         # Literal (non-type) constraint  ->  Literal:boolean / int / number / string
@@ -130,11 +136,11 @@ class ConstraintParser(StringParser):
 
         # Boolean operator wrappers
         if self.starts_with("And("):
-            return self._parse_and()
+            return self._parse_and(allow_unconstrained)
         if self.starts_with("Or("):
-            return self._parse_or()
+            return self._parse_or(allow_unconstrained)
         if self.starts_with("Not("):
-            return self._parse_not()
+            return self._parse_not(allow_unconstrained)
 
         # Literal *value* constraints  â†’  "...", true, false, 3, -1, 3.14
         if self.peek() == '"':
@@ -160,7 +166,7 @@ class ConstraintParser(StringParser):
         # Hierarchy literal  (T / T* / T. / ^T / ^T*)
         return self._parse_hierarchy_literal()
 
-    def _parse_structure_constraint(self) -> StructureConstraintFormula:
+    def _parse_structure_constraint(self, allow_unconstrained: bool) -> StructureConstraintFormula:
         # Structure operator wrappers
         if self.starts_with("Conj("):
             return self._parse_conj()
@@ -175,7 +181,7 @@ class ConstraintParser(StringParser):
                 f"Expected a structure constraint at {self.remaining()} but it doesn't match any structure constraint!",
                 location_id=self.location_id,
             )
-        return self._parse_constraint_group()
+        return self._parse_constraint_group(allow_unconstrained)
 
     # --- structure operators ----------------------------------------------
 
@@ -206,39 +212,41 @@ class ConstraintParser(StringParser):
 
     # --- structure group --------------------------------------------------
 
-    def _parse_constraint_group(self) -> ConstraintGroup:
+    def _parse_constraint_group(self, allow_unconstrained: bool) -> ConstraintGroup:
         self.consume("<")
-        group_elements = [self._parse_non_structure_constraint()]
+        group_elements = [self._parse_non_structure_constraint(allow_unconstrained)]
         while self.try_consume(", "):
-            group_elements.append(self._parse_non_structure_constraint())
+            group_elements.append(self._parse_non_structure_constraint(allow_unconstrained))
         self.consume(">")
         return ConstraintGroup(self.location_id, tuple(group_elements))
 
     # --- boolean operators ------------------------------------------------
 
-    def _parse_and(self) -> TemplateConstraintAnd:
+    def _parse_and(self, allow_unconstrained: bool) -> TemplateConstraintAnd:
         self.consume("And(")
-        args = self._parse_type_constraint_list()
+        args = self._parse_type_constraint_list(allow_unconstrained)
         self.consume(")")
         return TemplateConstraintAnd(self.location_id, args)
 
-    def _parse_or(self) -> TemplateConstraintOr:
+    def _parse_or(self, allow_unconstrained: bool) -> TemplateConstraintOr:
         self.consume("Or(")
-        args = self._parse_type_constraint_list()
+        args = self._parse_type_constraint_list(allow_unconstrained)
         self.consume(")")
         return TemplateConstraintOr(self.location_id, args)
 
-    def _parse_not(self) -> TemplateConstraintNot:
+    def _parse_not(self, allow_unconstrained: bool) -> TemplateConstraintNot:
         self.consume("Not(")
-        arg = self._parse_type_constraint()
+        arg = self._parse_type_constraint(allow_unconstrained)
         self.consume(")")
         return TemplateConstraintNot(self.location_id, arg)
 
-    def _parse_non_structure_constraint_list(self) -> tuple[NonStructureConstraintFormula, ...]:
+    def _parse_non_structure_constraint_list(
+        self, allow_unconstrained: bool
+    ) -> tuple[NonStructureConstraintFormula, ...]:
         """One or more non-structure-constraints separated by ', '."""
-        items = [self._parse_non_structure_constraint()]
+        items = [self._parse_non_structure_constraint(allow_unconstrained)]
         while self.try_consume(", "):
-            items.append(self._parse_non_structure_constraint())
+            items.append(self._parse_non_structure_constraint(allow_unconstrained))
         return tuple(items)
 
     # --- non-type ---------------------------------------------------------
@@ -257,7 +265,7 @@ class ConstraintParser(StringParser):
 
     # --- hierarchy literals -----------------------------------------------
 
-    def _parse_type_constraint(self) -> TypeTemplateConstraintFormula:
+    def _parse_type_constraint(self, allow_unconstrained: bool) -> TypeTemplateConstraintFormula:
         """
         Like parse_constraint(), but restricted to TypeTemplateConstraintFormula.
 
@@ -272,7 +280,7 @@ class ConstraintParser(StringParser):
                 f"Only type constraints (T, T*, T., ^T, ^T*, And(...), Or(...), Not(...)) are allowed here.",
                 location_id=self.location_id,
             )
-        formula = self.parse_constraint()
+        formula = self.parse_constraint(allow_unconstrained)
         if not isinstance(formula, TypeTemplateConstraintFormula):
             raise CHSyntaxError(
                 f"Expected a TypeTemplateConstraintFormula as a template argument, got {type(formula).__name__!r}",
@@ -280,11 +288,11 @@ class ConstraintParser(StringParser):
             )
         return formula
 
-    def _parse_type_constraint_list(self) -> tuple[TypeTemplateConstraintFormula, ...]:
+    def _parse_type_constraint_list(self, allow_unconstrained: bool) -> tuple[TypeTemplateConstraintFormula, ...]:
         """One or more type-template-constraints separated by ', '."""
-        items = [self._parse_type_constraint()]
+        items = [self._parse_type_constraint(allow_unconstrained)]
         while self.try_consume(", "):
-            items.append(self._parse_type_constraint())
+            items.append(self._parse_type_constraint(allow_unconstrained))
         return tuple(items)
 
     def _parse_hierarchy_literal(self) -> TemplateConstraintHierarchyOperator:
