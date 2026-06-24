@@ -119,6 +119,12 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
             elif not isinstance(instantiation_data, list):
                 # if there are no template arguments, template_argument_order is an empty tuple
                 self.instantiation = [(tuple("" for _ in self.template_argument_order), instantiation_data)]
+            elif isinstance(instantiation_data, list) and len(instantiation_data) == 0:
+                raise CHSyntaxError(
+                    f"Can not specify an empty list of {self.definition_type()} instantiations for {self.name!r}!",
+                    location_id=self.location_id(ValueDomainDefinition.value_domain_instantiation),
+                    part=PathPart.VALUE,
+                )
             else:
                 assert isinstance(instantiation_data, list)
                 if (
@@ -129,6 +135,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     self.instantiation = [(tuple("" for _ in self.template_argument_order), instantiation_data)]
                 else:
                     already_defined_specializations: set[tuple[str, ...]] = set()
+                    self.instantiation = []
                     for entry_index, instantiation_entry in enumerate(instantiation_data):
                         if len(instantiation_entry) != 2:
                             raise CHSyntaxError(
@@ -163,7 +170,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                                 ),
                             )
                         else:
-                            for constraint_index, template_arg_constraint in instantiation_entry[0]:
+                            for constraint_index, template_arg_constraint in enumerate(instantiation_entry[0]):
                                 if not isinstance(template_arg_constraint, str):
                                     raise CHSyntaxError(
                                         f"Invalid entry in template-specific instantiation definition:\n\tthe first "

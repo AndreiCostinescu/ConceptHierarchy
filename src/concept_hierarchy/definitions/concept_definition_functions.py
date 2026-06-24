@@ -450,8 +450,15 @@ class FunctionDefinition(HiddenImplementationDefinition):
                     inversion_data, lambda x: self.location_id(FunctionDefinition.function_inversion, x)
                 )
                 self.inversion = [(tuple("" for _ in self.template_argument_order), inversion_data)]
+            elif isinstance(inversion_data, list) and len(inversion_data) == 0:
+                raise CHSyntaxError(
+                    f"Can not specify an empty list of {self.definition_type()} inversions for {self.name!r}!",
+                    location_id=self.location_id(FunctionDefinition.function_inversion),
+                    part=PathPart.VALUE,
+                )
             else:
                 already_defined_specializations: set[tuple[str, ...]] = set()
+                self.inversion = []
                 for inversion_index, inversion_def in enumerate(inversion_data):
                     if not isinstance(inversion_def, list) or not len(inversion_def) == 2:
                         raise CHSyntaxError(
@@ -480,7 +487,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
                             self.location_id(FunctionDefinition.function_inversion, inversion_index, 0),
                         )
                     else:
-                        for constraint_index, template_arg_constraint in inversion_def[0]:
+                        for constraint_index, template_arg_constraint in enumerate(inversion_def[0]):
                             if not isinstance(template_arg_constraint, str):
                                 raise CHSyntaxError(
                                     f"Invalid entry in template-specific inversion definition:\n\tthe first entry of "
