@@ -733,6 +733,10 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
         return "Literal:" + self.constraint_type
 
     @property
+    def is_numeric_constraint(self) -> bool:
+        return self.constraint_type in {"int", "float"}
+
+    @property
     def is_unconstrained(self):
         return False
 
