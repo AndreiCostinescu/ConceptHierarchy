@@ -4,6 +4,18 @@
 // Uppercase production rules handle themselves whitespaces; thus, when they're used,
 //   it is not necessary to also surround them with whitespace-consuming-tokens
 
+ConceptHierarchy
+        ::= (ws '{' ConceptHierarchyTopItem (',' ConceptHierarchyTopItem)* '}' ws) | ConceptHierarchyConcepts
+ConceptHierarchyTopItem
+        ::= (ws '"name"' ws ':' ws string ws)
+          | (ws '"metadata"' ws ':' ws '{' ConceptHierarchyMetaData (',' ConceptHierarchyMetaData)* '}' ws
+          | (ws '"concepts"' ws ':' ConceptHierarchyConcepts)
+          | (ws '"instances"' ws ':' ConceptHierarchyGlobalVariables)
+ConceptHierarchyMetaData
+        ::= (ws '"author"' ws ':' ws string ws)
+          | (ws '"version"' ws ':' ws 'v' natural '.' natural ('.' natural)? ws
+          | Member
+
 //// Syntax for Concepts
 ConceptHierarchyConcepts
         ::= ws '{' ConceptDefinitionEntry (',' ConceptDefinitionEntry)* '}' ws
