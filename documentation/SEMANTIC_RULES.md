@@ -3,8 +3,13 @@
 This document lists every semantic constraint enforced by the validator.
 Each rule corresponds to a `CHSemanticError` raise in the source code.
 <!-- Rules are grouped by the subsystem that enforces them.-->
-<!-- Last verified against commit 80058ff2e05f0caa9a815444d01a97f8dcaa69f5
-     Next update: review `git diff 80058ff2e05f0caa9a815444d01a97f8dcaa69f5..HEAD` AND the current working-tree diff for CHSemanticError raise-site changes. -->
+<!-- Last verified against commit 84b2031e60708852323556e5c1fc7ebe81101d3d, plus uncommitted working-tree changes present at verification time in:
+     data/concept_hierarchy.py, data/jsonschema/__init__.py, data/jsonschema/parsed_schema.py (renamed from ast_nodes.py),
+     data/parsers/expression_parser.py (new), data/parsers/jsonschema_parser.py, data/validators/value_instantiation_validator.py,
+     definitions/concept_definition_domain_concept.py, definitions/concept_definition_functions.py, utils.py,
+     validator/concept_hierarchy_type_checks.py, validator/expression_checks.py, and the new data/expressions/ module
+     (expression.py, expression_errors.py, expression_utils.py, function_composition.py).
+     Next update: review `git diff 84b2031e60708852323556e5c1fc7ebe81101d3d..HEAD` AND the current working-tree diff for CHSemanticError raise-site changes. -->
 
 ---
 
@@ -294,6 +299,18 @@ If a `ValueDomain` is marked `abstract: true`, it may not simultaneously define 
 - **Source:** `definitions/concept_definition_value_domain.py` — `check_instantiation`
 - **Location:** `["concepts", <concept>, "data", "instantiation"]` (key)
 
+### 6.2 Template-specific instantiation constraint lists must match the ValueDomain's template-argument arity
+In the array syntax for template-specialised `instantiation` entries, the first element (the list of per-template-argument constraint formulae) must have exactly one entry per declared template argument of the `ValueDomain`.
+
+- **Source:** `definitions/concept_definition_value_domain.py` — `check_instantiation`
+- **Location:** `["concepts", <concept>, "data", "instantiation", <index>, 0]`
+
+### 6.3 Template-specific instantiation specialization keys must be unique
+The same tuple of template-argument constraint formulae may not be used as the specialization key of more than one `instantiation` entry — it would be ambiguous which deserialization structure applies.
+
+- **Source:** `definitions/concept_definition_value_domain.py` — `check_instantiation`
+- **Location:** `["concepts", <concept>, "data", "instantiation", <index>]`
+
 ---
 
 ## 7. Function Definitions (Function concepts)
@@ -310,43 +327,49 @@ Each key of an `inversion` mapping must name an actual evaluation argument of th
 - **Source:** `definitions/concept_definition_functions.py` — `check_inversion_arguments`
 - **Location:** `["concepts", <function>, "data", "inversion", <arg>]` (key)
 
-### 7.3 Template argument keys in template-specialised inversions must be declared template arguments
-In the array syntax for template-specialised inversions, every non-`"procedure"` key in the specialisation object must be a declared template argument of the Function.
+### 7.3 Template-specific inversion constraint lists must match the Function's template-argument arity
+In the array syntax for template-specialised `inversion` entries, the first element (the list of per-template-argument constraint formulae) must have exactly one entry per declared template argument of the Function.
 
 - **Source:** `definitions/concept_definition_functions.py` — `concept_data_check`
-- **Location:** `["concepts", <function>, "data", "inversion", <index>, <t_arg>]` (key)
+- **Location:** `["concepts", <function>, "data", "inversion", <index>, 0]`
 
-### 7.4 Variation relations may only be defined for arguments that exist in the evaluation interface (object syntax)
+### 7.4 Template-specific inversion specialization keys must be unique
+The same tuple of template-argument constraint formulae may not be used as the specialization key of more than one `inversion` entry — it would be ambiguous which inversion procedure applies.
+
+- **Source:** `definitions/concept_definition_functions.py` — `concept_data_check`
+- **Location:** `["concepts", <function>, "data", "inversion", <index>]`
+
+### 7.5 Variation relations may only be defined for arguments that exist in the evaluation interface (object syntax)
 In the object syntax for `variations`, each key must name an actual evaluation argument.
 
 - **Source:** `definitions/concept_definition_functions.py` — `concept_data_check`
 - **Location:** `["concepts", <function>, "data", "variations", <arg>]` (key)
 
-### 7.5 Variation relations may only be defined for arguments that exist in the evaluation interface (array syntax — string arg)
+### 7.6 Variation relations may only be defined for arguments that exist in the evaluation interface (array syntax — string arg)
 In the array syntax, when the first element is a string, that string must name an actual evaluation argument.
 
 - **Source:** `definitions/concept_definition_functions.py` — `concept_data_check`
 - **Location:** `["concepts", <function>, "data", "variations", <index>, 0]`
 
-### 7.6 Variation relations may only be defined for arguments that exist in the evaluation interface (array syntax — array of args)
+### 7.7 Variation relations may only be defined for arguments that exist in the evaluation interface (array syntax — array of args)
 In the array syntax, when the first element is an array of argument names, every name in that array must be an actual evaluation argument.
 
 - **Source:** `definitions/concept_definition_functions.py` — `concept_data_check`
 - **Location:** `["concepts", <function>, "data", "variations", <index>, 0, <arg_index>]`
 
-### 7.7 Sub-scope new-variable definitions may only target existing evaluation arguments
+### 7.8 Sub-scope new-variable definitions may only target existing evaluation arguments
 In `subScopes`, each key must name an actual evaluation argument of the Function.
 
 - **Source:** `definitions/concept_definition_functions.py` — `concept_data_check`
 - **Location:** `["concepts", <function>, "data", "subScopes", <arg>]` (key)
 
-### 7.8 The `[type, true]` dynamic-name variable syntax requires the key to be a `String`-typed evaluation argument
+### 7.9 The `[type, true]` dynamic-name variable syntax requires the key to be a `String`-typed evaluation argument
 When a new-variable definition uses the `[type, true]` form (meaning the variable name is determined at call time), the JSON key must be the name of an evaluation argument of type `String`.
 
 - **Source:** `definitions/concept_definition_functions.py` — `check_new_var_dict_def`
 - **Location:** `["concepts", <function>, "data", "addNewVariablesInExistingScope", <new_var_name>]` and `["concepts", <function>, "data", "subScopes", <arg>, <new_var_name>]` (key)
 
-### 7.9 A dynamically-named sub-scope variable may not be scoped to the argument that determines its name
+### 7.10 A dynamically-named sub-scope variable may not be scoped to the argument that determines its name
 A variable whose name depends on the runtime value of argument `X` cannot be placed in the sub-scope of that same argument `X`.
 
 - **Source:** `definitions/concept_definition_functions.py` — `check_new_var_dict_def`
