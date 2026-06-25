@@ -3,13 +3,13 @@
 This document lists every semantic constraint enforced by the validator.
 Each rule corresponds to a `CHSemanticError` raise in the source code.
 <!-- Rules are grouped by the subsystem that enforces them.-->
-<!-- Last verified against commit 84b2031e60708852323556e5c1fc7ebe81101d3d, plus uncommitted working-tree changes present at verification time in:
-     data/concept_hierarchy.py, data/jsonschema/__init__.py, data/jsonschema/parsed_schema.py (renamed from ast_nodes.py),
-     data/parsers/expression_parser.py (new), data/parsers/jsonschema_parser.py, data/validators/value_instantiation_validator.py,
-     definitions/concept_definition_domain_concept.py, definitions/concept_definition_functions.py, utils.py,
-     validator/concept_hierarchy_type_checks.py, validator/expression_checks.py, and the new data/expressions/ module
-     (expression.py, expression_errors.py, expression_utils.py, function_composition.py).
-     Next update: review `git diff 84b2031e60708852323556e5c1fc7ebe81101d3d..HEAD` AND the current working-tree diff for CHSemanticError raise-site changes. -->
+<!-- Last verified against commit 8478adc028419291076736e877b91ff1bdcc426a, plus uncommitted working-tree changes present at verification time in:
+     data/validators/value_instantiation_validator.py, definitions/concept_definition_domain_concept.py,
+     definitions/concept_definition_functions.py, validator/concept_hierarchy_type_checks.py, validator/expression_checks.py,
+     and the new/untracked: data/expressions/ module (expression.py, expression_errors.py, function_composition.py),
+     data/parsers/expression_parser.py, data/value_domain_type.py.
+     (examples/animal_kingdom.json also modified but is not a source-of-rules file; "documentation/SEMANTIC_RULES - Copy.md" is a stray backup, ignore it.)
+     Next update: review `git diff 8478adc028419291076736e877b91ff1bdcc426a..HEAD` AND the current working-tree diff for CHSemanticError raise-site changes. -->
 
 ---
 
@@ -463,6 +463,18 @@ Each entry of `addNewVariablesInExistingScope` must declare a type that parses s
 - **Source:** `validator/concept_hierarchy_type_checks.py` — `check_types_in_function_definition`
 - **Location:** `["concepts", <function>, "data", "addNewVariablesInExistingScope", <new_var_name>]`
 
+### 9.13 A substituted template argument must produce a fully-instantiated type that satisfies its own instantiation constraints
+When substituting template variables inside a value (e.g. while computing whether one type is a subtype of another, via `ConstraintValidator.is_subtype`), if the substitution fully instantiates a sub-value's type, that resulting type must itself satisfy the template-instantiation constraints of its own concept.
+
+- **Source:** `validator/concept_hierarchy_type_checks.py` — `substitute_non_template_variable`
+- **Location:** the location of the substituted sub-value within the type expression being substituted
+
+### 9.14 Merging substitution-derived constraints with a parent's template context must leave it satisfiable
+After computing the template-argument substitution for a parent and merging the constraints it implies into the current concept's own `TemplateContext` (`merge_in_place`), the merged context must not be empty (i.e. the combined constraints must not be mutually contradictory) — otherwise no concrete type could ever instantiate this concept.
+
+- **Source:** `validator/concept_hierarchy_type_checks.py` — `check_types_in_hidden_implementation_definition`
+- **Location:** the substitution's own location
+
 ---
 
 ## 10. Type Expression Validation (Type Parsing and Template Instantiation)
@@ -610,6 +622,28 @@ A literal substituted for a non-type template argument must satisfy the declared
 
 - **Source:** `data/validators/template_argument_constraints_validator.py` — `_validate_literal`
 
+### 11.13 A template argument's constraint definition may not contain the Unconstrained specifier
+When parsing a constraint *definition* (as opposed to a constraint reference inside another formula), an empty/whitespace-only formula — which would otherwise parse to `Unconstrained` — is rejected; template arguments must always declare an explicit constraint.
+
+- **Source:** `data/parsers/template_argument_constraint_parser.py` — `TemplateArgumentConstraintParser._parse_non_structure_constraint` (raised when `allow_unconstrained=False`)
+
+### 11.14 A ValueDomain's (and Function's because Functions are ValueDomains) per-template-argument constraint formula must parse to a structure constraint
+When building a `ValueDomain`'s or a `Function`'s template-argument constraint context, each declared template argument's constraint formula (parsed with `allow_unconstrained=False`, see 11.13) must resolve to a `NonStructureConstraintFormula`; anything else is rejected.
+
+- **Source:** `validator/value_domain_template_constraint_checks.py` — `check_value_domain_template_constraint_formulae`
+- **Location:** the template argument's own location (or `[]` for the default constraint, which should never raise an error)
+
+### 11.15 A logical composition (`And`/`Or`) constraint may not combine sub-formulae of different constraint kinds
+Every sub-formula of an `And`/`Or` constraint must agree on its `constraint_type` (e.g. all `"type"`, or all the same literal kind such as `"int"`); `Unconstrained` sub-formulae are ignored for this check, but mixing, say, a type constraint with an `int` literal constraint inside the same `And`/`Or` is rejected as meaningless.
+
+- **Source:** `data/template_argument_constraints/constraint_formula.py` — `TemplateConstraintAnd.__init__`, `TemplateConstraintOr.__init__`
+
+### 11.16 A ValueDomain's per-template-argument constraints must not collectively prevent any instantiation
+After building the `TemplateContext` from a `ValueDomain`'s declared template-argument constraint formulae, that context must not be empty — i.e. the constraints (each individually valid per 11.14) must not combine to leave no satisfiable instantiation at all.
+
+- **Source:** `validator/value_domain_template_constraint_checks.py` — `check_value_domain_template_constraint_formulae`
+- **Location:** `["concepts", <concept>, "data", "templateArguments"]`
+
 ---
 
 ## 12. Instantiation Value Validation (JSON-Schema-Based)
@@ -672,3 +706,27 @@ Matching zero branches, or matching more than one, is rejected.
 Values at a custom-type node (e.g. an `InstanceBase` or `Reference` type) are delegated to `CHValueContext.check_value`, which may itself return a `CHSemanticError`.
 
 - **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
+
+### 12.12 A `requireAllKeysFromProperties` object must define every key listed in `properties`
+This is distinct from the standard draft-07 `required` keyword (12.3): when a schema node sets the custom `requireAllKeysFromProperties` flag, every key declared in that node's `properties` map is treated as required, even though `required` itself may list none/some of them.
+
+- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_object`
+- **Location:** the containing object's path (`part=VALUE`)
+
+---
+
+## 13. JSON-Schema Definition Parsing (Custom Concept-Hierarchy Schema Syntax)
+
+These checks run while *parsing* a `ValueDomain`/property JSON-Schema-derived type definition into a `CHSchemaNode` (i.e. while a concept's schema is being built, not while a value is later validated against it) — see `data/parsers/jsonschema_parser.py`.
+
+### 13.1 A `props`/`funcs` concept restriction must name a defined concept
+The custom `"props(...)"`/`"funcs(...)"` concept-data-constraint syntax restricts which concept(s) a property/function reference applies to; every concept name listed inside the parentheses must be a concept that actually exists in the hierarchy.
+
+- **Source:** `data/parsers/jsonschema_parser.py` — `_parse_custom_concept_data_constraint`
+- **Location:** the constraint's own location
+
+### 13.2 A literal template variable used for a numeric/size schema keyword must have the matching literal kind
+`minProperties`, `maxProperties`, `minLength`, `maxLength`, `minItems`, `maxItems` (integer-kind), and `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` (number-kind) may be given as a string naming a template variable instead of a literal; that template variable must be declared with the matching literal kind (`integer`/`number`), or it is rejected.
+
+- **Source:** `data/parsers/jsonschema_parser.py` — `_finish_builtin_node`
+- **Location:** the keyword's own location (e.g. `[..., "minItems"]`)
