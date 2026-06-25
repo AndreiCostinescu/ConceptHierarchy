@@ -684,6 +684,12 @@ def check_types_in_hidden_implementation_definition(
         # Update the constraints of the template variables of this concept with the identified constraints
         # when checking that the substitution produces a valid instantiation
         datum.template_context.merge_in_place(sub_template_context, location_id)
+        if datum.template_context.is_empty_constraint:
+            raise CHSemanticError(
+                f"Merging template context with determined constraints during substitution-instantiation of "
+                f"{parent} lead to no possible template-instantiation of {c.name}",
+                location_id=location_id,
+            )
 
         # Computed the substitution values for the direct parent.
         # Now iterate through all parents and substitute their ``parent_template_variable_substitution`` entries.

@@ -20,7 +20,7 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     NonStructureConstraintFormula,
 )
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
-from concept_hierarchy.errors import CHSemanticError
+from concept_hierarchy.errors import CHSemanticError, PathPart
 from concept_hierarchy.validator.validators.constraint_formula_validator import ConstraintFormulaValidator
 
 
@@ -63,3 +63,9 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
         vd_data.template_context = TemplateContext(
             vd.template_argument_order, vd.variadic_template_arguments, constraint
         )
+        if vd_data.template_context.is_empty_constraint:
+            raise CHSemanticError(
+                f"The template constraints of {vd_name} prevent any type-instantiation!",
+                location_id=vd.location_of("templateArguments"),
+                part=PathPart.VALUE,
+            )
