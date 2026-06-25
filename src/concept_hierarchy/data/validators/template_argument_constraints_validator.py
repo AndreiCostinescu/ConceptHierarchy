@@ -36,7 +36,6 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TemplateConstraintNot,
     TemplateConstraintOr,
     TemplateConstraintSelf,
-    TypeTemplateConstraintFormula,
     Unconstrained,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import (
@@ -150,25 +149,25 @@ def substitute_template_variables_in_formula(
                     return substitute_template_variables_in_formula(subst_formula, substitution, validator, location_id)
             return formula.create_new_same_op(subst_literal, tuple(subst_t_args), validator, location_id)
         case TemplateConstraintAnd():
-            sub_formulae: list[TypeTemplateConstraintFormula] = []
+            sub_formulae: list[NonStructureConstraintFormula] = []
             for sub_f in formula.sub_formulae:
                 res = substitute_template_variables_in_formula(sub_f, substitution, validator, location_id)
-                if not isinstance(res, TypeTemplateConstraintFormula):
-                    raise RuntimeError(f"Expected a TypeTemplateConstraintFormula, got {res!r}")
+                if not isinstance(res, NonStructureConstraintFormula):
+                    raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}")
                 sub_formulae.append(res)
             return TemplateConstraintAnd(location_id, tuple(sub_formulae))
         case TemplateConstraintOr():
-            sub_formulae: list[TypeTemplateConstraintFormula] = []
+            sub_formulae: list[NonStructureConstraintFormula] = []
             for sub_f in formula.sub_formulae:
                 res = substitute_template_variables_in_formula(sub_f, substitution, validator, location_id)
-                if not isinstance(res, TypeTemplateConstraintFormula):
-                    raise RuntimeError(f"Expected a TypeTemplateConstraintFormula, got {res!r}")
+                if not isinstance(res, NonStructureConstraintFormula):
+                    raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}")
                 sub_formulae.append(res)
             return TemplateConstraintOr(location_id, tuple(sub_formulae))
         case TemplateConstraintNot():
             res = substitute_template_variables_in_formula(formula.sub_formula, substitution, validator, location_id)
-            if not isinstance(res, TypeTemplateConstraintFormula):
-                raise RuntimeError(f"Expected a TypeTemplateConstraintFormula, got {res!r}")
+            if not isinstance(res, NonStructureConstraintFormula):
+                raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}")
             return TemplateConstraintNot(location_id, res)
         case NonStructureConstraintFormula():
             # parse ``Unconstrained`` and ``Empty``

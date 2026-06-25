@@ -152,7 +152,22 @@ class NonStructureConstraintFormula(TemplateConstraintFormula, ABC):
       literal value domain (int, float, bool, or string).
     """
 
-    pass
+    def __init__(self, location_id: LocationId, constraint_on=None):
+        super().__init__(location_id, constraint_on)
+
+    @property
+    def is_unconstrained(self) -> bool:
+        return False
+
+    @property
+    @abstractmethod
+    def is_type_unconstrained(self):
+        pass
+
+    @property
+    @abstractmethod
+    def constraint_type(self) -> str:
+        pass
 
 
 class Unconstrained(NonStructureConstraintFormula):
@@ -196,6 +211,14 @@ class Unconstrained(NonStructureConstraintFormula):
     def depends_on_template_variables(self) -> bool:
         return False
 
+    @property
+    def is_type_unconstrained(self) -> bool:
+        return True
+
+    @property
+    def constraint_type(self) -> str:
+        return "unconstrained"
+
 
 class Empty(NonStructureConstraintFormula):
     """
@@ -206,8 +229,9 @@ class Empty(NonStructureConstraintFormula):
     Its ``repr`` is the '!' character, not matching any existing notation.
     """
 
-    def __init__(self, location_id: LocationId):
+    def __init__(self, location_id: LocationId, constraint_type: str):
         super().__init__(location_id)
+        self._constraint_type = constraint_type
 
     def __repr__(self):
         return "!"
@@ -224,24 +248,16 @@ class Empty(NonStructureConstraintFormula):
     def depends_on_template_variables(self) -> bool:
         return False
 
-
-class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
-    """
-    A non-structure constraint that restricts a slot to a *type* in the
-    concept hierarchy, as opposed to a primitive literal value.
-
-    All ``And``, ``Or``, ``Not``, and hierarchy-operator constraints belong to
-    this family.  The ``And`` and ``Or`` constructors enforce that every operand
-    is a ``TypeTemplateConstraintFormula``; mixing type constraints with literal
-    values or ``Unconstrained`` inside a boolean operator is a runtime error.
-    """
-
     @property
-    def is_unconstrained(self):
+    def is_type_unconstrained(self) -> bool:
         return False
 
+    @property
+    def constraint_type(self) -> str:
+        return self._constraint_type
 
-class TemplateConstraintAnd(TypeTemplateConstraintFormula):
+
+class TemplateConstraintAnd(NonStructureConstraintFormula):
     """
     Type-constraint intersection: the template argument must satisfy *all*
     sub-formulae simultaneously.  Written ``And(F₁, F₂, …)``.
@@ -254,20 +270,33 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
     both a descendant of ``Animal`` and not a descendant of ``Predator``.
     """
 
-    def __init__(self, location_id: LocationId, sub_formulae: tuple[TypeTemplateConstraintFormula, ...]):
+    def __init__(self, location_id: LocationId, sub_formulae: tuple[NonStructureConstraintFormula, ...]):
         super().__init__(location_id)
         # make tuple to be immutable
         assert sub_formulae
         self.sub_formulae = sub_formulae
+        incompatible_constraints: set[str] = set()
         for f in self.sub_formulae:
-            if not isinstance(f, TypeTemplateConstraintFormula):
-                raise RuntimeError(
-                    f"At {self.location_id}, the formula {f} is not a TypeTemplateConstraintFormula, "
-                    "which is required by TemplateConstraintAnd!"
-                )
+            sub_constraint_type = f.constraint_type
+            if sub_constraint_type == "unconstrained":
+                continue
+            incompatible_constraints.add(sub_constraint_type)
+        if len(incompatible_constraints) > 1:
+            raise CHSemanticError(
+                f"Can not combine template variable constraints of different types: {incompatible_constraints}",
+                location_id=self.location_id,
+            )
+        if len(incompatible_constraints) == 0:
+            self._constraint_type = "unconstrained"
+        else:
+            self._constraint_type = list(incompatible_constraints)[0]
 
     def __repr__(self):
-        return "And(" + ", ".join([repr(f) for f in self.sub_formulae]) + ")"
+        return "And(" + ", ".join(sorted([repr(f) for f in self.sub_formulae])) + ")"
+
+    @property
+    def is_unconstrained(self) -> bool:
+        return self.constraint_type == "unconstrained"
 
     @property
     def is_empty(self):
@@ -279,7 +308,7 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
           - ``And(Vector<3>, Vector<4>)`` definitely is empty
           - strict children of leaf nodes are empty.
          However, there is no way of checking AND, OR, and NOT formulae to know whether the constraint is empty
-         Also, there is difficulty in  matching template arguments and checking if they are clashing to be empty...
+         Also, there is difficulty in matching template arguments and checking if they are clashing to be empty...
          This is a separate problem in it of itself!
         """
         return any(x.is_empty for x in self.sub_formulae)
@@ -288,8 +317,16 @@ class TemplateConstraintAnd(TypeTemplateConstraintFormula):
     def depends_on_template_variables(self) -> bool:
         return any(x.depends_on_template_variables for x in self.sub_formulae)
 
+    @property
+    def is_type_unconstrained(self):
+        return all(x.is_type_unconstrained for x in self.sub_formulae)
 
-class TemplateConstraintOr(TypeTemplateConstraintFormula):
+    @property
+    def constraint_type(self) -> str:
+        return self._constraint_type
+
+
+class TemplateConstraintOr(NonStructureConstraintFormula):
     """
     Type-constraint union: the template argument must satisfy *at least one*
     sub-formula.  Written ``Or(F₁, F₂, …)``.
@@ -302,20 +339,33 @@ class TemplateConstraintOr(TypeTemplateConstraintFormula):
     descendant of either ``Mammal`` or ``Bird``.
     """
 
-    def __init__(self, location_id: LocationId, sub_formulae: tuple[TypeTemplateConstraintFormula, ...]):
+    def __init__(self, location_id: LocationId, sub_formulae: tuple[NonStructureConstraintFormula, ...]):
         super().__init__(location_id)
         # make tuple to be immutable
         assert sub_formulae
         self.sub_formulae = sub_formulae
+        incompatible_constraints: set[str] = set()
         for f in self.sub_formulae:
-            if not isinstance(f, TypeTemplateConstraintFormula):
-                raise RuntimeError(
-                    f"At {self.location_id}, the formula {f} is not a TypeTemplateConstraintFormula, "
-                    "which is required by TemplateConstraintOr!"
-                )
+            sub_constraint_type = f.constraint_type
+            if sub_constraint_type == "unconstrained":
+                continue
+            incompatible_constraints.add(sub_constraint_type)
+        if len(incompatible_constraints) > 1:
+            raise CHSemanticError(
+                f"Can not combine template variable constraints of different types: {incompatible_constraints}",
+                location_id=self.location_id,
+            )
+        if len(incompatible_constraints) == 0:
+            self._constraint_type = "unconstrained"
+        else:
+            self._constraint_type = list(incompatible_constraints)[0]
 
     def __repr__(self):
-        return "Or(" + ", ".join([repr(f) for f in self.sub_formulae]) + ")"
+        return "Or(" + ", ".join(sorted([repr(f) for f in self.sub_formulae])) + ")"
+
+    @property
+    def is_unconstrained(self) -> bool:
+        return self._constraint_type == "unconstrained"
 
     @property
     def is_empty(self):
@@ -325,8 +375,16 @@ class TemplateConstraintOr(TypeTemplateConstraintFormula):
     def depends_on_template_variables(self) -> bool:
         return any(x.depends_on_template_variables for x in self.sub_formulae)
 
+    @property
+    def is_type_unconstrained(self):
+        return any(x.is_type_unconstrained for x in self.sub_formulae)
 
-class TemplateConstraintNot(TypeTemplateConstraintFormula):
+    @property
+    def constraint_type(self) -> str:
+        return self._constraint_type
+
+
+class TemplateConstraintNot(NonStructureConstraintFormula):
     """
     Type-constraint complement: the template argument must *not* satisfy the
     sub-formula.  Written ``Not(F)``.
@@ -339,20 +397,30 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
     descendant of the abstract concept ``Abstract``.
     """
 
-    def __init__(self, location_id: LocationId, sub_formula: TypeTemplateConstraintFormula):
+    def __init__(self, location_id: LocationId, sub_formula: NonStructureConstraintFormula):
         super().__init__(location_id)
         self.sub_formula = sub_formula
-        if not isinstance(self.sub_formula, TypeTemplateConstraintFormula):
-            raise RuntimeError(
-                f"At {self.location_id}, the formula {self.sub_formula} is not a TypeTemplateConstraintFormula, "
-                "which is required by TemplateConstraintNot!"
-            )
+        self._constraint_type = self.sub_formula.constraint_type
+        assert self.constraint_type != "unconstrained"
 
     def __repr__(self):
         return "Not(" + repr(self.sub_formula) + ")"
 
     @property
+    def is_unconstrained(self) -> bool:
+        # Because the sub-formula has to have a constraint-type:
+        # If the subformula is a type or literal => definitely not unconstrained
+        # If the subformula is unconstrained => this is definitely not unconstrained
+        # If the subformula is empty, it must be because of simplification rules
+        #   (because Empty can not be specified in syntax).
+        #   Thus, the constraint had to have a constraint type that somehow evaluated to empty; but it had to have a
+        #   type, and thus it was constrained! => this is definitely not unconstrained
+        return False
+
+    @property
     def is_empty(self):
+        if self.sub_formula.is_type_unconstrained:
+            return True
         """
         FIXME:
          This is incorrect, but an easy way out, because for example:
@@ -361,7 +429,7 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
           - ``And(Vector<3>, Vector<4>)`` definitely is empty
           - strict children of leaf nodes are empty.
          However, there is no way of checking AND, OR, and NOT formulae to know whether the constraint is empty
-         Also, there is difficulty in  matching template arguments and checking if they are clashing to be empty...
+         Also, there is difficulty in matching template arguments and checking if they are clashing to be empty...
          This is a separate problem in it of itself!
         """
         return False
@@ -369,6 +437,46 @@ class TemplateConstraintNot(TypeTemplateConstraintFormula):
     @property
     def depends_on_template_variables(self) -> bool:
         return self.sub_formula.depends_on_template_variables
+
+    @property
+    def is_type_unconstrained(self):
+        return self.sub_formula.is_empty
+
+    @property
+    def constraint_type(self) -> str:
+        return self._constraint_type
+
+
+class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
+    """
+    A non-structure constraint that restricts a slot to a *type* in the
+    concept hierarchy, as opposed to a primitive literal value.
+
+    All ``And``, ``Or``, ``Not``, and hierarchy-operator constraints belong to
+    this family.  The ``And`` and ``Or`` constructors enforce that every operand
+    is a ``TypeTemplateConstraintFormula``; mixing type constraints with literal
+    values or ``Unconstrained`` inside a boolean operator is a runtime error.
+    """
+
+    @staticmethod
+    def any_type(location_id: LocationId) -> TypeTemplateConstraintFormula:
+        _any_type = TemplateConstraintAbstractDescendants.__new__(TemplateConstraintAbstractDescendants)
+        _any_type.location_id = location_id
+        _any_type.constraint_on = None
+        _any_type.literal = "Concept"
+        _any_type.literal_template_formulae = ()
+        _any_type.hierarchy_op = HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+        _any_type.is_template_variable = False
+        assert _any_type.is_type_unconstrained
+        return _any_type
+
+    @property
+    def is_unconstrained(self):
+        return False
+
+    @property
+    def constraint_type(self) -> str:
+        return "type"
 
 
 class HierarchyCheckType(Enum):
@@ -512,10 +620,18 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
           - ``And(Vector<3>, Vector<4>)`` definitely is empty
           - strict children of leaf nodes are empty.
          However, there is no way of checking AND, OR, and NOT formulae to know whether the constraint is empty
-         Also, there is difficulty in  matching template arguments and checking if they are clashing to be empty...
+         Also, there is difficulty in matching template arguments and checking if they are clashing to be empty...
          This is a separate problem in it of itself!
         """
         return False
+
+    @property
+    def is_type_unconstrained(self):
+        return (
+            self.literal == "Concept"
+            and self.literal_template_formulae == ()
+            and self.hierarchy_op == HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+        )
 
     def change_hierarchy_operator(
         self, hierarchy_op: HierarchyCheckType, validator: TemplateConstraintFormulaValidator, location_id: LocationId
@@ -725,7 +841,7 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
 
     def __init__(self, constraint_type: str, location_id: LocationId):
         super().__init__(location_id)
-        self.constraint_type = constraint_type
+        self._constraint_type = constraint_type
         if self.constraint_type not in {"bool", "int", "float", "string"}:
             raise RuntimeError(f"Unknown literal constraint type: {self.constraint_type}")
 
@@ -759,6 +875,14 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
     @property
     def depends_on_template_variables(self) -> bool:
         return False
+
+    @property
+    def is_type_unconstrained(self):
+        return True
+
+    @property
+    def constraint_type(self) -> str:
+        return self._constraint_type
 
 
 class LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula):
@@ -815,6 +939,10 @@ class LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula):
     def __repr__(self) -> str:
         return self.raw_value
 
+    @property
+    def is_type_unconstrained(self):
+        return False
+
 
 class StructureConstraintFormula(TemplateConstraintFormula, ABC):
     """
@@ -835,8 +963,13 @@ class StructureConstraintFormula(TemplateConstraintFormula, ABC):
     and ``StructureNegation`` let these groups be combined logically.
     """
 
-    def __init__(self, location_id: LocationId):
+    def __init__(self, location_id: LocationId, variable_constraint_types: tuple[str, ...]):
         super().__init__(location_id)
+        self.variable_constraint_types = variable_constraint_types
+
+    @property
+    def nr_variables(self):
+        return len(self.variable_constraint_types)
 
 
 class ConstraintGroup(StructureConstraintFormula):
@@ -862,7 +995,7 @@ class ConstraintGroup(StructureConstraintFormula):
     """
 
     def __init__(self, location_id: LocationId, group_constraints: tuple[NonStructureConstraintFormula, ...]):
-        super().__init__(location_id)
+        super().__init__(location_id, tuple(x.constraint_type for x in group_constraints))
         self.group_constraints = group_constraints
 
     def __repr__(self):
@@ -898,11 +1031,14 @@ class StructureConjunction(StructureConstraintFormula):
     """
 
     def __init__(self, location_id: LocationId, structure_constraints: tuple[StructureConstraintFormula, ...]):
-        super().__init__(location_id)
+        assert len(structure_constraints) > 0
+        variable_constraint_types = structure_constraints[0].variable_constraint_types
+        assert (variable_constraint_types == x.variable_constraint_types for x in structure_constraints[1:])
+        super().__init__(location_id, variable_constraint_types)
         self.structure_constraints = structure_constraints
 
     def __repr__(self):
-        return "Conj(" + ", ".join(repr(x) for x in self.structure_constraints) + ")"
+        return "Conj(" + ", ".join(sorted(repr(x) for x in self.structure_constraints)) + ")"
 
     @property
     def is_unconstrained(self):
@@ -933,11 +1069,14 @@ class StructureDisjunction(StructureConstraintFormula):
     """
 
     def __init__(self, location_id: LocationId, structure_constraints: tuple[StructureConstraintFormula, ...]):
-        super().__init__(location_id)
+        assert len(structure_constraints) > 0
+        variable_constraint_types = structure_constraints[0].variable_constraint_types
+        assert (variable_constraint_types == x.variable_constraint_types for x in structure_constraints[1:])
+        super().__init__(location_id, variable_constraint_types)
         self.structure_constraints = structure_constraints
 
     def __repr__(self):
-        return "Disj(" + ", ".join(repr(x) for x in self.structure_constraints) + ")"
+        return "Disj(" + ", ".join(sorted(repr(x) for x in self.structure_constraints)) + ")"
 
     @property
     def is_unconstrained(self):
@@ -967,7 +1106,7 @@ class StructureNegation(StructureConstraintFormula):
     """
 
     def __init__(self, location_id: LocationId, structure_constraint: StructureConstraintFormula):
-        super().__init__(location_id)
+        super().__init__(location_id, structure_constraint.variable_constraint_types)
         self.structure_constraint = structure_constraint
 
     def __repr__(self):

@@ -38,6 +38,7 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TypeTemplateConstraintFormula,
     Unconstrained,
 )
+from concept_hierarchy.data.template_argument_constraints.simplify_constraints import simplify_formula
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
@@ -118,8 +119,10 @@ class ConstraintParser(StringParser):
         """Entry point for a single constraint expression."""
         self.skip_whitespace()
         if any(self.starts_with(x) for x in ["Conj(", "Disj(", "Neg(", "<"]):
-            return self._parse_structure_constraint(allow_unconstrained)
-        return self._parse_non_structure_constraint(allow_unconstrained)
+            res = self._parse_structure_constraint(allow_unconstrained)
+        else:
+            res = self._parse_non_structure_constraint(allow_unconstrained)
+        return simplify_formula(res)
 
     def _parse_non_structure_constraint(self, allow_unconstrained: bool) -> NonStructureConstraintFormula:
         self.skip_whitespace()
@@ -224,19 +227,19 @@ class ConstraintParser(StringParser):
 
     def _parse_and(self, allow_unconstrained: bool) -> TemplateConstraintAnd:
         self.consume("And(")
-        args = self._parse_type_constraint_list(allow_unconstrained)
+        args = self._parse_non_structure_constraint_list(allow_unconstrained)
         self.consume(")")
         return TemplateConstraintAnd(self.location_id, args)
 
     def _parse_or(self, allow_unconstrained: bool) -> TemplateConstraintOr:
         self.consume("Or(")
-        args = self._parse_type_constraint_list(allow_unconstrained)
+        args = self._parse_non_structure_constraint_list(allow_unconstrained)
         self.consume(")")
         return TemplateConstraintOr(self.location_id, args)
 
     def _parse_not(self, allow_unconstrained: bool) -> TemplateConstraintNot:
         self.consume("Not(")
-        arg = self._parse_type_constraint(allow_unconstrained)
+        arg = self._parse_non_structure_constraint(allow_unconstrained)
         self.consume(")")
         return TemplateConstraintNot(self.location_id, arg)
 
