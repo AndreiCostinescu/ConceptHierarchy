@@ -167,16 +167,16 @@ class ConstraintParser(StringParser):
             )
 
         # Hierarchy literal  (T / T* / T. / ^T / ^T*)
-        return self._parse_hierarchy_literal()
+        return self._parse_hierarchy_literal(allow_unconstrained)
 
     def _parse_structure_constraint(self, allow_unconstrained: bool) -> StructureConstraintFormula:
         # Structure operator wrappers
         if self.starts_with("Conj("):
-            return self._parse_conj()
+            return self._parse_conj(allow_unconstrained)
         if self.starts_with("Disj("):
-            return self._parse_disj()
+            return self._parse_disj(allow_unconstrained)
         if self.starts_with("Neg("):
-            return self._parse_neg()
+            return self._parse_neg(allow_unconstrained)
 
         # Structure group
         if not self.starts_with("<"):
@@ -188,29 +188,29 @@ class ConstraintParser(StringParser):
 
     # --- structure operators ----------------------------------------------
 
-    def _parse_conj(self) -> StructureConjunction:
+    def _parse_conj(self, allow_unconstrained: bool) -> StructureConjunction:
         self.consume("Conj(")
-        args = self._parse_structure_constraint_list()
+        args = self._parse_structure_constraint_list(allow_unconstrained)
         self.consume(")")
         return StructureConjunction(self.location_id, args)
 
-    def _parse_disj(self) -> StructureDisjunction:
+    def _parse_disj(self, allow_unconstrained: bool) -> StructureDisjunction:
         self.consume("Disj(")
-        args = self._parse_structure_constraint_list()
+        args = self._parse_structure_constraint_list(allow_unconstrained)
         self.consume(")")
         return StructureDisjunction(self.location_id, args)
 
-    def _parse_neg(self) -> StructureNegation:
+    def _parse_neg(self, allow_unconstrained: bool) -> StructureNegation:
         self.consume("Neg(")
-        arg = self._parse_structure_constraint()
+        arg = self._parse_structure_constraint(allow_unconstrained)
         self.consume(")")
         return StructureNegation(self.location_id, arg)
 
-    def _parse_structure_constraint_list(self) -> tuple[StructureConstraintFormula, ...]:
+    def _parse_structure_constraint_list(self, allow_unconstrained: bool) -> tuple[StructureConstraintFormula, ...]:
         """One or more structure-constraints separated by ', '."""
-        items = [self._parse_structure_constraint()]
+        items = [self._parse_structure_constraint(allow_unconstrained)]
         while self.try_consume(", "):
-            items.append(self._parse_structure_constraint())
+            items.append(self._parse_structure_constraint(allow_unconstrained))
         return tuple(items)
 
     # --- structure group --------------------------------------------------
@@ -298,7 +298,7 @@ class ConstraintParser(StringParser):
             items.append(self._parse_type_constraint(allow_unconstrained))
         return tuple(items)
 
-    def _parse_hierarchy_literal(self) -> TemplateConstraintHierarchyOperator:
+    def _parse_hierarchy_literal(self, allow_unconstrained: bool) -> TemplateConstraintHierarchyOperator:
         """
         Handles all five hierarchy-operator variants:
 
@@ -310,7 +310,7 @@ class ConstraintParser(StringParser):
         """
         is_ascendant = self.try_consume("^")
 
-        ch_type_name, t_arg_formulae = self._parse_literal_name()
+        ch_type_name, t_arg_formulae = self._parse_literal_name(allow_unconstrained)
 
         if is_ascendant:
             if self.peek() == ".":
@@ -353,7 +353,9 @@ class ConstraintParser(StringParser):
             else:
                 return TemplateConstraintDescendants(ch_type_name, t_arg_formulae, self.validator, self.location_id)
 
-    def _parse_literal_name(self) -> tuple[str, tuple[NonStructureConstraintFormula, ...] | None]:
+    def _parse_literal_name(
+        self, allow_unconstrained: bool
+    ) -> tuple[str, tuple[NonStructureConstraintFormula, ...] | None]:
         """
         Parse a letterStartingName with an optional '<' template-constraint-args '>'.
 
@@ -386,6 +388,6 @@ class ConstraintParser(StringParser):
 
         template_arg_formulae: tuple[NonStructureConstraintFormula, ...] = ()
         if self.peek() == "<":
-            template_arg_formulae = self._parse_constraint_group().group_constraints
+            template_arg_formulae = self._parse_constraint_group(allow_unconstrained).group_constraints
 
         return literal_name, template_arg_formulae
