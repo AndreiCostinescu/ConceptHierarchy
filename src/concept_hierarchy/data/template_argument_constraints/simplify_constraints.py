@@ -180,7 +180,11 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
 
     9. **Double-negation elimination** – ``Neg(Neg(X)) → X``.
 
-    10. **ConstraintGroup merging** – A ``StructureConjunction`` whose *all*
+    10. **Single-nonUnconstrained-negation-propagation** -
+        ``Neg(<, , X, , >)``   =>   ``<, , Not(X), , >``
+        A single non-unconstrained value can be consumed by negation.
+
+    11. **ConstraintGroup merging** – A ``StructureConjunction`` whose *all*
         children are ``ConstraintGroup`` nodes is converted into a single
         ``ConstraintGroup`` with element-wise ``And`` constraints:
         ``Conj(<X, Y>, <Z, W>) → <And(X, Z), And(Y, W)>``.
@@ -189,7 +193,7 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
         ``ConstraintGroup`` nodes rather than shared-variable
         ``StructureConjunction`` subtrees.
 
-    11. **Intra-group simplification** – The per-slot constraints inside a
+    12. **Intra-group simplification** – The per-slot constraints inside a
         ``ConstraintGroup`` are each passed through
         ``simplify_non_structure_constraint``.
 
@@ -336,6 +340,27 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
     # Rule: consume neg(neg(...))
     if isinstance(f, StructureNegation) and isinstance(f.structure_constraint, StructureNegation):
         return simplify_structure_constraint(f.structure_constraint.structure_constraint)
+
+    # Rule: Neg(<, , X, , >) -> <, , Not(X), , >  single non-unconstrained value can be consumed by negation
+    """
+    Full negation distribution rule is:
+    Neg(<C1, C2, C3, ...>) = Disj(<Not(C1), C2, C3, ...>, <C1, Not(C2), C3, ...>, <C1, C2, Not(C3), ...>)
+    When C1 is unconstrained (for example), <Not(C1), C2, C3, ...> = <Empty, C2, C3, ...> = <Empty, Empty, Empty, ...>
+    Thus, unconstrained group constraints turn to Empty-Group, which is ignored in a disjunction.
+    Thus, if only one entry is not unconstrained, all the other disjuncts will be empty in the disjunction (and ignored)
+     and the only remaining disjunct will be the negation/not of the non-unconstrained-entry.
+    """
+    if isinstance(f, StructureNegation) and isinstance(f.structure_constraint, ConstraintGroup):
+        non_unconstrained_indices: list[int] = []
+        for index, constraint in enumerate(f.structure_constraint.group_constraints):
+            if not constraint.is_type_unconstrained:
+                non_unconstrained_indices.append(index)
+        if len(non_unconstrained_indices) == 1:
+            new_constraints: tuple[NonStructureConstraintFormula, ...] = tuple(
+                (x if index not in non_unconstrained_indices else TemplateConstraintNot(f.location_id, x))
+                for index, x in enumerate(f.structure_constraint.group_constraints)
+            )
+            return simplify_structure_constraint(ConstraintGroup(f.location_id, new_constraints))
 
     # Rule??: StructureConjunction with only ConstraintGroups is a ConstraintGroup with element-wise AND constraints
     if isinstance(f, StructureConjunction) and all(isinstance(x, ConstraintGroup) for x in f.structure_constraints):
