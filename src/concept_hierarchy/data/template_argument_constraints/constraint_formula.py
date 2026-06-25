@@ -640,7 +640,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
             new = copy(self)
             new.location_id = location_id
             return new
-        match self.hierarchy_op:
+        match hierarchy_op:
             case HierarchyCheckType.SELF:
                 return TemplateConstraintSelf(self.literal, self.literal_template_formulae, validator, location_id)
             case HierarchyCheckType.DESCENDANTS_OF:
