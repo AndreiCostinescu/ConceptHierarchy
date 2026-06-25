@@ -116,7 +116,7 @@ class TemplateConstraintFormula(ABC):
 
     def __eq__(self, other):
         # do not compare the location_id; it does not matter for the constraint where it was created
-        return isinstance(other, TemplateConstraintFormula)
+        return isinstance(other, TemplateConstraintFormula) and str(self) == str(other)
 
     @property
     @abstractmethod
