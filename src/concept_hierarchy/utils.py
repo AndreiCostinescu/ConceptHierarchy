@@ -224,6 +224,18 @@ def get_dict_without_items(d: dict, *keys) -> dict:
     return {k: v for k, v in d.items() if k not in exclude}
 
 
+def remove_indices(sequence: list | tuple, indices_to_remove: list[int] | set[int]) -> list | tuple:
+    """Remove elements at specified indices from a list/tuple."""
+    indices_set = set(indices_to_remove)
+    return type(sequence)(item for i, item in enumerate(sequence) if i not in indices_set)
+
+
+def remove_indices_from_list_inplace(list_to_modify: list, indices_to_remove: list[int] | set[int]) -> None:
+    """Remove elements at specified indices from a list (modifies in-place)."""
+    for index in sorted(indices_to_remove, reverse=True):
+        del list_to_modify[index]
+
+
 def replace_template_chars(x: str) -> str:
     return x.replace("<", "__").replace(">", "").replace(", ", "_").replace("!", "not")
 
