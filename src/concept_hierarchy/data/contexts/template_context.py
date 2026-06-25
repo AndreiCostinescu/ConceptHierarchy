@@ -105,11 +105,11 @@ class TemplateContext:
 
     @property
     def is_unconstrained(self) -> bool:
-        return self.constraint.is_unconstrained
+        return True if self.constraint is None else self.constraint.is_unconstrained
 
     @property
     def is_empty_constraint(self) -> bool:
-        return self.constraint.is_empty
+        return False if self.constraint is None else self.constraint.is_empty
 
     def is_variadic(self, variable_name) -> bool:
         return variable_name in self.variadic_variables
