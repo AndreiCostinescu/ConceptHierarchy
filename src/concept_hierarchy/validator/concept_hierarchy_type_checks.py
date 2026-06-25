@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from frozendict import frozendict
 
 from concept_hierarchy.data.concept_hierarchy import (
@@ -448,10 +449,7 @@ class ConceptHierarchyTypeValidator(TypeValidator):
 
 
 def validate_template_argument_constraints_in_instantiated_types(
-    ch_type: ConceptHierarchyTemplateArgument,
-    template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
-    location_id: LocationId,
+    ch_type: ConceptHierarchyTemplateArgument, validator: TemplateConstraintArgumentValidator, location_id: LocationId
 ) -> list[ConceptHierarchyError]:
     if isinstance(ch_type, (LiteralValue, TemplateDependent)):
         return []
@@ -461,14 +459,16 @@ def validate_template_argument_constraints_in_instantiated_types(
         for group_elem in ch_type.variadic_group:
             new_location_id = location_id + [group_elem.full_name]
             sub_errors = validate_template_argument_constraints_in_instantiated_types(
-                group_elem, template_context, validator, new_location_id
+                group_elem, validator, new_location_id
             )
             if sub_errors:
                 errors.extend(sub_errors)
         return errors
     assert isinstance(ch_type, InstantiatedType)
+    # Because this is applied only on instantiated types (i.e. not dependent on template variables),
+    #  pass an empty TemplateContext
     return validate_complete_instantiation_of_concept(
-        ch_type.clean_name, ch_type.template_arguments, template_context, validator, location_id
+        ch_type.clean_name, ch_type.template_arguments, TemplateContext(), validator, location_id
     )
 
 
@@ -643,9 +643,10 @@ def check_types_in_hidden_implementation_definition(
                 ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
                     datum.name, validated_t_arg_value, type_validator
                 )
-                #  2) Validate the template constraints of subtypes
+                #  2) Validate the template constraints of subtypes: because this is applied only on instantiated types
+                #   (i.e. not dependent on template variables), don't pass a TemplateContext
                 errors = validate_template_argument_constraints_in_instantiated_types(
-                    ch_t_arg_value, datum.template_context, constraint_validator, location_id
+                    ch_t_arg_value, constraint_validator, location_id
                 )
                 if errors:
                     raise CHSemanticError(
