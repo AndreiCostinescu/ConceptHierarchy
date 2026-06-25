@@ -188,7 +188,7 @@
             "data": {
                 "templateArguments": {
                     "order": ["SubT", "T"],
-                    "SubT": "And(T, Not(T))",
+                    "SubT": "And(T, Not(T.))",
                     "substitution": {
                         "T": "T"
                     }
