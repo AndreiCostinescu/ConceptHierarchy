@@ -460,7 +460,10 @@ def check_types_in_value_domain_definition(
             )
             assert isinstance(parsed_constraint, NonStructureConstraintFormula)
             group_constraints.append(parsed_constraint)
-        constraint = ConstraintGroup(instantiation_location_id, tuple(group_constraints))
+        if not group_constraints:
+            constraint = None
+        else:
+            constraint = ConstraintGroup(instantiation_location_id, tuple(group_constraints))
         parsed_instantiations.append((constraint, parsed_instantiation_schema))
     datum.instantiation = tuple(parsed_instantiations)
 

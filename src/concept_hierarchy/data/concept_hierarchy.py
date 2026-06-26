@@ -75,7 +75,8 @@ class TypeData(ConceptData):
 
 @lazy_properties
 class ValueDomainData(TypeData):
-    instantiation: tuple[tuple[ConstraintGroup, CHSchemaNode], ...]
+    instantiation: tuple[tuple[ConstraintGroup | None, CHSchemaNode], ...]
+    """`None` appears as the first element of the instantiation when the type does not have template arguments"""
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
