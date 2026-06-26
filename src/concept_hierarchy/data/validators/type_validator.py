@@ -516,6 +516,7 @@ def _parse_convert_no_check(
 
 
 def parse_convert_type(type_def: str, validator: TypeValidator, location_id: LocationId) -> InstantiatedType:
+    """This does not check that the fully-type-instantiated types satisfy the type-constraints."""
     ch_type = _parse_convert_no_check(type_def, validator, location_id)
     if not isinstance(ch_type, InstantiatedType):
         raise CHSemanticError(f"Expected an InstantiatedType, got {ch_type!r}", location_id=location_id)
@@ -525,6 +526,7 @@ def parse_convert_type(type_def: str, validator: TypeValidator, location_id: Loc
 def parse_convert_type_in_template_context(
     type_def: str, validator: TypeValidator, location_id: LocationId
 ) -> TypeValue:
+    """This does not check that the fully-type-instantiated types satisfy the type-constraints."""
     ch_type = _parse_convert_no_check(type_def, validator, location_id)
     if not isinstance(ch_type, TYPE_VALUE_IS_INSTANCE_CHECK):
         raise CHSemanticError(
