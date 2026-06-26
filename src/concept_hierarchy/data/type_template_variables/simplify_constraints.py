@@ -96,6 +96,29 @@ def _collect_different_data(data: tuple) -> tuple:
     return data
 
 
+def _collect_absorbed_indices(
+    data: tuple,
+    absorbed_type: type[TemplateConstraintAnd]
+    | type[TemplateConstraintOr]
+    | type[StructureConjunction]
+    | type[StructureDisjunction],
+) -> set[int]:
+    absorbed_indices: set[int] = set()
+    for index, sub_formula in enumerate(data):
+        for other_index, other_formula in enumerate(data):
+            if index == other_index:
+                continue
+            if isinstance(other_formula, absorbed_type):
+                can_be_absorbed = False
+                for sub_other_formula in other_formula.sub_formulae:
+                    if sub_formula == sub_other_formula:
+                        can_be_absorbed = True
+                        break
+                if can_be_absorbed:
+                    absorbed_indices.add(other_index)
+    return absorbed_indices
+
+
 def _structure_elements_contains_a_and_neg_a(elements: tuple[StructureConstraintFormula, ...]) -> bool:
     for element in elements:
         if isinstance(element, StructureNegation):
@@ -189,7 +212,11 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
         ``Disj(<X1>, <X2>, ...)`` = ``<Or(X1, X2, ...)>``
         ``Neg(<X1>)`` = ``<Not(X1)>``
 
-    12. **ConstraintGroup merging** – A ``StructureConjunction`` whose *all*
+    12. **Absorption rules**
+        ``Conj(X, etc_1..., Disj(X, ...), etc_2...)`` = ``Conj(X, etc_1..., etc_2...)``
+        ``Disj(X, etc_1..., Conj(X, ...), etc_2...)`` = ``Disj(X, etc_1..., etc_2...)``
+
+    13. **ConstraintGroup merging** – A ``StructureConjunction`` whose *all*
         children are ``ConstraintGroup`` nodes is converted into a single
         ``ConstraintGroup`` with element-wise ``And`` constraints:
         ``Conj(<X, Y>, <Z, W>) → <And(X, Z), And(Y, W)>``.
@@ -198,7 +225,7 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
         ``ConstraintGroup`` nodes rather than shared-variable
         ``StructureConjunction`` subtrees.
 
-    13. **Intra-group simplification** – The per-slot constraints inside a
+    14. **Intra-group simplification** – The per-slot constraints inside a
         ``ConstraintGroup`` are each passed through
         ``simplify_non_structure_constraint``.
 
@@ -397,6 +424,24 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
             )
         )
 
+    # Rule: conj-absorption: Conj(X, etc_1..., Disj(..., X, ...), etc_2...) = Conj(X, etc_1..., etc_2...)
+    if isinstance(f, StructureConjunction):
+        absorbed_indices = _collect_absorbed_indices(f.structure_constraints, StructureDisjunction)
+        if absorbed_indices:
+            new_structure_constraints: tuple[StructureConstraintFormula, ...] = tuple(
+                x for index, x in enumerate(f.structure_constraints) if index not in absorbed_indices
+            )
+            return simplify_structure_constraint(StructureConjunction(f.location_id, new_structure_constraints))
+
+    # Rule: disj-absorption: Disj(X, etc_1..., Conj(..., X, ...), etc_2...) = Disj(X, etc_1..., etc_2...)
+    if isinstance(f, StructureDisjunction):
+        absorbed_indices = _collect_absorbed_indices(f.structure_constraints, StructureConjunction)
+        if absorbed_indices:
+            new_structure_constraints: tuple[StructureConstraintFormula, ...] = tuple(
+                x for index, x in enumerate(f.structure_constraints) if index not in absorbed_indices
+            )
+            return simplify_structure_constraint(StructureDisjunction(f.location_id, new_structure_constraints))
+
     # Rule??: StructureConjunction with only ConstraintGroups is a ConstraintGroup with element-wise AND constraints
     if isinstance(f, StructureConjunction) and all(isinstance(x, ConstraintGroup) for x in f.structure_constraints):
         element_wise_new_constraints: list[list[NonStructureConstraintFormula]] = [[] for _ in range(f.nr_variables)]
@@ -495,7 +540,11 @@ def simplify_non_structure_constraint(f: NonStructureConstraintFormula) -> NonSt
        when ``constraint_type == "type"``, otherwise
        ``NonTypeTemplateConstraintFormula(constraint_type, location_id)``.
 
-    8. **Double-negation elimination** – ``Not(Not(X)) → X``.
+    8. **Absorption rules**
+       ``And(X, etc_1..., Or(X, ...), etc_2...)`` = ``And(X, etc_1..., etc_2...)``
+       ``Or(X, etc_1..., And(X, ...), etc_2...)`` = ``Or(X, etc_1..., etc_2...)``
+
+    9. **Double-negation elimination** – ``Not(Not(X)) → X``.
 
     Parameters
     ----------
@@ -660,6 +709,24 @@ def simplify_non_structure_constraint(f: NonStructureConstraintFormula) -> NonSt
             if f.constraint_type == TypeTemplateConstraintFormula.TYPE:
                 return TypeTemplateConstraintFormula.any_type(f.location_id)
             return NonTypeTemplateConstraintFormula(f.constraint_type, f.location_id)
+
+    # Rule: and-absorption: And(X, etc_1..., Or(..., X, ...), etc_2...) = And(X, etc_1..., etc_2...)
+    if isinstance(f, TemplateConstraintAnd):
+        absorbed_indices = _collect_absorbed_indices(f.sub_formulae, TemplateConstraintOr)
+        if absorbed_indices:
+            new_sub_formulae: tuple[NonStructureConstraintFormula, ...] = tuple(
+                x for index, x in enumerate(f.sub_formulae) if index not in absorbed_indices
+            )
+            return simplify_non_structure_constraint(TemplateConstraintAnd(f.location_id, new_sub_formulae))
+
+    # Rule: or-absorption: Or(X, etc_1..., And(..., X, ...), etc_2...) = Or(X, etc_1..., etc_2...)
+    if isinstance(f, TemplateConstraintOr):
+        absorbed_indices = _collect_absorbed_indices(f.sub_formulae, TemplateConstraintAnd)
+        if absorbed_indices:
+            new_sub_formulae: tuple[NonStructureConstraintFormula, ...] = tuple(
+                x for index, x in enumerate(f.sub_formulae) if index not in absorbed_indices
+            )
+            return simplify_non_structure_constraint(TemplateConstraintOr(f.location_id, new_sub_formulae))
 
     # Rule: consume not(not(...))
     if isinstance(f, TemplateConstraintNot) and isinstance(f.sub_formula, TemplateConstraintNot):
