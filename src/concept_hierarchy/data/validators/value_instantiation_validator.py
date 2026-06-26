@@ -12,21 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Validate a value against a parsed :class:`~ch_schema.ast_nodes.CHSchemaNode`.
+"""Validate a value against a parsed :class:`~parsed_schema.CHSchemaNode`.
 
-The recursion is performed by *this* module, not delegated wholesale to ``jsonschema``: at each node,
-``jsonschema`` is only used to check that node's *own* keywords (``type`` for builtins, ``enum``, ``const``,
-``minimum``/``maximum``, ``pattern``, ``format``, ``minItems``, ...) via :attr:`CHSchemaNode.shallow_canonical`
-(which has every subschema-bearing keyword replaced by ``True``).
-Recursion into ``properties``, ``items``, ``allOf``/``anyOf``/``oneOf``/``not``/``if``-``then``-``else``, etc. is done
-explicitly, so that:
+The recursion is performed by *this* module, not delegated wholesale to
+``jsonschema``: at each node, ``jsonschema`` is only used to check that
+node's *own* keywords (``type`` for builtins, ``enum``, ``const``,
+``minimum``/``maximum``, ``pattern``, ``format``, ``minItems``, …) via
+:attr:`CHSchemaNode.shallow_canonical` (which has every subschema-bearing
+keyword replaced by ``True``). Recursion into ``properties``, ``items``,
+``allOf``/``anyOf``/``oneOf``/``not``/``if``-``then``-``else``, etc. is
+done explicitly, so that:
 
 * every reported error carries a precise path into the *value*, and
-* custom-type nodes -- which may appear anywhere, including inside ``anyOf``/``oneOf``/``allOf`` -- are routed to
-  :meth:`~ch_schema.context.CHValueContext.check_value` instead of being treated as plain JSON values.
+* custom-type nodes — which may appear anywhere, including inside
+  ``anyOf``/``oneOf``/``allOf`` — are routed to
+  :meth:`CHValueContext.parse_custom_type` instead of being treated as
+  plain JSON values.
 
-``required`` is also checked explicitly (rather than via ``jsonschema``) so that a missing required property is reported
-with ``path`` pointing at the missing key itself (``part=KEY``), not at the containing object.
+``required`` is also checked explicitly (rather than via ``jsonschema``) so
+that a missing required property is reported with ``path`` pointing at the
+missing key itself (``part=KEY``), not at the containing object.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from abc import ABC, abstractmethod
 
 from jsonschema import Draft7Validator
 
+from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
@@ -43,10 +49,8 @@ from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, Loc
 
 
 class _Missing:
-    """
-    Sentinel to signal "no value is present" / "no default is specified".
-    To distinguish from a legitimate JSON ``null``.
-    """
+    """Sentinel to signal "no value is present" / "no default is specified",
+    distinguishable from a legitimate JSON ``null``."""
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return "<MISSING>"
@@ -60,18 +64,45 @@ MISSING = _Missing()
 
 class CHValueValidator(ABC):
     """
-    Context protocol.
+    Context protocol for value validation and parsing.
 
-    A "context" provides the knowledge that is *not* part of the schema text itself:
-
-    * :class:`CHValueContext` is consulted while a **value** is being checked against a (possibly custom-typed) schema
-      node, to decide whether the value (together with its reference-kind and recorded default expression) is acceptable
-      for a given custom type.
-
-    Provides the rules needed while checking a *value* against a (possibly custom-typed) schema node.
+    Provides the knowledge that is *not* part of the schema text itself:
+    how to parse and validate a raw JSON value into a typed
+    :class:`~expression.Expression` for a given custom type.
     """
 
     @abstractmethod
+    def parse_custom_type(
+        self,
+        custom_type: TypeValue,
+        ref: str,
+        default_expr: object,
+        value: object,
+        location_id: LocationId,
+    ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
+        """Parse and validate ``value`` as an :class:`~expression.Expression`
+        for the given custom type.
+
+        When ``value`` is :data:`MISSING` and ``default_expr`` is not
+        :data:`MISSING`, the context should parse and independently validate
+        ``default_expr`` as the expression (the *used_default* case).
+
+        Args:
+            custom_type: The resolved type value from the schema node.
+            ref: Either ``"Reference"`` or ``"NoRef"``.
+            default_expr: The raw default-value expression from the schema,
+                or :data:`MISSING` if no default was defined.
+            value: The raw JSON value at ``location_id``, or :data:`MISSING`
+                when the property was absent from the input and a default is
+                being used instead.
+            location_id: Location of the value within the instance being
+                validated.
+
+        Returns:
+            A ``(expression, errors)`` pair.  ``expression`` is ``None``
+            when parsing failed; ``errors`` lists every problem found.
+        """
+
     def check_value(
         self,
         type_name: TypeValue,
@@ -96,6 +127,8 @@ class CHValueValidator(ABC):
             ``None`` if ``value`` is acceptable, otherwise a
             :class:`CHSyntaxError` or :class:`CHSemanticError` describing the problem.
         """
+        _, errors = self.parse_custom_type(type_name, ref, default_expr, value, location_id)
+        return errors[0] if errors else None
 
 
 def validate_value(
@@ -109,16 +142,18 @@ def validate_value(
 
     Args:
         value: The value to check (e.g. parsed from JSON).
-        node: A schema AST produced by :func:`ch_schema.schema_validator.parse_schema`. (Typically you should only call
-            this on a schema that came back with no errors from ``parse_schema``.)
-        context: Used to validate values found at custom-type nodes; see :class:`~ch_schema.context.CHValueContext`.
-        location_id: The starting location in a Concept Hierarchy where the check starts
-        collect_all_errors: If ``True`` (default), collect every error found. If ``False``, stop at the first error.
+        node: A schema AST produced by ``parse_schema``. Typically, you
+            should only call this on a schema that came back with no errors.
+        context: Used to validate values found at custom-type nodes.
+        location_id: Starting location in the Concept Hierarchy.
+        collect_all_errors: If ``True`` (default), collect every error
+            found.  If ``False``, stop at the first error.
 
     Returns:
-        A list of :class:`~ch_schema.errors.CHSemanticError` (and, in principle,
-        :class:`~ch_schema.errors.CHSyntaxError` if ``context.check_value`` returns one), each with ``path`` pointing
-        at the offending location *within ``value``*. Empty if ``value`` is valid.
+        A list of :class:`~errors.CHSemanticError` (and, in principle,
+        :class:`~errors.CHSyntaxError` if ``context.parse_custom_type``
+        returns one), each with ``location_id`` pointing at the offending
+        location *within ``value``*.  Empty if ``value`` is valid.
     """
     if location_id is None:
         location_id = []
@@ -154,7 +189,7 @@ def _validate(
     if node.is_boolean_schema:
         if node.canonical is False:
             record(
-                errors, collect_all_errors, CHSemanticError("no value is allowed here (schema is `false`)", value_path)
+                errors, collect_all_errors, CHSemanticError("No value is allowed here (schema is `false`)", value_path)
             )
         return
 
