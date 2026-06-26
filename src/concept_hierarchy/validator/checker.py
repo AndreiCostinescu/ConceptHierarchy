@@ -720,17 +720,26 @@ class ConceptHierarchyChecker:
         self.check_expressions()
 
 
-def check_model(model: ConceptHierarchyModel) -> None:
+def check_model(model: ConceptHierarchyModel, checker: ConceptHierarchyChecker | None = None) -> None:
     """Validate syntax and semantic rules on *model*, raising on the first violation.
 
     Parameters
     ----------
     model:
         A :class:`~concept_hierarchy.models.ConceptHierarchyModel` produced by the parser.
+    checker:
+        A :class:`~concept_hierarchy.checker.ConceptHierarchyChecker` instance or None.
+        If not specified, will use a default-created ConceptHierarchyChecker instance.
+        Using a custom checker is advantageous:
+         - during testing (because it can customize the performed checks) or
+         - when extending the capabilities of the ConceptHierarchy with new features
+            that are not included in the base class.
 
     Raises
     ------
     concept_hierarchy.errors.CHSyntaxError
     concept_hierarchy.errors.CHSemanticError
     """
-    ConceptHierarchyChecker(model).check()
+    if checker is None:
+        checker = ConceptHierarchyChecker(model)
+    checker.check()
