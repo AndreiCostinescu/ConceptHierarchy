@@ -41,8 +41,11 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyType,
     ConceptHierarchyVariadicGroup,
     ExpandedVariadicTemplateVariable,
+    Instantiated,
     InstantiatedType,
+    InstantiatedVariadicGroup,
     LiteralValue,
+    TemplateDependent,
     TemplateVariable,
 )
 from concept_hierarchy.data.types.parsed_type import TemplateArgumentLiteral
@@ -141,6 +144,30 @@ def validate_template_argument_value_against_constraint(
         collect_all_errors,
     )
     return errors
+
+
+def validate_template_argument_constraints_in_instantiated_types(
+    ch_type: ConceptHierarchyTemplateArgument, validator: TypeTemplateInstantiationValidator, location_id: LocationId
+) -> list[ConceptHierarchyError]:
+    if isinstance(ch_type, (LiteralValue, TemplateDependent)):
+        return []
+    assert isinstance(ch_type, Instantiated)
+    if isinstance(ch_type, InstantiatedVariadicGroup):
+        errors = []
+        for group_elem in ch_type.variadic_group:
+            new_location_id = location_id + [group_elem.full_name]
+            sub_errors = validate_template_argument_constraints_in_instantiated_types(
+                group_elem, validator, new_location_id
+            )
+            if sub_errors:
+                errors.extend(sub_errors)
+        return errors
+    assert isinstance(ch_type, InstantiatedType)
+    # Because this is applied only on instantiated types (i.e. not dependent on template variables),
+    #  pass an empty TemplateContext
+    return validate_complete_instantiation_of_concept(
+        ch_type.clean_name, ch_type.template_arguments, TemplateContext(), validator, location_id
+    )
 
 
 def validate_complete_instantiation_of_concept(
