@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from typing import TypeAlias
+from typing import Generator, TypeAlias
 
 from frozendict import frozendict
 
@@ -70,6 +70,9 @@ class ConceptHierarchyTemplateArgument(ABC):
     @abstractmethod
     def registry(self) -> frozendict:
         pass
+
+    def iterate_subtypes(self) -> Generator[ConceptHierarchyTemplateArgument, None, None]:
+        yield self
 
 
 class Instantiated(ConceptHierarchyTemplateArgument, ABC):
@@ -142,6 +145,11 @@ class ConceptHierarchyType(ConceptHierarchyTemplateArgument, ABC):
             registry[self.full_name] = (self.clean_name, self.template_arguments, ())
             self._registry = frozendict(registry)
         return self._registry
+
+    def iterate_subtypes(self) -> Generator[ConceptHierarchyTemplateArgument, None, None]:
+        yield self
+        for t_arg in self.template_arguments:
+            yield from t_arg.iterate_subtypes()
 
 
 class InstantiatedType(Instantiated, ConceptHierarchyType):
@@ -302,6 +310,11 @@ class ConceptHierarchyVariadicGroup(VariadicArgument, ABC):
                 merged.update(entry.registry)
             self._registry = frozendict(merged)
         return self._registry
+
+    def iterate_subtypes(self) -> Generator[ConceptHierarchyTemplateArgument, None, None]:
+        yield self
+        for elem in self.variadic_group:
+            yield from elem.iterate_subtypes()
 
 
 class InstantiatedVariadicGroup(Instantiated, ConceptHierarchyVariadicGroup):
