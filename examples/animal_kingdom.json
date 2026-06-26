@@ -98,14 +98,25 @@
                 "abstract": true
             }
         },
-        "Integer": {
+        "Numeric": {
             "directParents": ["ValueDomain"],
+            "data": {}
+        },
+        "Number": {
+            "directParents": ["Numeric"],
+            "data": {
+                "defaultSerialization": "number",
+                "instantiation": [[[], "number"]]
+            }
+        },
+        "Integer": {
+            "directParents": ["Number"],
             "data": {
                 "instantiation": "integer"
             }
         },
         "Duration": {
-            "directParents": ["ValueDomain"],
+            "directParents": ["Numeric"],
             "data": {
                 "instantiation": {
                     "oneOf": [
@@ -124,7 +135,25 @@
             "directParents": ["ValueDomain"],
             "data": {
                 "defaultSerialization": "string",
-                "instantiation": "string"
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
+            }
+        },
+        "Map": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateArguments": ["K", "V"],
+                "instantiation": [
+                    [["String", ""], "object"],
+                    [["", ""], {
+                        "type": "array",
+                        "items": ["K", "V"],
+                        "minItems": 2,
+                        "maxItems": 2
+                    }]
+                ]
             }
         },
         "InstanceBase": {
@@ -154,10 +183,50 @@
                 }
             }
         },
+        "ConceptValue": {
+            "directParents": ["String"],
+            "data": {
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
+            }
+        },
+        "Sequence": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateArguments": ["T"],
+                "instantiation": {
+                    "type": "array",
+                    "items": "T"
+                }
+            }
+        },
+        "ConceptParameters": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": [["props", "x", true], ["funcs", "x", true]]
+                }
+            }
+        },
         "TypeName": {
             "directParents": ["String"],
             "data": {
-                "instantiation": "string"
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
+            }
+        },
+        "Interval": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateArguments": {
+                    "order": ["T"],
+                    "T": "Or(Number, Duration)"
+                }
             }
         },
         "ClosedInterval": {
@@ -174,6 +243,21 @@
                         "max": { "type": "T" }
                     },
                     "additionalProperties": false
+                }
+            }
+        },
+        "Vector": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateArguments": {
+                    "order": ["N"],
+                    "N": 3
+                },
+                "instantiation": {
+                    "type": "array",
+                    "minItems": "N",
+                    "maxItems": "N",
+                    "items": "Number"
                 }
             }
         },
@@ -244,6 +328,10 @@
                 }
             }
         },
+        "FunctionComposition": {
+            "directParents": ["ValueDomain"],
+            "data": {}
+        },
         "Function": {
             "directParents": ["ValueDomain"],
             "data": {
@@ -262,7 +350,7 @@
             "data": {
                 "templateArguments": {
                     "order": ["T"],
-                    "T": "ValueDomain",
+                    "T": "Not(Or(Duration, Number))",
                     "substitution": {
                         "FunctionReturning:T": "T"
                     }
@@ -271,7 +359,11 @@
                     "arg1": ["T"],
                     "arg2": ["T"],
                     "res": "T"
-                }
+                },
+                "inversion": [
+                    [["Numeric"], {}],
+                    [[""], {}]
+                ]
             }
         },
         "Increment": {
@@ -301,6 +393,10 @@
                     "varName": ["T", true]
                 }
             }
+        },
+        "GetCurrentTime": {
+            "directParents": ["Function"],
+            "data": {"interface": {"arg1": "Duration", "res": "Duration"}}
         }
     },
     "instances": {
