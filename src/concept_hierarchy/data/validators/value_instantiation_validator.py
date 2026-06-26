@@ -58,7 +58,7 @@ class _Missing:
 MISSING = _Missing()
 
 
-class CHValueContext(ABC):
+class CHValueValidator(ABC):
     """
     Context protocol.
 
@@ -101,7 +101,7 @@ class CHValueContext(ABC):
 def validate_value(
     value: object,
     node: CHSchemaNode,
-    context: CHValueContext,
+    context: CHValueValidator,
     location_id: LocationId = None,
     collect_all_errors: bool = True,
 ) -> list[ConceptHierarchyError]:
@@ -136,7 +136,7 @@ def _validate(
     value: object,
     present: bool,
     value_path: LocationId,
-    context: CHValueContext,
+    context: CHValueValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> None:
@@ -224,7 +224,7 @@ def _validate_object(
     node: CHSchemaNode,
     value: dict,
     value_path: LocationId,
-    context: CHValueContext,
+    context: CHValueValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> None:
@@ -301,7 +301,7 @@ def _validate_array(
     node: CHSchemaNode,
     value: list,
     value_path: LocationId,
-    context: CHValueContext,
+    context: CHValueValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> None:
@@ -342,7 +342,7 @@ def _validate_any_of(
     node: CHSchemaNode,
     value: object,
     value_path: LocationId,
-    context: CHValueContext,
+    context: CHValueValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> None:
@@ -364,7 +364,7 @@ def _validate_one_of(
     node: CHSchemaNode,
     value: object,
     value_path: LocationId,
-    context: CHValueContext,
+    context: CHValueValidator,
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> None:
