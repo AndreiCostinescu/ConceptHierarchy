@@ -111,6 +111,17 @@ class TypeValidator(ABC):
     def delete_template_variable(self, template_variable_name: str, location_id: LocationId):
         pass
 
+    @abstractmethod
+    def validate_fully_instantiated_types_in_converted_value(
+        self, value: ConceptHierarchyTemplateArgument, location_id: LocationId
+    ):
+        """
+        :param value: the value whose internal fully-instantiated types are to be checked
+        :param location_id:
+        :return:
+        :raises CHSemanticError: if validation fails for (at least) a fully-instantiated type, an error is raised
+        """
+
 
 def validate_template_argument_values_of_type(
     ch_type: ParsedType, validator: TypeValidator, location_id: LocationId, context: TemplateContext
@@ -167,7 +178,7 @@ def validate_type_and_parse_to_variadic_groups(
     if type_is_templated != ch_type.is_templated:
         if type_is_templated:
             raise CHSemanticError(
-                f"Did not define template arguments for the templated type {full_type_name}",
+                f'Did not define template arguments for the templated type {full_type_name}. Got "{ch_type.full_name}"',
                 location_id=location_id,
             )
         raise CHSemanticError(
@@ -184,8 +195,9 @@ def validate_type_and_parse_to_variadic_groups(
     nr_parsed_template_arguments = len(parsed_template_arguments)
 
     if (nr_template_arguments - nr_variadic_template_arguments) > nr_parsed_template_arguments:
+        parsed_t_args_str = [x.full_name for x in parsed_template_arguments]
         raise CHSemanticError(
-            f"Too few arguments specified for template type {full_type_name}: {parsed_template_arguments}",
+            f"Too few arguments specified for template type {full_type_name}: {parsed_t_args_str}",
             location_id=location_id,
         )
 
@@ -449,7 +461,7 @@ def convert_items(
     converted_items: list[ConceptHierarchyTemplateArgument] = []
     has_template_dependent_items = False
     for item in items:
-        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(item, validator)
+        converted_item = _convert_template_argument_to_concept_hierarchy_template_argument(item, validator)
         if isinstance(converted_item, TemplateDependent):
             has_template_dependent_items = True
         else:
@@ -458,7 +470,7 @@ def convert_items(
     return tuple(converted_items), has_template_dependent_items
 
 
-def convert_template_argument_to_concept_hierarchy_template_argument(
+def _convert_template_argument_to_concept_hierarchy_template_argument(
     t_arg: TemplateArgumentValue, validator: TypeValidator
 ) -> ConceptHierarchyTemplateArgument:
     """
@@ -501,6 +513,20 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
     return InstantiatedVariadicGroup(t_arg.clean_name, converted_group_elements)
 
 
+def convert_template_argument_to_concept_hierarchy_template_argument(
+    t_arg: TemplateArgumentValue, validator: TypeValidator, location_id: LocationId
+) -> ConceptHierarchyTemplateArgument:
+    """
+    :param t_arg: is the value to be converted
+    :param validator: is the type validator
+    :param location_id: the location where the type was used
+    :return: the converted value
+    """
+    res = _convert_template_argument_to_concept_hierarchy_template_argument(t_arg, validator)
+    validator.validate_fully_instantiated_types_in_converted_value(res, location_id)
+    return res
+
+
 def _parse_convert_no_check(
     type_def: str, validator: TypeValidator, location_id: LocationId
 ) -> ConceptHierarchyTemplateArgument:
@@ -512,7 +538,7 @@ def _parse_convert_no_check(
         raise CHSyntaxError(f"Expected a single type, but parsing produced: {parsed_type!r}", location_id=location_id)
     validated_type = validate_type(parsed_type[0], validator, location_id)
     # check the semantics of the type
-    return convert_template_argument_to_concept_hierarchy_template_argument(validated_type, validator)
+    return convert_template_argument_to_concept_hierarchy_template_argument(validated_type, validator, location_id)
 
 
 def parse_convert_type(type_def: str, validator: TypeValidator, location_id: LocationId) -> InstantiatedType:
