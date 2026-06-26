@@ -321,6 +321,7 @@ def check_types_in_value_domain_definition(
     Just parse the types of the json schema; don't validate the default value.
     """
     if c.instantiation is None:
+        datum.instantiation = ()
         return
 
     context.set_template_context(datum.template_context)
