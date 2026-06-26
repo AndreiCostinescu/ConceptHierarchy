@@ -514,7 +514,7 @@ def simplify_non_structure_constraint(f: NonStructureConstraintFormula) -> NonSt
         return f
     if f.is_type_unconstrained:
         any_type = TypeTemplateConstraintFormula.any_type(f.location_id)
-        if f.constraint_type == "type":
+        if f.constraint_type == TypeTemplateConstraintFormula.TYPE:
             if f != any_type:
                 return any_type
         elif not isinstance(f, NonTypeTemplateConstraintFormula):
@@ -577,7 +577,7 @@ def simplify_non_structure_constraint(f: NonStructureConstraintFormula) -> NonSt
         if removed:
             if new_constraints:
                 return simplify_non_structure_constraint(TemplateConstraintAnd(f.location_id, tuple(new_constraints)))
-            elif f.constraint_type == "type":
+            elif f.constraint_type == TypeTemplateConstraintFormula.TYPE:
                 return TypeTemplateConstraintFormula.any_type(f.location_id)
             else:
                 return NonTypeTemplateConstraintFormula(f.constraint_type, f.location_id)
@@ -622,7 +622,7 @@ def simplify_non_structure_constraint(f: NonStructureConstraintFormula) -> NonSt
     if isinstance(f, TemplateConstraintOr):
         if _formula_contains_a_and_not_a(f.sub_formulae):
             # differentiate between unconstrained types and unconstrained literal types!
-            if f.constraint_type == "type":
+            if f.constraint_type == TypeTemplateConstraintFormula.TYPE:
                 return TypeTemplateConstraintFormula.any_type(f.location_id)
             return NonTypeTemplateConstraintFormula(f.constraint_type, f.location_id)
 

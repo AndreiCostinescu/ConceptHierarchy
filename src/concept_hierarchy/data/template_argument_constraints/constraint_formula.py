@@ -458,6 +458,8 @@ class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
     values or ``Unconstrained`` inside a boolean operator is a runtime error.
     """
 
+    TYPE = "type"
+
     @staticmethod
     def any_type(location_id: LocationId) -> TypeTemplateConstraintFormula:
         _any_type = TemplateConstraintAbstractDescendants.__new__(TemplateConstraintAbstractDescendants)
@@ -476,7 +478,7 @@ class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
 
     @property
     def constraint_type(self) -> str:
-        return "type"
+        return TypeTemplateConstraintFormula.TYPE
 
 
 class HierarchyCheckType(Enum):
