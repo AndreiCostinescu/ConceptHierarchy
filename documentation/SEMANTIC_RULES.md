@@ -17,10 +17,19 @@ Each rule corresponds to a `CHSemanticError` raise in the source code.
 
      Last verified against commit 2ee46134b37d19208796365acdfef1d8ff2e460d, plus uncommitted/staged working-tree
      changes present at verification time in:
-       data/validators/value_instantiation_validator.py, definitions/concept_definition_functions.py,
-       validator/checker.py, validator/expression_checks.py, validator/validators/type_validator.py,
+       data/validators/value_instantiation_validator.py, data/validators/template_argument_constraints_validator.py,
+       data/validators/type_validator.py, data/type_template_variables/constraint_formula.py,
+       data/type_template_variables/template_substitution.py, data/jsonschema/parsed_schema.py,
+       data/parsers/jsonschema_parser.py, data/parsers/template_argument_constraint_parser.py,
+       definitions/concept_definition_functions.py, validator/checker.py, validator/expression_checks.py,
+       validator/concept_hierarchy_type_checks.py, validator/value_domain_template_constraint_checks.py,
+       validator/validators/type_validator.py,
        and the staged-but-not-committed: data/expressions/ module (expression.py, expression_errors.py,
        function_composition.py, subexpressions.py), data/parsers/expression_parser.py.
+     Full audit performed: all CHSemanticError raise sites cross-checked against all rules.
+     Notable changes from this audit: removed Rule 12.12 (requireAllKeysFromProperties — dead code, CHSchemaNode
+     no longer has require_all_properties; enforcement not re-implemented for the new require_all_keys on
+     CustomConceptDataConstraint); added Rule 11.17 (TemplateDependentType instantiation constraint compatibility).
      (examples/animal_kingdom.json also modified but is not a source-of-rules file.) -->
 
 ---
@@ -656,6 +665,11 @@ After building the `TemplateContext` from a `ValueDomain`'s declared template-ar
 - **Source:** `validator/value_domain_template_constraint_checks.py` — `check_value_domain_template_constraint_formulae`
 - **Location:** `["concepts", <concept>, "data", "templateArguments"]`
 
+### 11.17 A template-dependent type's instantiation constraints must not contradict the existing template variable constraints
+When validating a `TemplateDependentType` (a type whose template arguments still contain template variables) against the instantiation constraints of its concept, the constraints implied by that instantiation are simplified together with the constraints already in scope on the surrounding template variables. If the simplified conjunction is empty — i.e. no assignment to the template variables can simultaneously satisfy the existing constraints and the instantiation constraints — the type is rejected.
+
+- **Source:** `data/validators/template_argument_constraints_validator.py` — `validate_instantiation_constraints_in_template_argument_value`
+
 ---
 
 ## 12. Instantiation Value Validation (JSON-Schema-Based)
@@ -718,12 +732,6 @@ Matching zero branches, or matching more than one, is rejected.
 Values at a custom-type node (e.g. an `InstanceBase` or `Reference` type) are delegated to `CHValueContext.check_value`, which may itself return a `CHSemanticError`.
 
 - **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
-
-### 12.12 A `requireAllKeysFromProperties` object must define every key listed in `properties`
-This is distinct from the standard draft-07 `required` keyword (12.3): when a schema node sets the custom `requireAllKeysFromProperties` flag, every key declared in that node's `properties` map is treated as required, even though `required` itself may list none/some of them.
-
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_object`
-- **Location:** the containing object's path (`part=VALUE`)
 
 ---
 
