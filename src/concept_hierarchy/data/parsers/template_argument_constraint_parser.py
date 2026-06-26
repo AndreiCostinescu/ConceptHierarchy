@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from concept_hierarchy.data.parsers.string_parser import StringParser
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     LiteralValueConstraintFormula,
     NonStructureConstraintFormula,
@@ -38,7 +38,7 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TypeTemplateConstraintFormula,
     Unconstrained,
 )
-from concept_hierarchy.data.template_argument_constraints.simplify_constraints import simplify_formula
+from concept_hierarchy.data.type_template_variables.simplify_constraints import simplify_formula
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
