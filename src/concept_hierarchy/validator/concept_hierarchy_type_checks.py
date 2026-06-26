@@ -30,7 +30,7 @@ from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.parsers.jsonschema_parser import parse_schema
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
 from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     NonStructureConstraintFormula,
     StructureConstraintFormula,

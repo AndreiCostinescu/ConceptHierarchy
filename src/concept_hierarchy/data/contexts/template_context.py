@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     NonStructureConstraintFormula,
     StructureConjunction,
@@ -26,7 +26,7 @@ from concept_hierarchy.data.template_argument_constraints.constraint_formula imp
     TypeTemplateConstraintFormula,
     Unconstrained,
 )
-from concept_hierarchy.data.template_argument_constraints.simplify_constraints import (
+from concept_hierarchy.data.type_template_variables.simplify_constraints import (
     create_empty_structure_constraint,
     create_unconstrained_structure_constraint,
     simplify_structure_constraint,

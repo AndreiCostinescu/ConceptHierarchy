@@ -93,7 +93,7 @@ from __future__ import annotations
 import pytest
 
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     LiteralValueConstraintFormula,
     NonStructureConstraintFormula,

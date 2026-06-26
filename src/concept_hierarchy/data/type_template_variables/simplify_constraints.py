@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+from concept_hierarchy.data.type_template_variables.constraint_formula import (
     NonTypeTemplateConstraintFormula,
     StructureConjunction,
     StructureDisjunction,

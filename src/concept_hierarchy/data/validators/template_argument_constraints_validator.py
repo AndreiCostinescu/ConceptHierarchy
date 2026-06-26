@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from typing import Callable
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
+from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     Empty,
     HierarchyCheckType,

@@ -21,7 +21,7 @@ from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext
 from concept_hierarchy.data.parsers.expression_parser import ExpressionParserValidator
 from concept_hierarchy.data.parsers.jsonschema_parser import CHSchemaValidator
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormulaValidator
+from concept_hierarchy.data.type_template_variables.constraint_formula import TemplateConstraintFormulaValidator
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
     TypeTemplateInstantiationValidator,

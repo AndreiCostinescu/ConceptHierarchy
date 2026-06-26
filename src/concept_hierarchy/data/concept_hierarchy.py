@@ -24,7 +24,7 @@ from concept_hierarchy.data.expressions.expression_utils import (
     ValueDomainArgumentReference,
 )
 from concept_hierarchy.data.jsonschema import CHSchemaNode
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import ConstraintGroup
+from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
     InstantiatedType,

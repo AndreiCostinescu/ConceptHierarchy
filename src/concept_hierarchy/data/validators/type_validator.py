@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.parsers.type_parser import parse_type
-from concept_hierarchy.data.template_argument_constraints.constraint_formula import NonStructureConstraintFormula
+from concept_hierarchy.data.type_template_variables.constraint_formula import NonStructureConstraintFormula
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     TYPE_VALUE_IS_INSTANCE_CHECK,
     ConceptHierarchyTemplateArgument,
