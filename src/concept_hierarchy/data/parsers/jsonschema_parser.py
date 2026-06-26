@@ -117,7 +117,23 @@ class CHSchemaValidator(ABC):
         """
 
     @abstractmethod
+    def set_identifier_where_types_are_defined(self, identifier: str) -> None:
+        pass
+
+    @abstractmethod
+    def clear_identifier_where_types_are_defined(self) -> None:
+        pass
+
+    @abstractmethod
     def is_concept(self, concept_name: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_template_variable(self, template_variable_name: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_type_template_variable(self, template_variable_candidate: str) -> bool:
         pass
 
     @abstractmethod
@@ -338,8 +354,22 @@ def _finish_custom_type_node(
 ) -> None:
     node.is_custom_type = True
 
+    type_location_id = location_id
+    if "type" in node.raw:
+        type_location_id += ["type"]
+
+    if validator.is_template_variable(type_name) and not validator.is_type_template_variable(type_name):
+        record(
+            errors,
+            collect_all_errors,
+            CHSemanticError(
+                f'Used the non-type template variable "{type_name}" where a type name was expected!',
+                location_id=type_location_id,
+            ),
+        )
+
     try:
-        node.custom_type = validator.parse_custom_type(type_name, location_id + ["type"], allow_x_as_template_variable)
+        node.custom_type = validator.parse_custom_type(type_name, type_location_id, allow_x_as_template_variable)
     except ConceptHierarchyError as e:
         record(errors, collect_all_errors, e)
 
@@ -351,7 +381,7 @@ def _finish_custom_type_node(
             CHSyntaxError(
                 f'"referenceType" must be "{ValueDomainArgumentReference.REF.value}" or '
                 f'"{ValueDomainArgumentReference.NO_REF.value}", got {work["referenceType"]!r}',
-                location_id + ["referenceType"],
+                location_id=location_id + ["referenceType"],
             ),
         )
         ref = ValueDomainArgumentReference.NO_REF.value
@@ -371,7 +401,7 @@ def _finish_custom_type_node(
                 CHSyntaxError(
                     f"Key {key!r} is not allowed on a Concept Hierarchy type schema "
                     f"(only {sorted(CUSTOM_TYPE_EXTRA_KEYS)} are allowed)",
-                    location_id + [key],
+                    location_id=location_id + [key],
                     part=PathPart.KEY,
                 ),
             )
