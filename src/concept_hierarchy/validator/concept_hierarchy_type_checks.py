@@ -838,7 +838,7 @@ def check_types_in_value_domain_definition(
             group_constraints.append(parsed_constraint)
         constraint = ConstraintGroup(instantiation_location_id, tuple(group_constraints))
         parsed_instantiations.append((constraint, parsed_instantiation_schema))
-    datum.instantiation = parsed_instantiations
+    datum.instantiation = tuple(parsed_instantiations)
 
 
 def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionData, context: ConceptHierarchyContext):

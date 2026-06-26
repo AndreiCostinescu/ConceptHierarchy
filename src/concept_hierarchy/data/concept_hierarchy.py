@@ -75,7 +75,7 @@ class TypeData(ConceptData):
 
 @lazy_properties
 class ValueDomainData(TypeData):
-    instantiation: list[tuple[ConstraintGroup, CHSchemaNode]]
+    instantiation: tuple[tuple[ConstraintGroup, CHSchemaNode], ...]
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
