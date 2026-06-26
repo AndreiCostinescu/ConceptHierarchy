@@ -14,8 +14,6 @@
 
 from __future__ import annotations
 
-from copy import copy
-
 from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext
@@ -33,6 +31,8 @@ from concept_hierarchy.models import ConceptHierarchyModel
 
 
 class ConceptHierarchyContext:
+    """This class can not be copied, because the context of the validators will not be updated!"""
+
     def __init__(self, concept_hierarchy_model: ConceptHierarchy):
         self.model = concept_hierarchy_model
         self.template_context: TemplateContext | None = None
@@ -54,31 +54,35 @@ class ConceptHierarchyContext:
     def ch(self) -> ConceptHierarchyModel:
         return self.model.ch
 
-    def overwrite_template_context(self, template_context: TemplateContext) -> ConceptHierarchyContext:
-        res = copy(self)
-        res.template_context = template_context
-        return res
-
-    def overwrite_variable_context(self, variable_context: VariableContext) -> ConceptHierarchyContext:
-        res = copy(self)
-        res.variable_context = variable_context
-        return res
-
-    def set_template_context(self, template_context: TemplateContext) -> ConceptHierarchyContext:
-        if self.template_context is None:
-            return self.overwrite_template_context(template_context)
+    def __copy__(self):
         raise RuntimeError(
-            f"Use the extend method to extend an existing template_context; "
-            f"this one {self.template_context!r} is not empty, can't set!"
+            "The ConceptHierarchyContext can not be copied because the context of the validators can not be updated "
+            "from here!"
         )
 
-    def template_context_extend(
-        self, template_context: TemplateContext, location_id: LocationId
-    ) -> ConceptHierarchyContext:
-        return self.overwrite_template_context(self.template_context.add_context(template_context, location_id))
+    def __deepcopy__(self, memo):
+        raise RuntimeError(
+            "The ConceptHierarchyContext can not be copied because the context of the validators can not be updated "
+            "from here!"
+        )
 
-    def template_context_make_neg(self) -> ConceptHierarchyContext:
-        return self.overwrite_template_context(
+    def set_template_context(self, template_context: TemplateContext) -> None:
+        self.template_context = template_context
+
+    def reset_template_context(self) -> None:
+        self.template_context = None
+
+    def set_variable_context(self, variable_context: VariableContext) -> None:
+        self.variable_context = variable_context
+
+    def reset_variable_context(self) -> None:
+        self.variable_context = None
+
+    def template_context_extend(self, template_context: TemplateContext, location_id: LocationId):
+        self.set_template_context(self.template_context.add_context(template_context, location_id))
+
+    def template_context_make_neg(self):
+        self.set_template_context(
             TemplateContext(
                 self.template_context.variables,
                 self.template_context.variadic_variables,
@@ -86,11 +90,11 @@ class ConceptHierarchyContext:
             )
         )
 
-    def add_new_variable(self, variable: str, variable_type: TypeValue) -> ConceptHierarchyContext:
-        return self.overwrite_variable_context(self.variable_context.add_variable(variable, variable_type))
+    def add_new_variable(self, variable: str, variable_type: TypeValue):
+        self.set_variable_context(self.variable_context.add_variable(variable, variable_type))
 
-    def add_new_variables(self, variables: dict[str, TypeValue | dict]) -> ConceptHierarchyContext:
-        return self.overwrite_variable_context(self.variable_context.add_variables(variables))
+    def add_new_variables(self, variables: dict[str, TypeValue | dict]):
+        self.set_variable_context(self.variable_context.add_variables(variables))
 
-    def add_variable_context(self, variable_context: VariableContext) -> ConceptHierarchyContext:
-        return self.overwrite_variable_context(self.variable_context.add_context(variable_context))
+    def add_variable_context(self, variable_context: VariableContext):
+        self.set_variable_context(self.variable_context.add_context(variable_context))

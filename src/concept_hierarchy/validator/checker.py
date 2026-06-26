@@ -58,6 +58,9 @@ from concept_hierarchy.validator.expression_checks import (
     check_expressions_in_concept_hierarchy,
 )
 from concept_hierarchy.validator.validators.constraint_formula_validator import ConstraintFormulaValidator
+from concept_hierarchy.validator.validators.type_instantiation_constraints_validator import TypeInstantiationValidator
+from concept_hierarchy.validator.validators.type_validator import ConceptHierarchyTypeValidator
+from concept_hierarchy.validator.validators.value_instantiation_schema_validator import SchemaValidator
 from concept_hierarchy.validator.value_domain_template_constraint_checks import (
     check_value_domain_template_constraint_formulae,
 )
@@ -707,6 +710,10 @@ class ConceptHierarchyChecker:
         #   - ValueDomain literal formulae
         #   - Domain Concept property and function types
         #   - ValueDomain template substitution values
+        # set instantiation_value_validator + expression_parser_validator + instantiation_schema_validator
+        self.context.type_instantiation_constraints_validator = TypeInstantiationValidator(self.context)
+        self.context.type_validator = ConceptHierarchyTypeValidator(self.context)
+        self.context.instantiation_schema_validator = SchemaValidator(self.context)
         check_types_in_concept_hierarchy(self.context)
 
     def check_expressions(self):

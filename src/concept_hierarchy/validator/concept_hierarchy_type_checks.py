@@ -40,21 +40,14 @@ from concept_hierarchy.data.type_template_variables.simplify_constraints import 
 from concept_hierarchy.data.type_template_variables.template_substitution import substitute
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
-    Instantiated,
     InstantiatedType,
-    InstantiatedVariadicGroup,
-    LiteralValue,
-    TemplateDependent,
     TypeValue,
 )
 from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
-    TypeTemplateInstantiationValidator,
     validate_complete_instantiation_of_concept,
 )
 from concept_hierarchy.data.validators.type_validator import (
-    TypeTemplateData,
-    TypeValidator,
     convert_template_argument_to_concept_hierarchy_template_argument,
     parse_convert_type,
     parse_convert_type_in_template_context,
@@ -68,105 +61,6 @@ from concept_hierarchy.definitions.concept_definition_functions import FunctionD
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId, PathPart
-from concept_hierarchy.validator.validators.constraint_formula_validator import ConstraintFormulaValidator
-
-
-class ConceptHierarchyTypeValidator(TypeValidator):
-    def __init__(self, context: ConceptHierarchyContext):
-        self.context = context
-        self.cached_template_data: dict[str, TypeTemplateData] = {}
-        self.identifier_for_types: str | None = None
-
-    def full_type_name(self, concept_name: str) -> str:
-        if self.is_concept(concept_name):
-            type_def_data = self.context.ch.concepts[concept_name]
-            if isinstance(type_def_data, HiddenImplementationDefinition):
-                return type_def_data.name_with_template_variables()
-        return concept_name
-
-    def get_template_data_of(self, concept_name: str) -> TypeTemplateData:
-        if concept_name not in self.context.ch.concepts:
-            raise RuntimeError(f"Wrong concept name specified: {concept_name}")
-        if concept_name not in self.cached_template_data:
-            type_def_data = self.context.ch.concepts[concept_name]
-            if not isinstance(type_def_data, HiddenImplementationDefinition):
-                type_template_data = TypeTemplateData(
-                    context=TemplateContext(),
-                    variadic_group_identifiers={},
-                    defined_variadic_group_identifiers={},
-                )
-            else:
-                type_model_data = self.context.model.concepts[concept_name]
-                assert isinstance(type_model_data, TypeData)
-                type_template_data = TypeTemplateData(
-                    context=type_model_data.template_context,
-                    variadic_group_identifiers=type_def_data.variadic_template_argument_group_identifiers,
-                    defined_variadic_group_identifiers=type_def_data.defined_variadic_group_identifiers,
-                )
-            self.cached_template_data[concept_name] = type_template_data
-        return self.cached_template_data[concept_name]
-
-    def is_concept(self, concept_name: str) -> bool:
-        return self.context.ch.is_concept(concept_name)
-
-    def is_template_variable(self, concept_name: str) -> bool:
-        return self.context.template_context.has_template_variable(concept_name)
-
-    def is_variadic_template_variable(self, concept_name: str) -> bool:
-        return self.context.template_context.has_template_variable(
-            concept_name
-        ) and self.context.template_context.is_variadic(concept_name)
-
-    def get_available_template_variables(self) -> list[str]:
-        return list(self.context.template_context.variables)
-
-    def set_identifier_where_types_are_defined(self, identifier: str):
-        self.identifier_for_types = identifier
-
-    def get_identifier_where_types_are_defined(self) -> str:
-        return self.identifier_for_types
-
-    def clear_identifier_where_types_are_defined(self):
-        self.identifier_for_types = None
-
-    def add_template_variable(
-        self,
-        template_variable_name: str,
-        template_variable_constraint: NonStructureConstraintFormula,
-        location_id: LocationId,
-    ):
-        self.context.template_context = self.context.template_context.add_template_variable(
-            template_variable_name, False, template_variable_constraint, location_id
-        )
-
-    def delete_template_variable(self, template_variable_name: str, location_id: LocationId):
-        self.context.template_context = self.context.template_context.delete_template_variable(
-            template_variable_name, location_id
-        )
-
-
-def validate_template_argument_constraints_in_instantiated_types(
-    ch_type: ConceptHierarchyTemplateArgument, validator: TypeTemplateInstantiationValidator, location_id: LocationId
-) -> list[ConceptHierarchyError]:
-    if isinstance(ch_type, (LiteralValue, TemplateDependent)):
-        return []
-    assert isinstance(ch_type, Instantiated)
-    if isinstance(ch_type, InstantiatedVariadicGroup):
-        errors = []
-        for group_elem in ch_type.variadic_group:
-            new_location_id = location_id + [group_elem.full_name]
-            sub_errors = validate_template_argument_constraints_in_instantiated_types(
-                group_elem, validator, new_location_id
-            )
-            if sub_errors:
-                errors.extend(sub_errors)
-        return errors
-    assert isinstance(ch_type, InstantiatedType)
-    # Because this is applied only on instantiated types (i.e. not dependent on template variables),
-    #  pass an empty TemplateContext
-    return validate_complete_instantiation_of_concept(
-        ch_type.clean_name, ch_type.template_arguments, TemplateContext(), validator, location_id
-    )
 
 
 def check_types_in_domain_concept_definition(
@@ -177,10 +71,11 @@ def check_types_in_domain_concept_definition(
     - domain concept properties
     - domain concept functions (if present)
     """
-    domain_concept_context = context.set_template_context(TemplateContext())
-    type_validator = ConceptHierarchyTypeValidator(domain_concept_context)
+    context.set_template_context(TemplateContext())
+    type_validator = context.type_validator
     type_validator.set_identifier_where_types_are_defined(c.name)
-    constraint_validator = domain_concept_context.type_instantiation_constraints_validator
+    constraint_validator = context.type_instantiation_constraints_validator
+
     property_types: dict[str, InstantiatedType] = {}
     value_domain_type: InstantiatedType | None = None
     instance_base_type: InstantiatedType | None = None
@@ -292,9 +187,10 @@ def check_types_in_domain_concept_definition(
                 f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions}!",
                 location_id=location_id,
             )
-
     datum.function_types = frozendict(function_types)
+
     type_validator.clear_identifier_where_types_are_defined()
+    context.reset_template_context()
 
 
 def check_types_in_hidden_implementation_definition(
@@ -306,12 +202,13 @@ def check_types_in_hidden_implementation_definition(
       -> and check the template argument constraint values present in the substitution value!
     -> then validate that the substituted value satisfies the constraints of the parent type-instantiation!
     """
-    substitution_values: dict[tuple[str, str], ConceptHierarchyTemplateArgument] = {}
+    context.set_template_context(datum.template_context)
+    type_validator = context.type_validator
+    type_validator.set_identifier_where_types_are_defined(datum.name)
     constraint_validator = context.type_instantiation_constraints_validator
     constraint_validator.update_existing_template_variables(set(datum.template_context.variables))
-    local_context = context.set_template_context(datum.template_context)
-    type_validator = ConceptHierarchyTypeValidator(local_context)
-    type_validator.set_identifier_where_types_are_defined(datum.name)
+
+    substitution_values: dict[tuple[str, str], ConceptHierarchyTemplateArgument] = {}
     subst_location_key = HiddenImplementationDefinition.hidden_template_arguments_substitutions
     for parent in c.parents:
         parent_def_data = context.ch.concepts[parent]
@@ -413,6 +310,7 @@ def check_types_in_hidden_implementation_definition(
     datum.instantiable = c.abstract
     constraint_validator.update_existing_template_variables(set())
     type_validator.clear_identifier_where_types_are_defined()
+    context.reset_template_context()
 
 
 def check_types_in_value_domain_definition(
@@ -424,12 +322,10 @@ def check_types_in_value_domain_definition(
     if c.instantiation is None:
         return
 
-    local_context = context.set_template_context(datum.template_context)
-
-    constraint_validator = ConstraintFormulaValidator(local_context)
-    constraint_validator.update_existing_template_variables(set(local_context.template_context.variables))
-
-    local_context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
+    context.set_template_context(datum.template_context)
+    constraint_validator = context.template_constraint_formula_validator
+    constraint_validator.update_existing_template_variables(set(context.template_context.variables))
+    context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
 
     location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
     parsed_instantiations: list[tuple[ConstraintGroup, CHSchemaNode]] = []
@@ -437,7 +333,7 @@ def check_types_in_value_domain_definition(
         # FIXME: the instantiation index is not 0 for a non-template-dependent instantiation definition
         instantiation_location_id = location_id + [instantiation_index]
         parsed_instantiation_schema, errors = parse_schema(
-            instantiation_schema, local_context.instantiation_schema_validator, instantiation_location_id
+            instantiation_schema, context.instantiation_schema_validator, instantiation_location_id
         )
         if errors:
             raise CHSyntaxError(f"Parsing {instantiation_schema!r} into a json schema failed!", causes=errors)
@@ -455,7 +351,9 @@ def check_types_in_value_domain_definition(
         parsed_instantiations.append((constraint, parsed_instantiation_schema))
     datum.instantiation = tuple(parsed_instantiations)
 
-    local_context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
+    context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
+    constraint_validator.update_existing_template_variables(set())
+    context.reset_template_context()
 
 
 def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionData, context: ConceptHierarchyContext):
@@ -466,9 +364,12 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
     :param datum: the output data container
     :param context: the concept hierarchy in which the check is made
     """
-    local_context = context.set_template_context(datum.template_context)
-    type_validator = ConceptHierarchyTypeValidator(local_context)
+    context.set_template_context(datum.template_context)
+    type_validator = context.type_validator
     type_validator.set_identifier_where_types_are_defined(c.name)
+    # Setting the allowed template variables for the type_validator's type_instantiation_validator is not needed
+    #  Because here, the type_instantiation_validator only checks instantiated types, which do not have template vars.
+
     function_evaluation_argument_types: dict[str, InstantiatedType] = {}
     function_evaluation_argument_modifiers: dict[str, FunctionArgumentModifier] = {}
     function_evaluation_argument_reference_types: dict[str, FunctionArgumentReference] = {}
@@ -599,6 +500,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
 
     type_validator.clear_identifier_where_types_are_defined()
+    context.reset_template_context()
 
 
 def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):
