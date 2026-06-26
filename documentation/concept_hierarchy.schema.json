@@ -116,7 +116,7 @@
                   ]
                 }
               },
-              "required": ["directParents"],
+              "required": ["directParents", "data"],
               "additionalProperties": false
             }
           ]
