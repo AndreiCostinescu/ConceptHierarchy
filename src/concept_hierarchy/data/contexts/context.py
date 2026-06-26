@@ -66,7 +66,7 @@ class ConceptHierarchyContext:
 
     def set_template_context(self, template_context: TemplateContext) -> ConceptHierarchyContext:
         if self.template_context is None:
-            self.overwrite_template_context(template_context)
+            return self.overwrite_template_context(template_context)
         raise RuntimeError(
             f"Use the extend method to extend an existing template_context; "
             f"this one {self.template_context!r} is not empty, can't set!"
