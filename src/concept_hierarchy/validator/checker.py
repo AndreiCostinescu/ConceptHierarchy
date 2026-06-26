@@ -28,7 +28,7 @@ from concept_hierarchy.data.concept_hierarchy import (
     FunctionData,
     ValueDomainData,
 )
-from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext, VariableContext
+from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
@@ -57,6 +57,7 @@ from concept_hierarchy.validator.domain_concept_specialization_checks import (
 from concept_hierarchy.validator.expression_checks import (
     check_expressions_in_concept_hierarchy,
 )
+from concept_hierarchy.validator.validators.constraint_formula_validator import ConstraintFormulaValidator
 from concept_hierarchy.validator.value_domain_template_constraint_checks import (
     check_value_domain_template_constraint_formulae,
 )
@@ -133,6 +134,7 @@ class ConceptHierarchyChecker:
             )
         else:
             self.ch.external_concept_data_resolver = external_data_resolver
+        self.context = ConceptHierarchyContext(self.model)
 
     @property
     def ch(self) -> ConceptHierarchyModel:
@@ -693,23 +695,22 @@ class ConceptHierarchyChecker:
             raise CHSemanticError("Processing concept data failed because of the errors below!", causes=errors)
 
     def check_specializations(self):
-        context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
-        process_specialization_for_domain_concepts(context)
+        process_specialization_for_domain_concepts(self.context)
 
     def check_types(self):
-        context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
         # 1) check all template constraints of templated ValueDomains
-        check_value_domain_template_constraint_formulae(context)
+        # set template_constraint_formula_validator
+        self.context.template_constraint_formula_validator = ConstraintFormulaValidator(self.context)
+        check_value_domain_template_constraint_formulae(self.context)
         # 2) check all the types used in the ConceptHierarchy:
         #   - Function arguments,
         #   - ValueDomain literal formulae
         #   - Domain Concept property and function types
         #   - ValueDomain template substitution values
-        check_types_in_concept_hierarchy(context)
+        check_types_in_concept_hierarchy(self.context)
 
     def check_expressions(self):
-        context = ConceptHierarchyContext(self.model, TemplateContext(), VariableContext())
-        check_expressions_in_concept_hierarchy(context)
+        check_expressions_in_concept_hierarchy(self.context)
 
     def check(self):
         self.check_structure()

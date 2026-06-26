@@ -21,7 +21,6 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
 )
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.errors import CHSemanticError, PathPart
-from concept_hierarchy.validator.validators.constraint_formula_validator import ConstraintFormulaValidator
 
 
 def check_value_domain_template_constraint_formulae(context: ConceptHierarchyContext):
@@ -34,7 +33,7 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
         assert isinstance(vd, HiddenImplementationDefinition)
         # parse template argument constraints;
         # iterate in definition order because newer arguments have the older arguments as variables
-        validator = ConstraintFormulaValidator(context)
+        validator = context.template_constraint_formula_validator
         validator.update_existing_template_variables(set(vd.template_argument_order))
         constraint = None
         constraints: list[NonStructureConstraintFormula] = []
@@ -55,6 +54,7 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
                     location_id=location_id,
                 )
             constraints.append(t_arg_constraint)
+        validator.update_existing_template_variables(set())
 
         if vd.is_templatable():
             constraint = ConstraintGroup(
