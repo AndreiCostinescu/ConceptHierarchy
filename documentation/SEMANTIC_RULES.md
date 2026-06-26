@@ -3,13 +3,25 @@
 This document lists every semantic constraint enforced by the validator.
 Each rule corresponds to a `CHSemanticError` raise in the source code.
 <!-- Rules are grouped by the subsystem that enforces them.-->
-<!-- Last verified against commit 8478adc028419291076736e877b91ff1bdcc426a, plus uncommitted working-tree changes present at verification time in:
-     data/validators/value_instantiation_validator.py, definitions/concept_definition_domain_concept.py,
-     definitions/concept_definition_functions.py, validator/concept_hierarchy_type_checks.py, validator/expression_checks.py,
-     and the new/untracked: data/expressions/ module (expression.py, expression_errors.py, function_composition.py),
-     data/parsers/expression_parser.py, data/value_domain_type.py.
-     (examples/animal_kingdom.json also modified but is not a source-of-rules file; "documentation/SEMANTIC_RULES - Copy.md" is a stray backup, ignore it.)
-     Next update: review `git diff 8478adc028419291076736e877b91ff1bdcc426a..HEAD` AND the current working-tree diff for CHSemanticError raise-site changes. -->
+<!-- HOW TO UPDATE THIS FILE:
+     1. Run: git diff <last-verified-commit>..HEAD -- "*.py"        (committed changes since last verification)
+     2. Run: git diff HEAD -- "*.py"                                (current uncommitted/staged working-tree changes)
+     3. For each diff hunk: look for new/removed/moved `raise CHSemanticError` (or subclass) sites.
+        - New raise sites → add a new rule entry.
+        - Removed raise sites → delete the corresponding rule.
+        - Moved raise sites (file rename or refactor) → update the Source line of the affected rule(s).
+     4. Update the "Last verified against" line below with the current commit (`git rev-parse HEAD`)
+        and list any uncommitted working-tree files that were also inspected.
+     Note: `git diff --name-status <old>..HEAD` quickly shows file renames so you can check
+     whether a Source path in an existing rule is now stale.
+
+     Last verified against commit 2ee46134b37d19208796365acdfef1d8ff2e460d, plus uncommitted/staged working-tree
+     changes present at verification time in:
+       data/validators/value_instantiation_validator.py, definitions/concept_definition_functions.py,
+       validator/checker.py, validator/expression_checks.py, validator/validators/type_validator.py,
+       and the staged-but-not-committed: data/expressions/ module (expression.py, expression_errors.py,
+       function_composition.py, subexpressions.py), data/parsers/expression_parser.py.
+     (examples/animal_kingdom.json also modified but is not a source-of-rules file.) -->
 
 ---
 
@@ -466,7 +478,7 @@ Each entry of `addNewVariablesInExistingScope` must declare a type that parses s
 ### 9.13 A substituted template argument must produce a fully-instantiated type that satisfies its own instantiation constraints
 When substituting template variables inside a value (e.g. while computing whether one type is a subtype of another, via `ConstraintValidator.is_subtype`), if the substitution fully instantiates a sub-value's type, that resulting type must itself satisfy the template-instantiation constraints of its own concept.
 
-- **Source:** `validator/concept_hierarchy_type_checks.py` — `substitute_non_template_variable`
+- **Source:** `data/type_template_variables/template_substitution.py` — `substitute_non_template_variable`; also enforced in `validator/validators/type_validator.py` — `validate_fully_instantiated_types_in_converted_value` (called from `convert_template_argument_to_concept_hierarchy_template_argument`)
 - **Location:** the location of the substituted sub-value within the type expression being substituted
 
 ### 9.14 Merging substitution-derived constraints with a parent's template context must leave it satisfiable
@@ -560,27 +572,27 @@ Helper entry points (`parse_convert_type`, `parse_convert_type_in_template_conte
 
 ## 11. Template Constraint Formulae and Their Validation
 
-`data/template_argument_constraints/constraint_formula.py` validates constraint *formulae* themselves (e.g. `Sequence<ValueDomain>`); `data/validators/template_argument_constraints_validator.py` validates that a concrete template-argument *value* satisfies such a formula.
+`data/type_template_variables/constraint_formula.py` validates constraint *formulae* themselves (e.g. `Sequence<ValueDomain>`); `data/validators/template_argument_constraints_validator.py` validates that a concrete template-argument *value* satisfies such a formula.
 
 ### 11.1 A constraint formula's literal must be a concept or template variable
 The literal name used in a `TemplateConstraintHierarchyOperator` formula (e.g. the `Sequence` in `DescendantsOf<Sequence>`) must resolve to a concept or a template variable.
 
-- **Source:** `data/template_argument_constraints/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
+- **Source:** `data/type_template_variables/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
 
 ### 11.2 A template-variable constraint literal cannot also constrain template arguments
 Writing `T<SomeConstraint>` where `T` is a template variable is invalid — a template variable has no template arguments of its own to constrain.
 
-- **Source:** `data/template_argument_constraints/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
+- **Source:** `data/type_template_variables/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
 
 ### 11.3 Template argument constraints require a templated literal
 Specifying template-argument constraints (e.g. `Foo<X>`) on a literal `Foo` that itself has no template arguments is invalid.
 
-- **Source:** `data/template_argument_constraints/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
+- **Source:** `data/type_template_variables/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
 
 ### 11.4 The number of template-argument constraints must match the literal's arity
 If `Foo` has *n* template arguments, a constraint `Foo<C1, ..., Cm>` must specify exactly *n* constraints.
 
-- **Source:** `data/template_argument_constraints/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
+- **Source:** `data/type_template_variables/constraint_formula.py` — `TemplateConstraintHierarchyOperator.__init__`
 
 ### 11.5 The `Empty` constraint never matches
 A constraint formula explicitly built as `Empty` always fails validation for any value — this is reported as a semantic error during instantiation-constraint validation.
@@ -636,7 +648,7 @@ When building a `ValueDomain`'s or a `Function`'s template-argument constraint c
 ### 11.15 A logical composition (`And`/`Or`) constraint may not combine sub-formulae of different constraint kinds
 Every sub-formula of an `And`/`Or` constraint must agree on its `constraint_type` (e.g. all `"type"`, or all the same literal kind such as `"int"`); `Unconstrained` sub-formulae are ignored for this check, but mixing, say, a type constraint with an `int` literal constraint inside the same `And`/`Or` is rejected as meaningless.
 
-- **Source:** `data/template_argument_constraints/constraint_formula.py` — `TemplateConstraintAnd.__init__`, `TemplateConstraintOr.__init__`
+- **Source:** `data/type_template_variables/constraint_formula.py` — `TemplateConstraintAnd.__init__`, `TemplateConstraintOr.__init__`
 
 ### 11.16 A ValueDomain's per-template-argument constraints must not collectively prevent any instantiation
 After building the `TemplateContext` from a `ValueDomain`'s declared template-argument constraint formulae, that context must not be empty — i.e. the constraints (each individually valid per 11.14) must not combine to leave no satisfiable instantiation at all.
