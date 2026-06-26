@@ -49,6 +49,7 @@ def parse_constraint_definition(
     location_id: LocationId,
     *,
     allow_unconstrained: bool,
+    simplify: bool = True,
 ) -> TemplateConstraintFormula:
     """
     Parse a bare constraint expression (no surrounding quotes) and return the corresponding TemplateConstraintFormula.
@@ -57,7 +58,7 @@ def parse_constraint_definition(
     which usually indicates a syntax error.
     """
     parser = ConstraintParser(constraint_def, validator, location_id)
-    formula = parser.parse_constraint(allow_unconstrained)
+    formula = parser.parse_constraint(allow_unconstrained, simplify=simplify)
     parser.check_finished()
     return formula
 
@@ -115,14 +116,16 @@ class ConstraintParser(StringParser):
     # Grammar rules
     # ------------------------------------------------------------------
 
-    def parse_constraint(self, allow_unconstrained: bool) -> TemplateConstraintFormula:
+    def parse_constraint(self, allow_unconstrained: bool, *, simplify: bool = True) -> TemplateConstraintFormula:
         """Entry point for a single constraint expression."""
         self.skip_whitespace()
         if any(self.starts_with(x) for x in ["Conj(", "Disj(", "Neg(", "<"]):
             res = self._parse_structure_constraint(allow_unconstrained)
         else:
             res = self._parse_non_structure_constraint(allow_unconstrained)
-        return simplify_formula(res)
+        if simplify:
+            res = simplify_formula(res)
+        return res
 
     def _parse_non_structure_constraint(self, allow_unconstrained: bool) -> NonStructureConstraintFormula:
         self.skip_whitespace()
