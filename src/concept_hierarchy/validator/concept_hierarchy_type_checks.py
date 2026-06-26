@@ -339,22 +339,10 @@ def check_types_in_hidden_implementation_definition(
                     parent_t_arg in parent_def_data.variadic_template_arguments,
                 )
                 # syntax of the substitution value is validated from now on;
-                # Start checking semantic of the value
-                #  1) TemplateArgumentValue => (TemplateDependent / Instantiated) & (VariadicTemplateVar. / TemplateVar)
+                # Check the semantic of the value
                 ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
-                    validated_t_arg_value, type_validator
+                    validated_t_arg_value, type_validator, location_id
                 )
-                #  2) Validate the template constraints of subtypes: because this is applied only on instantiated types
-                #   (i.e. not dependent on template variables), don't pass a TemplateContext
-                errors = validate_template_argument_constraints_in_instantiated_types(
-                    ch_t_arg_value, constraint_validator, location_id
-                )
-                if errors:
-                    raise CHSemanticError(
-                        f"Type validation failed inside {ch_t_arg_value.full_name}! "
-                        f"Template argument constraints of a fully-instantiated type not satisfied!",
-                        causes=errors,
-                    )
             except ConceptHierarchyError as e:
                 raise CHSemanticError(
                     f"Parsing {subst_value!r} into a template argument value for {parent_t_arg} failed:",
