@@ -1080,3 +1080,70 @@ class DomainConceptDefinition(ConceptDefinition):
         #    EXPRESSION CHECK
         #  - "consolidation" is a valid FunctionComposition expression (with variable context "instance")
         #    EXPRESSION CHECK
+
+    def is_property_available(self, prop_name: str):
+        return prop_name in self.available_property_data
+
+    def is_function_available(self, func_name: str):
+        return func_name in self.available_function_data
+
+    def get_specialized_data_for_subconcepts(
+        self, for_either_properties_or_functions: ForPropertyOrFunction, name: str, def_key: str
+    ) -> object:
+        """
+        This function must return the (SET VALUE) value of the specialization that is defined in this subconcept
+        1) check if this is a property defined in this concept; if so, get the data from self.properties
+        2) assert this is an inherited property; get the data from self.data[SPECIALIZATION_KEYWORD]
+            and assert this is not an "inheritFrom:" definition!
+        If an error happens or the property is not defined, raise RuntimeError
+        """
+        data_type = "property" if for_either_properties_or_functions.value else "function"
+        data_container = self.properties if for_either_properties_or_functions.value else self.functions
+        specialization_container = (
+            self.property_specializations_for_sub
+            if for_either_properties_or_functions.value
+            else self.function_specializations_for_sub
+        )
+        if name in data_container:
+            if def_key not in data_container[name]:
+                raise RuntimeError(
+                    f"{def_key} is not specified in the definition of {data_type} {name!r} for concept {self.name}. "
+                    f"Can't get its value set for subconcepts!"
+                )
+            return data_container[name][def_key]
+        if name not in specialization_container:
+            raise RuntimeError(
+                f"The {data_type} {name!r} is not a defined property in {self.name} nor is it specialized for "
+                f"subconcepts in {self.name}!"
+            )
+        if def_key not in specialization_container[name]:
+            raise RuntimeError(
+                f"{def_key} is not specified in the specialization of {data_type} {name!r} for concept {self.name}. "
+                f"Can't get its value set for subconcepts!"
+            )
+        spec_val = specialization_container[name][def_key]
+        if isinstance(spec_val, str) and spec_val.startswith(INHERIT_FROM_KEYWORD):
+            raise RuntimeError(
+                f"{def_key} is not set in the specialization of {data_type} {name!r} for concept {self.name}. "
+                f"Can't get its value set for subconcepts!"
+            )
+        return spec_val
+
+    def get_data_for_this(
+        self, name: str, for_either_properties_or_functions: ForPropertyOrFunction
+    ) -> dict[str, object]:
+        data_type = "property" if for_either_properties_or_functions.value else "function"
+        specialization_container = (
+            self.property_specializations_for_this
+            if for_either_properties_or_functions.value
+            else self.function_specializations_for_this
+        )
+        if name not in specialization_container:
+            raise RuntimeError(f"{name!r} is not an available {data_type} in concept {self.name}.")
+        data = {}  # type: dict[str, object]
+        for def_key_for_this, (def_data_for_this, set_or_inherited) in specialization_container[name].items():
+            if not set_or_inherited:
+                # inherited data (do not include)
+                continue
+            data[def_key_for_this] = def_data_for_this
+        return data
