@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from typing import Generator, TypeAlias
+from typing import Iterator, TypeAlias
 
 from frozendict import frozendict
 
@@ -71,7 +71,7 @@ class ConceptHierarchyTemplateArgument(ABC):
     def registry(self) -> frozendict:
         pass
 
-    def iterate_subtypes(self) -> Generator[ConceptHierarchyTemplateArgument, None, None]:
+    def iterate_subtypes(self, do_not_expand_instantiated_types: bool) -> Iterator[ConceptHierarchyTemplateArgument]:
         yield self
 
 
@@ -146,10 +146,12 @@ class ConceptHierarchyType(ConceptHierarchyTemplateArgument, ABC):
             self._registry = frozendict(registry)
         return self._registry
 
-    def iterate_subtypes(self) -> Generator[ConceptHierarchyTemplateArgument, None, None]:
+    def iterate_subtypes(self, do_not_expand_instantiated_types: bool) -> Iterator[ConceptHierarchyTemplateArgument]:
         yield self
+        if isinstance(self, InstantiatedType) and do_not_expand_instantiated_types:
+            return
         for t_arg in self.template_arguments:
-            yield from t_arg.iterate_subtypes()
+            yield from t_arg.iterate_subtypes(do_not_expand_instantiated_types)
 
 
 class InstantiatedType(Instantiated, ConceptHierarchyType):
@@ -311,10 +313,10 @@ class ConceptHierarchyVariadicGroup(VariadicArgument, ABC):
             self._registry = frozendict(merged)
         return self._registry
 
-    def iterate_subtypes(self) -> Generator[ConceptHierarchyTemplateArgument, None, None]:
+    def iterate_subtypes(self, do_not_expand_instantiated_types: bool) -> Iterator[ConceptHierarchyTemplateArgument]:
         yield self
         for elem in self.variadic_group:
-            yield from elem.iterate_subtypes()
+            yield from elem.iterate_subtypes(do_not_expand_instantiated_types)
 
 
 class InstantiatedVariadicGroup(Instantiated, ConceptHierarchyVariadicGroup):
