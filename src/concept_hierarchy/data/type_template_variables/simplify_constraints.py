@@ -184,7 +184,12 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
         ``Neg(<, , X, , >)``   =>   ``<, , Not(X), , >``
         A single non-unconstrained value can be consumed by negation.
 
-    11. **ConstraintGroup merging** – A ``StructureConjunction`` whose *all*
+    11. **Flattening of single-variable structure constraints**
+        ``Conj(<X1>, <X2>, ...)`` = ``<And(X1, X2, ...)>``
+        ``Disj(<X1>, <X2>, ...)`` = ``<Or(X1, X2, ...)>``
+        ``Neg(<X1>)`` = ``<Not(X1)>``
+
+    12. **ConstraintGroup merging** – A ``StructureConjunction`` whose *all*
         children are ``ConstraintGroup`` nodes is converted into a single
         ``ConstraintGroup`` with element-wise ``And`` constraints:
         ``Conj(<X, Y>, <Z, W>) → <And(X, Z), And(Y, W)>``.
@@ -193,7 +198,7 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
         ``ConstraintGroup`` nodes rather than shared-variable
         ``StructureConjunction`` subtrees.
 
-    12. **Intra-group simplification** – The per-slot constraints inside a
+    13. **Intra-group simplification** – The per-slot constraints inside a
         ``ConstraintGroup`` are each passed through
         ``simplify_non_structure_constraint``.
 
@@ -361,6 +366,36 @@ def simplify_structure_constraint(f: StructureConstraintFormula | None) -> Struc
                 for index, x in enumerate(f.structure_constraint.group_constraints)
             )
             return simplify_structure_constraint(ConstraintGroup(f.location_id, new_constraints))
+
+    # Rule: Conj(single-element-structure), which should have already been simplified to ConstraintGroup, is <And(...)>
+    if isinstance(f, StructureConjunction) and f.nr_variables == 1:
+        new_constraint_group: list[NonStructureConstraintFormula] = []
+        for constraint_group in f.structure_constraints:
+            assert isinstance(constraint_group, ConstraintGroup)
+            new_constraint_group.append(constraint_group.group_constraints[0])
+        return simplify_structure_constraint(
+            ConstraintGroup(f.location_id, (TemplateConstraintAnd(f.location_id, tuple(new_constraint_group)),))
+        )
+
+    # Rule: Disj(single-element-structure), which should have already been simplified to ConstraintGroup, is <And(...)>
+    if isinstance(f, StructureDisjunction) and f.nr_variables == 1:
+        new_constraint_group: list[NonStructureConstraintFormula] = []
+        for constraint_group in f.structure_constraints:
+            assert isinstance(constraint_group, ConstraintGroup)
+            new_constraint_group.append(constraint_group.group_constraints[0])
+        return simplify_structure_constraint(
+            ConstraintGroup(f.location_id, (TemplateConstraintOr(f.location_id, tuple(new_constraint_group)),))
+        )
+
+    # Rule: Neg(single-element-structure), which should have already been simplified to ConstraintGroup, is <Not(X)>
+    if isinstance(f, StructureNegation) and f.nr_variables == 1:
+        assert isinstance(f.structure_constraint, ConstraintGroup)
+        return simplify_structure_constraint(
+            ConstraintGroup(
+                f.location_id,
+                (TemplateConstraintNot(f.location_id, f.structure_constraint.group_constraints[0]),),
+            )
+        )
 
     # Rule??: StructureConjunction with only ConstraintGroups is a ConstraintGroup with element-wise AND constraints
     if isinstance(f, StructureConjunction) and all(isinstance(x, ConstraintGroup) for x in f.structure_constraints):
