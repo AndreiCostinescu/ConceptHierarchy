@@ -41,6 +41,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyType,
     ConceptHierarchyVariadicGroup,
     ExpandedVariadicTemplateVariable,
+    InstantiatedType,
     LiteralValue,
     TemplateVariable,
 )
@@ -52,6 +53,16 @@ from concept_hierarchy.utils import Reference, is_integer, is_number
 class TypeTemplateInstantiationValidator(ABC):
     @abstractmethod
     def is_concept(self, concept_name: str):
+        pass
+
+    @abstractmethod
+    def is_a_subconcept_of_b(self, a: str, b: str, include_self: bool) -> bool:
+        pass
+
+    @abstractmethod
+    def is_a_subtype_of_b(
+        self, a: InstantiatedType, b: InstantiatedType, location_id: LocationId | None = None
+    ) -> bool:
         pass
 
     @abstractmethod

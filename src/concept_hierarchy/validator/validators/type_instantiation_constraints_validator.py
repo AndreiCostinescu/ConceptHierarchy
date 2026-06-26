@@ -65,8 +65,19 @@ class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
         self.context = context
         self.allowed_template_variables: set[str] = set()
 
-    def is_subtype(self, a: InstantiatedType, b: InstantiatedType, location_id: LocationId | None = None) -> bool:
-        if not self.context.ch.is_a_subconcept_of_b(a.clean_name, b.clean_name, include_self=True):
+    def is_concept(self, name: str) -> bool:
+        return self.context.ch.is_concept(name)
+
+    def is_a_subconcept_of_b(self, a: str, b: str, include_self: bool) -> bool:
+        return self.context.ch.is_a_subconcept_of_b(a, b, include_self=include_self)
+
+    def is_a_subtype_of_b(
+        self,
+        a: InstantiatedType,
+        b: InstantiatedType,
+        location_id: LocationId | None = None,
+    ) -> bool:
+        if not self.is_a_subconcept_of_b(a.clean_name, b.clean_name, include_self=True):
             return False
         b_subst_t_args: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] = self.create_substitution_for(
             b.clean_name, a, location_id
@@ -79,11 +90,6 @@ class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
             )
         b_subst_t_args_to_check = tuple(x[1] for x in b_subst_t_args)
         return b_subst_t_args_to_check == b.template_arguments
-
-    # --- Abstract methods of TemplateConstraintArgumentValidator ---
-
-    def is_concept(self, name: str) -> bool:
-        return self.context.ch.is_concept(name)
 
     def concept_check(self, a_type: ConceptHierarchyType, b_name: str, check_type: HierarchyCheckType) -> bool:
         # perform the subconcept check!

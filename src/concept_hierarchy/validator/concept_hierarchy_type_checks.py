@@ -205,7 +205,7 @@ def check_types_in_domain_concept_definition(
             # check that the type is a subtype of ValueDomain!
             if value_domain_type is None:
                 value_domain_type = parse_convert_type("ValueDomain", type_validator, LocationId())
-            if not constraint_validator.is_subtype(ch_type, value_domain_type, None):
+            if not constraint_validator.is_a_subtype_of_b(ch_type, value_domain_type, None):
                 raise CHSemanticError(
                     f"The defined ValueDomain of property {prop_name} is not a subtype of ValueDomain!",
                     location_id=location_id,
@@ -238,7 +238,7 @@ def check_types_in_domain_concept_definition(
                     instance_base_type = parse_convert_type("InstanceBase", type_validator, LocationId())
                 found_instance_subtype = False
                 for type_name in prop_type.registry:
-                    if constraint_validator.is_subtype(
+                    if constraint_validator.is_a_subtype_of_b(
                         parse_convert_type(type_name, type_validator, default_instance_naming_location_id),
                         instance_base_type,
                         default_instance_naming_location_id,
@@ -281,7 +281,7 @@ def check_types_in_domain_concept_definition(
                 type_validator,
                 LocationId(),
             )
-        if not constraint_validator.is_subtype(ch_type, domain_concept_function_type, location_id):
+        if not constraint_validator.is_a_subtype_of_b(ch_type, domain_concept_function_type, location_id):
             raise CHSemanticError(
                 f"The defined ValueDomain of function {func_name} is not a subtype of "
                 f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions}!",
