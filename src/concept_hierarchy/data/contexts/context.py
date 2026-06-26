@@ -42,7 +42,7 @@ class ConceptHierarchyContext:
         # then types are parsed and validated
         self.type_validator: TypeValidator | None = None
         # then, during type validator, the template arguments are validated
-        self.template_argument_value_validator: TypeTemplateInstantiationValidator | None = None
+        self.type_instantiation_constraints_validator: TypeTemplateInstantiationValidator | None = None
         # then value domain instantiation schemas must be parsed & validated
         self.instantiation_schema_validator: CHSchemaValidator | None = None
         # then value domain instantiation values must be parsed and validated
