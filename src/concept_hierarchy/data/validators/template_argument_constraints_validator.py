@@ -31,11 +31,9 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     StructureNegation,
     TemplateConstraintAnd,
     TemplateConstraintFormula,
-    TemplateConstraintFormulaValidator,
     TemplateConstraintHierarchyOperator,
     TemplateConstraintNot,
     TemplateConstraintOr,
-    TemplateConstraintSelf,
     Unconstrained,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import (
@@ -45,14 +43,17 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     ExpandedVariadicTemplateVariable,
     LiteralValue,
     TemplateVariable,
-    VariadicArgument,
 )
 from concept_hierarchy.data.types.parsed_type import TemplateArgumentLiteral
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
 
-class TypeTemplateInstantiationValidator(TemplateConstraintFormulaValidator, ABC):
+class TypeTemplateInstantiationValidator(ABC):
+    @abstractmethod
+    def is_concept(self, concept_name: str):
+        pass
+
     @abstractmethod
     def concept_check(self, a_type: ConceptHierarchyType, b_name: str, check_type: HierarchyCheckType) -> bool:
         pass
@@ -89,122 +90,18 @@ class TypeTemplateInstantiationValidator(TemplateConstraintFormulaValidator, ABC
     def get_constraint_formula_of(self, name: str) -> StructureConstraintFormula | None:
         pass
 
+    @abstractmethod
+    def create_type_constraint_from_value(
+        self,
+        value: ConceptHierarchyTemplateArgument,
+        location_id: LocationId,
+        op: HierarchyCheckType = HierarchyCheckType.SELF,
+    ) -> NonStructureConstraintFormula:
+        pass
 
-def create_exact_match_constraint_from_value(
-    value: ConceptHierarchyTemplateArgument, validator: TemplateConstraintFormulaValidator, location_id: LocationId
-) -> NonStructureConstraintFormula:
-    if isinstance(value, LiteralValue):
-        return LiteralValueConstraintFormula(value.literal_type, value.full_name, location_id)
-    elif isinstance(value, ConceptHierarchyType):
-        template_constraints = []
-        for t_arg in value.template_arguments:
-            template_constraints.append(create_exact_match_constraint_from_value(t_arg, validator, location_id))
-        return TemplateConstraintSelf(value.clean_name, tuple(template_constraints), validator, location_id)
-    elif isinstance(value, VariadicArgument):
-        raise RuntimeError("[Feature-Request] Did not implement support for using variadic constraints!")
-    else:
-        assert isinstance(value, TemplateVariable)
-        return TemplateConstraintSelf(value.clean_name, (), validator, location_id)
-
-
-def substitute_template_variables_in_formula(
-    formula: TemplateConstraintFormula,
-    substitution: dict[str, ConceptHierarchyTemplateArgument | None],
-    validator: TemplateConstraintFormulaValidator,
-    location_id: LocationId,
-) -> TemplateConstraintFormula:
-    match formula:
-        case NonTypeTemplateConstraintFormula():
-            return formula
-        case TemplateConstraintHierarchyOperator():
-            formula_is_template_variable = formula.literal in substitution
-            subst_literal: str  # will be set in the complex if-statement below
-            subst_t_args: list[NonStructureConstraintFormula] = []
-            if not formula_is_template_variable:
-                subst_literal = formula.literal
-                for item in formula.literal_template_formulae:
-                    res = substitute_template_variables_in_formula(item, substitution, validator, location_id)
-                    if not isinstance(res, NonStructureConstraintFormula):
-                        raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}!")
-                    subst_t_args.append(res)
-            elif substitution[formula.literal] is None:
-                return formula
-            else:
-                # has substitution: a template variable, a partially instantiated value, a fully instantiated value
-                subst_value: ConceptHierarchyTemplateArgument = substitution[formula.literal]
-                if isinstance(subst_value, TemplateVariable):
-                    subst_literal = subst_value.clean_name
-                    # don't change subst_t_args, because a template variable does not have template arguments
-                elif isinstance(subst_value, LiteralValue):
-                    return LiteralValueConstraintFormula(subst_value.literal_type, subst_value.full_name, location_id)
-                elif isinstance(subst_value, VariadicArgument):
-                    raise RuntimeError("[Feature-Request] Did not implement support for using variadic constraints!")
-                else:
-                    assert isinstance(subst_value, ConceptHierarchyType)
-                    subst_formula = create_exact_match_constraint_from_value(subst_value, validator, location_id)
-                    assert isinstance(subst_formula, TemplateConstraintHierarchyOperator)
-                    subst_formula = subst_formula.change_hierarchy_operator(
-                        formula.hierarchy_op, validator, location_id
-                    )
-                    return substitute_template_variables_in_formula(subst_formula, substitution, validator, location_id)
-            return formula.create_new_same_op(subst_literal, tuple(subst_t_args), validator, location_id)
-        case TemplateConstraintAnd():
-            sub_formulae: list[NonStructureConstraintFormula] = []
-            for sub_f in formula.sub_formulae:
-                res = substitute_template_variables_in_formula(sub_f, substitution, validator, location_id)
-                if not isinstance(res, NonStructureConstraintFormula):
-                    raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}")
-                sub_formulae.append(res)
-            return TemplateConstraintAnd(location_id, tuple(sub_formulae))
-        case TemplateConstraintOr():
-            sub_formulae: list[NonStructureConstraintFormula] = []
-            for sub_f in formula.sub_formulae:
-                res = substitute_template_variables_in_formula(sub_f, substitution, validator, location_id)
-                if not isinstance(res, NonStructureConstraintFormula):
-                    raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}")
-                sub_formulae.append(res)
-            return TemplateConstraintOr(location_id, tuple(sub_formulae))
-        case TemplateConstraintNot():
-            res = substitute_template_variables_in_formula(formula.sub_formula, substitution, validator, location_id)
-            if not isinstance(res, NonStructureConstraintFormula):
-                raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}")
-            return TemplateConstraintNot(location_id, res)
-        case NonStructureConstraintFormula():
-            # parse ``Unconstrained`` and ``Empty``
-            return formula
-        case ConstraintGroup():
-            substituted_group: list[NonStructureConstraintFormula] = []
-            for item in formula.group_constraints:
-                res = substitute_template_variables_in_formula(item, substitution, validator, location_id)
-                if not isinstance(res, NonStructureConstraintFormula):
-                    raise RuntimeError(f"Expected a NonStructureConstraintFormula, got {res!r}")
-                substituted_group.append(res)
-            return ConstraintGroup(location_id, tuple(substituted_group))
-        case StructureConjunction():
-            sub_structures: list[StructureConstraintFormula] = []
-            for sub_s in formula.structure_constraints:
-                res = substitute_template_variables_in_formula(sub_s, substitution, validator, location_id)
-                if not isinstance(res, StructureConstraintFormula):
-                    raise RuntimeError(f"Expected a StructureConstraintFormula, got {res!r}")
-                sub_structures.append(res)
-            return StructureConjunction(location_id, tuple(sub_structures))
-        case StructureDisjunction():
-            sub_structures: list[StructureConstraintFormula] = []
-            for sub_s in formula.structure_constraints:
-                res = substitute_template_variables_in_formula(sub_s, substitution, validator, location_id)
-                if not isinstance(res, StructureConstraintFormula):
-                    raise RuntimeError(f"Expected a StructureConstraintFormula, got {res!r}")
-                sub_structures.append(res)
-            return StructureDisjunction(location_id, tuple(sub_structures))
-        case StructureNegation():
-            res = substitute_template_variables_in_formula(
-                formula.structure_constraint, substitution, validator, location_id
-            )
-            if not isinstance(res, StructureConstraintFormula):
-                raise RuntimeError(f"Expected a StructureConstraintFormula, got {res!r}")
-            return StructureNegation(location_id, res)
-        case _:
-            raise RuntimeError(f"Unknown constraint type: {formula!r}")
+    @abstractmethod
+    def update_existing_template_variables(self, new_template_variables: set[str]):
+        pass
 
 
 def validate_template_argument_value_against_constraint(
@@ -624,11 +521,9 @@ def _validate_type(
         # Create new formula from the substitution value!
         # The formula will have all template arguments (and all template arguments thereof and so on) marked with a '.'
         #  to match exactly the substituted value.
-        check_formula = create_exact_match_constraint_from_value(
-            concept_template_argument_instantiation[formula.literal], validator, location_id
+        check_formula = validator.create_type_constraint_from_value(
+            concept_template_argument_instantiation[formula.literal], location_id, formula.hierarchy_op
         )
-        assert isinstance(check_formula, TemplateConstraintHierarchyOperator)
-        check_formula = check_formula.change_hierarchy_operator(formula.hierarchy_op, validator, location_id)
     elif not validator.is_concept(formula.literal):
         raise RuntimeError(
             f"Literal value {formula.literal!r} from formula {formula!r} is not a template-variable and not a concept! "
