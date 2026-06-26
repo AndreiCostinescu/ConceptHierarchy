@@ -892,6 +892,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
                 part=PathPart.VALUE,
                 causes=[e],
             )
+        add_to_existing_scope[new_var_name] = (ch_type, new_var_def_data[1])
     datum.new_vars_in_scope = frozendict(add_to_existing_scope)
     type_validator.clear_identifier_where_types_are_defined()
 
