@@ -283,7 +283,7 @@ class TemplateConstraintAnd(NonStructureConstraintFormula):
             incompatible_constraints.add(sub_constraint_type)
         if len(incompatible_constraints) > 1:
             raise CHSemanticError(
-                f"Can not combine template variable constraints of different types: {incompatible_constraints}",
+                f"Can not combine template variable constraints of different types: {sorted(incompatible_constraints)}",
                 location_id=self.location_id,
             )
         if len(incompatible_constraints) == 0:
@@ -352,7 +352,7 @@ class TemplateConstraintOr(NonStructureConstraintFormula):
             incompatible_constraints.add(sub_constraint_type)
         if len(incompatible_constraints) > 1:
             raise CHSemanticError(
-                f"Can not combine template variable constraints of different types: {incompatible_constraints}",
+                f"Can not combine template variable constraints of different types: {sorted(incompatible_constraints)}",
                 location_id=self.location_id,
             )
         if len(incompatible_constraints) == 0:
