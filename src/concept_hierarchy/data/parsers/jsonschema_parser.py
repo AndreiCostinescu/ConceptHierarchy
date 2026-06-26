@@ -535,7 +535,7 @@ def _finish_builtin_node(
         elif isinstance(props, list):
             # parse properties+/functions+ formula
             def check_structure(_x):
-                if not isinstance(_x, list) or not (2 <= len(_x) <= 3) or not isinstance(props[0], str):
+                if not isinstance(_x, list) or not (2 <= len(_x) <= 3) or not isinstance(_x[0], str):
                     return False
                 if len(_x) == 2:
                     return True
