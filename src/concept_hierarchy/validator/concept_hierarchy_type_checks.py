@@ -307,7 +307,8 @@ def check_types_in_hidden_implementation_definition(
                 )
 
     datum.parent_template_variable_substitution = frozendict(substitution_values)
-    datum.instantiable = c.abstract
+    datum.instantiable = not c.abstract
+
     constraint_validator.update_existing_template_variables(set())
     type_validator.clear_identifier_where_types_are_defined()
     context.reset_template_context()
