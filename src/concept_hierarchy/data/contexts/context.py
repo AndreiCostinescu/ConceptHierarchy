@@ -24,7 +24,7 @@ from concept_hierarchy.data.parsers.jsonschema_parser import CHSchemaValidator
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormulaValidator
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
-    TemplateConstraintArgumentValidator,
+    TypeTemplateInstantiationValidator,
 )
 from concept_hierarchy.data.validators.type_validator import TypeValidator
 from concept_hierarchy.data.validators.value_instantiation_validator import CHValueValidator
@@ -42,7 +42,7 @@ class ConceptHierarchyContext:
         # then types are parsed and validated
         self.type_validator: TypeValidator | None = None
         # then, during type validator, the template arguments are validated
-        self.template_argument_value_validator: TemplateConstraintArgumentValidator | None = None
+        self.template_argument_value_validator: TypeTemplateInstantiationValidator | None = None
         # then value domain instantiation schemas must be parsed & validated
         self.instantiation_schema_validator: CHSchemaValidator | None = None
         # then value domain instantiation values must be parsed and validated

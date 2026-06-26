@@ -52,7 +52,7 @@ from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, Loc
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
 
-class TemplateConstraintArgumentValidator(TemplateConstraintFormulaValidator, ABC):
+class TypeTemplateInstantiationValidator(TemplateConstraintFormulaValidator, ABC):
     @abstractmethod
     def concept_check(self, a_type: ConceptHierarchyType, b_name: str, check_type: HierarchyCheckType) -> bool:
         pass
@@ -211,7 +211,7 @@ def validate_template_argument_value_against_constraint(
     formula: NonStructureConstraintFormula,
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId = None,
     *,
@@ -239,7 +239,7 @@ def validate_complete_instantiation_of_concept(
     concept_name: str,
     complete_instantiation: tuple[ConceptHierarchyTemplateArgument, ...],
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     location_id: LocationId = None,
 ) -> list[ConceptHierarchyError]:
     formula = validator.get_constraint_formula_of(concept_name)
@@ -265,7 +265,7 @@ def validate_complete_instantiation_of_type(
     formula: StructureConstraintFormula,
     complete_instantiation: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...],
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     location_id: LocationId = None,
 ) -> list[ConceptHierarchyError]:
     if location_id is None:
@@ -379,7 +379,7 @@ def _delegate_constraint_check(
     formula: TemplateConstraintFormula,
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
@@ -453,7 +453,7 @@ def _validate_and(
     formula: TemplateConstraintAnd,
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
@@ -496,7 +496,7 @@ def _validate_or(
     formula: TemplateConstraintOr,
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     concept_template_argument_instantiation,
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
@@ -538,7 +538,7 @@ def _validate_not(
     formula: TemplateConstraintNot,
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],
@@ -612,7 +612,7 @@ def _validate_type(
     formula: TemplateConstraintHierarchyOperator,
     template_argument_value: ConceptHierarchyTemplateArgument,
     template_context: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     concept_template_argument_instantiation: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
     errors: list[ConceptHierarchyError],

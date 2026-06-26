@@ -56,7 +56,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
 from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
     HierarchyCheckType,
-    TemplateConstraintArgumentValidator,
+    TypeTemplateInstantiationValidator,
     substitute_template_variables_in_formula,
     validate_complete_instantiation_of_concept,
 )
@@ -84,7 +84,7 @@ def substitute_non_template_variable(
     template_context_of_value: TemplateContext,
     mapping: dict[str, ConceptHierarchyTemplateArgument],
     template_context_of_mapped_variables: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     location_id: LocationId,
 ):
     assert isinstance(value, TemplateDependent)
@@ -141,7 +141,7 @@ def substitute_template_variables_in_value(
     mapping: dict[str, ConceptHierarchyTemplateArgument],
     template_context_of_value: TemplateContext,
     template_context_of_mapped_variables: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     location_id: LocationId,
 ) -> ConceptHierarchyTemplateArgument:
     """
@@ -171,7 +171,7 @@ def substitute_and_validate_constraints(
     template_context_to_substitute: TemplateContext,
     template_context_of_substitution: TemplateContext,
     mapping: dict[str, ConceptHierarchyTemplateArgument],
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     location_id: LocationId,
 ) -> TemplateContext:
     res_template_context = template_context_of_substitution.create_unconstrained_context(location_id)
@@ -215,7 +215,7 @@ def substitute(
     mapping: dict[str, ConceptHierarchyTemplateArgument],
     template_context_of_value: TemplateContext,
     template_context_of_mapped_template_variables: TemplateContext,
-    validator: TemplateConstraintArgumentValidator,
+    validator: TypeTemplateInstantiationValidator,
     location_id: LocationId,
     validate_constraints: bool = False,
 ) -> tuple[ConceptHierarchyTemplateArgument, TemplateContext]:
@@ -245,7 +245,7 @@ def substitute(
     return substituted_value, substituted_template_context
 
 
-class ConstraintValidator(TemplateConstraintArgumentValidator):
+class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.allowed_template_variables: set[str] = set()
@@ -456,7 +456,7 @@ class ConceptHierarchyTypeValidator(TypeValidator):
 
 
 def validate_template_argument_constraints_in_instantiated_types(
-    ch_type: ConceptHierarchyTemplateArgument, validator: TemplateConstraintArgumentValidator, location_id: LocationId
+    ch_type: ConceptHierarchyTemplateArgument, validator: TypeTemplateInstantiationValidator, location_id: LocationId
 ) -> list[ConceptHierarchyError]:
     if isinstance(ch_type, (LiteralValue, TemplateDependent)):
         return []
@@ -488,7 +488,7 @@ def check_types_in_domain_concept_definition(
     - domain concept functions (if present)
     """
     type_validator = ConceptHierarchyTypeValidator(context)
-    constraint_validator = ConstraintValidator(context)
+    constraint_validator = TypeInstantiationValidator(context)
     property_types: dict[str, InstantiatedType] = {}
     value_domain_type: InstantiatedType | None = None
     instance_base_type: InstantiatedType | None = None
@@ -614,7 +614,7 @@ def check_types_in_hidden_implementation_definition(
     -> then validate that the substituted value satisfies the constraints of the parent type-instantiation!
     """
     substitution_values: dict[tuple[str, str], ConceptHierarchyTemplateArgument] = {}
-    constraint_validator = ConstraintValidator(context)
+    constraint_validator = TypeInstantiationValidator(context)
     constraint_validator.update_existing_template_variables(set(datum.template_context.variables))
     local_context = context.set_template_context(datum.template_context)
     type_validator = ConceptHierarchyTypeValidator(local_context)
