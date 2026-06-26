@@ -45,6 +45,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
     evaluation_interface_keywords: set[str] = {function_result, function_default_argument_values}
     argument_reference_types: list[str] = ["NoRef", "Reference", "EmptyReference"]
     argument_modifier_types: list[str] = ["Get", "Modify", "GetModify"]
+    default_function_instantiation_schema = {"type": "object", "maxProperties": 0, "additionalProperties": False}
 
     def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
         super().__init__(name, definition_data, definition_location_id)

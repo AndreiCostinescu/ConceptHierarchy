@@ -34,6 +34,9 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     NonStructureConstraintFormula,
 )
+from concept_hierarchy.data.type_template_variables.simplify_constraints import (
+    create_unconstrained_structure_constraint,
+)
 from concept_hierarchy.data.type_template_variables.template_substitution import substitute
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
@@ -576,6 +579,34 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
             )
         add_to_existing_scope[new_var_name] = (ch_type, new_var_def_data[1])
     datum.new_vars_in_scope = frozendict(add_to_existing_scope)
+
+    # parse: default_function_instantiation_schema
+    if not datum.instantiable:
+        datum.instantiation = ()
+    else:
+        context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
+
+        location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
+
+        instantiation_location_id = location_id + ["default Function instantiation"]
+        parsed_instantiation_schema, errors = parse_schema(
+            FunctionDefinition.default_function_instantiation_schema,
+            context.instantiation_schema_validator,
+            instantiation_location_id,
+        )
+        assert not errors
+
+        datum.instantiation = (
+            (
+                create_unconstrained_structure_constraint(
+                    datum.template_context.nr_variables, instantiation_location_id
+                ),
+                parsed_instantiation_schema,
+            ),
+        )
+
+        context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
+
     type_validator.clear_identifier_where_types_are_defined()
 
 
