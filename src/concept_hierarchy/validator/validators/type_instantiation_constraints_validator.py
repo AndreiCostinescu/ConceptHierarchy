@@ -187,7 +187,7 @@ class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
         if name not in self.context.model.concepts:
             raise RuntimeError("fConcept {name} is not a concept!")
         model_data = self.context.model.concepts[name]
-        if isinstance(model_data, TypeData):
+        if isinstance(model_data, TypeData) and not model_data.template_context.empty:
             return model_data.template_context.constraint
         return None
 

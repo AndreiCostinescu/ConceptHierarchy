@@ -45,6 +45,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
 )
 from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
+    TemplateContextDeterminator,
     validate_complete_instantiation_of_concept,
 )
 from concept_hierarchy.data.validators.type_validator import (
@@ -251,7 +252,7 @@ def check_types_in_hidden_implementation_definition(
             substitution_values[(parent, parent_t_arg)] = ch_t_arg_value
 
         location_id = c.location_of(HiddenImplementationDefinition.hidden_template_arguments_substitutions)
-        sub_template_context = datum.template_context.create_unconstrained_context(location_id)
+        sub_template_context = TemplateContextDeterminator(datum.template_context)
         # Validate that the substitution is semantically valid:
         #  verify that the template constraints of the Parent concept are satisfied by the substitution
         #  + update the constraints on the template variables
@@ -269,13 +270,14 @@ def check_types_in_hidden_implementation_definition(
             )
         # Update the constraints of the template variables of this concept with the identified constraints
         # when checking that the substitution produces a valid instantiation
-        datum.template_context.merge_in_place(sub_template_context, location_id)
-        if datum.template_context.is_empty_constraint:
-            raise CHSemanticError(
-                f"Merging template context with determined constraints during substitution-instantiation of "
-                f"{parent} lead to no possible template-instantiation of {c.name}",
-                location_id=location_id,
-            )
+        if sub_template_context.determined is not None:
+            datum.template_context.merge_in_place(sub_template_context.determined, location_id)
+            if datum.template_context.is_empty_constraint:
+                raise CHSemanticError(
+                    f"Merging template context with determined constraints during substitution-instantiation of "
+                    f"{parent} lead to no possible template-instantiation of {c.name}",
+                    location_id=location_id,
+                )
 
         # Computed the substitution values for the direct parent.
         # Now iterate through all parents and substitute their ``parent_template_variable_substitution`` entries.

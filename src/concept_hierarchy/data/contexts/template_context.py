@@ -51,8 +51,8 @@ class TemplateContext:
         self.variables = template_variables
         self.variadic_variables = frozenset(variadic_variables) if variadic_variables is not None else frozenset()
         self.nr_variables = len(self.variables)
-        self.constraint = simplify_structure_constraint(constraint_on_variables)
-        self.check_invariant(self.nr_variables, self.constraint)
+        self._constraint = simplify_structure_constraint(constraint_on_variables)
+        self.check_invariant(self.nr_variables, self._constraint)
 
     @staticmethod
     def check_invariant(
@@ -99,17 +99,29 @@ class TemplateContext:
             f"constraint: {self.constraint!r})"
         )
 
+    def set_constraint(self, constraint: StructureConstraintFormula | None) -> None:
+        self._constraint = constraint
+        self.check_invariant(self.nr_variables, self.constraint)
+
+    @property
+    def constraint(self) -> StructureConstraintFormula:
+        if self._constraint is None:
+            raise RuntimeError(
+                "There is no constraint on an empty TemplateContext. First check .empty() before calling this method!"
+            )
+        return self._constraint
+
     @property
     def empty(self) -> bool:
         return len(self.variables) == 0
 
     @property
     def is_unconstrained(self) -> bool:
-        return True if self.constraint is None else self.constraint.is_unconstrained
+        return True if self.empty else self.constraint.is_unconstrained
 
     @property
     def is_empty_constraint(self) -> bool:
-        return False if self.constraint is None else self.constraint.is_empty
+        return False if self.empty else self.constraint.is_empty
 
     def is_variadic(self, variable_name) -> bool:
         return variable_name in self.variadic_variables
@@ -134,9 +146,9 @@ class TemplateContext:
                 f"Can't add constraint to non-template variable: {variable_name!r}; available ones are "
                 f"{self.variables!r}"
             )
-        assert self.constraint is not None
+        assert self._constraint is not None
         if new_variable_constraint.is_unconstrained:
-            return self.constraint
+            return self._constraint
 
         var_index = self.variables.index(variable_name)
         if new_variable_constraint.is_empty or self.is_unconstrained:
@@ -146,8 +158,8 @@ class TemplateContext:
             )
 
         res: StructureConstraintFormula | None = None
-        if isinstance(self.constraint, ConstraintGroup):
-            existing_variable_constraint = self.constraint.group_constraints[var_index]
+        if isinstance(self._constraint, ConstraintGroup):
+            existing_variable_constraint = self._constraint.group_constraints[var_index]
             if isinstance(existing_variable_constraint, TypeTemplateConstraintFormula) and isinstance(
                 new_variable_constraint, TypeTemplateConstraintFormula
             ):
@@ -159,7 +171,7 @@ class TemplateContext:
             new_constraint = self.create_unconstrained_except_with_constraint_at_index(
                 location_id, var_index, new_variable_constraint
             )
-            res = StructureConjunction(location_id, (self.constraint, new_constraint))
+            res = StructureConjunction(location_id, (self._constraint, new_constraint))
         return simplify_structure_constraint(res)
 
     def add_template_variable(
@@ -194,15 +206,15 @@ class TemplateContext:
         new_variadic_variables: set[str] = set(self.variadic_variables.copy())
         new_variadic_variables.discard(template_variable_name)
         # FIXME: update procedure to not depend on the constraint being a ConstraintGroup!
-        if not isinstance(self.constraint, ConstraintGroup):
+        if not isinstance(self._constraint, ConstraintGroup):
             raise RuntimeError(
-                f"Can't remove template variable from non-ConstraintGroup constraint {self.constraint!r}"
+                f"Can't remove template variable from non-ConstraintGroup constraint {self._constraint!r}"
             )
         if len(self.variables) == 1:
             new_constraint = None
         else:
             # FIXME: make sure that the remaining variables to not depend on the variable being removed!
-            new_constraint = ConstraintGroup(location_id, self.constraint.group_constraints[:-1])
+            new_constraint = ConstraintGroup(location_id, self._constraint.group_constraints[:-1])
         return TemplateContext(new_variables, new_variadic_variables, new_constraint)
 
     def add_context(self, context: TemplateContext, location_id: LocationId) -> TemplateContext:
@@ -265,12 +277,12 @@ class TemplateContext:
             elif isinstance(x, StructureNegation):
                 raise RuntimeError(
                     f"There shouldn't be any structure negations left in the constraint, but found one: "
-                    f"{self.constraint!r}"
+                    f"{self._constraint!r}"
                 )
             else:
                 raise RuntimeError(f"Don't know how to process the constraint formula as a structure constraint: {x!r}")
 
-        return extend_this(self.constraint, constraint_to_extend)
+        return extend_this(self._constraint, constraint_to_extend)
 
     def create_unconstrained_except_with_constraint_at_index(
         self, location_id: LocationId, var_index: int, var_constraint: NonStructureConstraintFormula
@@ -283,13 +295,19 @@ class TemplateContext:
             ),
         )
 
+    def create_unconstrained_except_with_constraint_at_name(
+        self, location_id: LocationId, var_name: str, var_constraint: NonStructureConstraintFormula
+    ) -> ConstraintGroup:
+        var_index = self.variables.index(var_name)
+        return self.create_unconstrained_except_with_constraint_at_index(location_id, var_index, var_constraint)
+
     def replace_constraint_at_index_with(
         self, var_index, var_constraint: NonStructureConstraintFormula
     ) -> ConstraintGroup:
         """Do not simplify the created constraint because it is simplified at the (so far only) call-site."""
-        assert isinstance(self.constraint, ConstraintGroup)
+        assert isinstance(self._constraint, ConstraintGroup)
         new_constraint = tuple(
-            x if index != var_index else var_constraint for index, x in enumerate(self.constraint.group_constraints)
+            x if index != var_index else var_constraint for index, x in enumerate(self._constraint.group_constraints)
         )
         return ConstraintGroup(var_constraint.location_id, new_constraint)
 
@@ -297,8 +315,14 @@ class TemplateContext:
         new_constraint = create_unconstrained_structure_constraint(self.nr_variables, location_id)
         return TemplateContext(self.variables, self.variadic_variables, new_constraint)
 
+    def create_empty_context(self, location_id: LocationId) -> TemplateContext:
+        new_constraint = create_empty_structure_constraint(
+            self.nr_variables, self._constraint.variable_constraint_types, location_id
+        )
+        return TemplateContext(self.variables, self.variadic_variables, new_constraint)
+
     def make_constraint_neg(self) -> StructureConstraintFormula:
-        return simplify_structure_constraint(StructureNegation(self.constraint.location_id, self.constraint))
+        return simplify_structure_constraint(StructureNegation(self._constraint.location_id, self._constraint))
 
     def merge_in_place(self, other: TemplateContext, location_id: LocationId) -> None:
         self.merge_constraints_and([other], location_id)
@@ -308,13 +332,13 @@ class TemplateContext:
             if (
                 (self.variables != sub_template_context.variables)
                 or (self.variadic_variables != sub_template_context.variadic_variables)
-                or ((self.constraint is None) != (sub_template_context.constraint is None))
+                or ((self._constraint is None) != (sub_template_context.constraint is None))
             ):
                 raise RuntimeError(f"Can not merge unrelated template contexts: {self!r} and {sub_template_context!r}")
 
     def merge_constraints_and(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
         self._check_contexts_to_merge(sub_template_contexts)
-        if self.constraint is None or self.is_empty_constraint:
+        if self._constraint is None or self.is_empty_constraint:
             return
         new_constraints: list[StructureConstraintFormula] = []
         contexts_to_merge = sub_template_contexts
@@ -322,31 +346,31 @@ class TemplateContext:
             if to_merge.is_unconstrained:
                 continue
             if to_merge.is_empty_constraint:
-                self.constraint = create_empty_structure_constraint(
-                    self.nr_variables, None if self.empty else self.constraint.variable_constraint_types, location_id
+                self._constraint = create_empty_structure_constraint(
+                    self.nr_variables, None if self.empty else self._constraint.variable_constraint_types, location_id
                 )
                 return
             new_constraints.append(to_merge.constraint)
         if new_constraints:
             if self.is_unconstrained:
                 if len(new_constraints) == 1:
-                    self.constraint = new_constraints[0]
+                    self._constraint = new_constraints[0]
                 else:
-                    self.constraint = StructureConjunction(location_id, tuple(new_constraints))
+                    self._constraint = StructureConjunction(location_id, tuple(new_constraints))
             else:
-                new_constraints = [self.constraint] + new_constraints
-                self.constraint = StructureConjunction(location_id, tuple(new_constraints))
-            self.constraint = simplify_structure_constraint(self.constraint)
+                new_constraints = [self._constraint] + new_constraints
+                self._constraint = StructureConjunction(location_id, tuple(new_constraints))
+            self._constraint = simplify_structure_constraint(self._constraint)
 
     def merge_constraints_or(self, sub_template_contexts: list[TemplateContext], location_id: LocationId) -> None:
         self._check_contexts_to_merge(sub_template_contexts)
-        if self.constraint is None or self.is_unconstrained:
+        if self._constraint is None or self.is_unconstrained:
             return
         new_constraints: list[StructureConstraintFormula] = []
         contexts_to_merge = sub_template_contexts
         for to_merge in contexts_to_merge:
             if to_merge.is_unconstrained:
-                self.constraint = create_unconstrained_structure_constraint(self.nr_variables, location_id)
+                self._constraint = create_unconstrained_structure_constraint(self.nr_variables, location_id)
                 return
             if to_merge.is_empty_constraint:
                 continue
@@ -354,10 +378,10 @@ class TemplateContext:
         if new_constraints:
             if self.is_empty_constraint:
                 if len(new_constraints) == 1:
-                    self.constraint = new_constraints[0]
+                    self._constraint = new_constraints[0]
                 else:
-                    self.constraint = StructureDisjunction(location_id, tuple(new_constraints))
+                    self._constraint = StructureDisjunction(location_id, tuple(new_constraints))
             else:
-                new_constraints = [self.constraint] + new_constraints
-                self.constraint = StructureDisjunction(location_id, tuple(new_constraints))
-            self.constraint = simplify_structure_constraint(self.constraint)
+                new_constraints = [self._constraint] + new_constraints
+                self._constraint = StructureDisjunction(location_id, tuple(new_constraints))
+            self._constraint = simplify_structure_constraint(self.constraint)
