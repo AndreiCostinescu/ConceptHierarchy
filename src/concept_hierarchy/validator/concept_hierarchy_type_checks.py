@@ -135,7 +135,7 @@ def check_types_in_domain_concept_definition(
                 if instance_base_type is None:
                     instance_base_type = parse_convert_type("InstanceBase", type_validator, LocationId())
                 found_instance_subtype = False
-                for subtype in prop_type.iterate_subtypes():
+                for subtype in prop_type.iterate_subtypes(do_not_expand_instantiated_types=False):
                     if not isinstance(subtype, InstantiatedType):
                         continue
                     if constraint_validator.is_a_subtype_of_b(
