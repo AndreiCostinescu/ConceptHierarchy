@@ -395,6 +395,7 @@ class ConceptHierarchyTypeValidator(TypeValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.cached_template_data: dict[str, TypeTemplateData] = {}
+        self.identifier_for_types: str | None = None
 
     def full_type_name(self, concept_name: str) -> str:
         if self.is_concept(concept_name):
@@ -438,6 +439,15 @@ class ConceptHierarchyTypeValidator(TypeValidator):
 
     def get_available_template_variables(self) -> list[str]:
         return list(self.context.template_context.variables)
+
+    def set_identifier_where_types_are_defined(self, identifier: str):
+        self.identifier_for_types = identifier
+
+    def get_identifier_where_types_are_defined(self) -> str:
+        return self.identifier_for_types
+
+    def clear_identifier_where_types_are_defined(self):
+        self.identifier_for_types = None
 
     def add_template_variable(
         self,
@@ -618,6 +628,7 @@ def check_types_in_hidden_implementation_definition(
     constraint_validator.update_existing_template_variables(set(datum.template_context.variables))
     local_context = context.set_template_context(datum.template_context)
     type_validator = ConceptHierarchyTypeValidator(local_context)
+    type_validator.set_identifier_where_types_are_defined(datum.name)
     subst_location_key = HiddenImplementationDefinition.hidden_template_arguments_substitutions
     for parent in c.parents:
         parent_def_data = context.ch.concepts[parent]
@@ -648,7 +659,7 @@ def check_types_in_hidden_implementation_definition(
                 # Start checking semantic of the value
                 #  1) TemplateArgumentValue => (TemplateDependent / Instantiated) & (VariadicTemplateVar. / TemplateVar)
                 ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
-                    datum.name, validated_t_arg_value, type_validator
+                    validated_t_arg_value, type_validator
                 )
                 #  2) Validate the template constraints of subtypes: because this is applied only on instantiated types
                 #   (i.e. not dependent on template variables), don't pass a TemplateContext
@@ -728,6 +739,7 @@ def check_types_in_hidden_implementation_definition(
                 )
 
     datum.parent_template_variable_substitution = frozendict(substitution_values)
+    type_validator.clear_identifier_where_types_are_defined()
     datum.instantiable = c.abstract
 
 

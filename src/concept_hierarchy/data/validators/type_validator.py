@@ -87,6 +87,18 @@ class TypeValidator(ABC):
         pass
 
     @abstractmethod
+    def set_identifier_where_types_are_defined(self, identifier: str) -> None:
+        pass
+
+    @abstractmethod
+    def get_identifier_where_types_are_defined(self) -> str:
+        pass
+
+    @abstractmethod
+    def clear_identifier_where_types_are_defined(self) -> None:
+        pass
+
+    @abstractmethod
     def add_template_variable(
         self,
         template_variable_name: str,
@@ -427,10 +439,9 @@ def validate_template_argument_value(
 
 
 def convert_items(
-    concept_name: str, items: tuple[TemplateArgumentValue, ...], validator: TypeValidator
+    items: tuple[TemplateArgumentValue, ...], validator: TypeValidator
 ) -> tuple[tuple[ConceptHierarchyTemplateArgument, ...], bool]:
     """
-    :param concept_name: the name of the concept that defines the template variables present in the items
     :param items: contains the items to respectively convert to ConceptHierarchyTemplateArgument values
     :param validator: the type validator
     :return: the converted values, whether any of the value depends on template variables
@@ -438,7 +449,7 @@ def convert_items(
     converted_items: list[ConceptHierarchyTemplateArgument] = []
     has_template_dependent_items = False
     for item in items:
-        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(concept_name, item, validator)
+        converted_item = convert_template_argument_to_concept_hierarchy_template_argument(item, validator)
         if isinstance(converted_item, TemplateDependent):
             has_template_dependent_items = True
         else:
@@ -448,10 +459,9 @@ def convert_items(
 
 
 def convert_template_argument_to_concept_hierarchy_template_argument(
-    concept_name: str, t_arg: TemplateArgumentValue, validator: TypeValidator
+    t_arg: TemplateArgumentValue, validator: TypeValidator
 ) -> ConceptHierarchyTemplateArgument:
     """
-    :param concept_name: is the concept that defines the template variables
     :param t_arg: is the value to be converted
     :param validator: is the type validator
     :return: the converted value
@@ -463,26 +473,28 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
             assert validator.is_template_variable(t_arg.clean_name)
             if validator.is_variadic_template_variable(t_arg.clean_name):
                 if t_arg.has_variadic_template_expansion:
-                    return ExpandedVariadicTemplateVariable(t_arg.clean_name, concept_name)
+                    return ExpandedVariadicTemplateVariable(
+                        t_arg.clean_name, validator.get_identifier_where_types_are_defined()
+                    )
                 else:
-                    return VariadicTemplateVariable(t_arg.clean_name, concept_name)
+                    return VariadicTemplateVariable(
+                        t_arg.clean_name, validator.get_identifier_where_types_are_defined()
+                    )
             else:
                 assert not t_arg.has_variadic_template_expansion
-                return NonVariadicTemplateVariable(t_arg.clean_name, concept_name)
+                return NonVariadicTemplateVariable(t_arg.clean_name, validator.get_identifier_where_types_are_defined())
         assert not t_arg.has_variadic_template_expansion
         # check if all the template arguments are instantiated or not
         if not t_arg.is_templated:
             return InstantiatedType(t_arg.clean_name, ())
         converted_template_arguments, has_template_dependent_template_arguments = convert_items(
-            concept_name, t_arg.template_arguments, validator
+            t_arg.template_arguments, validator
         )
         if has_template_dependent_template_arguments:
             return TemplateDependentType(t_arg.clean_name, converted_template_arguments)
         return InstantiatedType(t_arg.clean_name, converted_template_arguments)
     assert isinstance(t_arg, TemplateArgumentVariadicGroup)
-    converted_group_elements, has_template_dependent_group_elements = convert_items(
-        concept_name, t_arg.variadic_group, validator
-    )
+    converted_group_elements, has_template_dependent_group_elements = convert_items(t_arg.variadic_group, validator)
     assert all(isinstance(x, (ConceptHierarchyType, LiteralValue, TemplateVariable)) for x in converted_group_elements)
     if has_template_dependent_group_elements:
         return TemplateDependentVariadicGroup(t_arg.clean_name, converted_group_elements)
@@ -490,7 +502,7 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
 
 
 def _parse_convert_no_check(
-    concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
+    type_def: str, validator: TypeValidator, location_id: LocationId
 ) -> ConceptHierarchyTemplateArgument:
     # check the syntax of the type
     parsed_type = parse_type(type_def, location_id)
@@ -500,22 +512,20 @@ def _parse_convert_no_check(
         raise CHSyntaxError(f"Expected a single type, but parsing produced: {parsed_type!r}", location_id=location_id)
     validated_type = validate_type(parsed_type[0], validator, location_id)
     # check the semantics of the type
-    return convert_template_argument_to_concept_hierarchy_template_argument(concept_name, validated_type, validator)
+    return convert_template_argument_to_concept_hierarchy_template_argument(validated_type, validator)
 
 
-def parse_convert_type(
-    concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
-) -> InstantiatedType:
-    ch_type = _parse_convert_no_check(concept_name, type_def, validator, location_id)
+def parse_convert_type(type_def: str, validator: TypeValidator, location_id: LocationId) -> InstantiatedType:
+    ch_type = _parse_convert_no_check(type_def, validator, location_id)
     if not isinstance(ch_type, InstantiatedType):
         raise CHSemanticError(f"Expected an InstantiatedType, got {ch_type!r}", location_id=location_id)
     return ch_type
 
 
 def parse_convert_type_in_template_context(
-    concept_name: str, type_def: str, validator: TypeValidator, location_id: LocationId
+    type_def: str, validator: TypeValidator, location_id: LocationId
 ) -> TypeValue:
-    ch_type = _parse_convert_no_check(concept_name, type_def, validator, location_id)
+    ch_type = _parse_convert_no_check(type_def, validator, location_id)
     if not isinstance(ch_type, TYPE_VALUE_IS_INSTANCE_CHECK):
         raise CHSemanticError(
             f"Expected an InstantiatedType, a TemplateDependentType, a NonVariadicTemplateVariable or a "
