@@ -18,8 +18,17 @@ from collections import defaultdict
 from copy import deepcopy
 from datetime import date
 from pathlib import Path
+from typing import Generic, TypeVar
 
 tab = "    "
+
+
+T = TypeVar("T")
+
+
+class Reference(Generic[T]):
+    def __init__(self, x: T | None = None):
+        self.ref: T | None = x
 
 
 def capitalize(s: str) -> str:
@@ -56,11 +65,6 @@ def sanitize_include_relative_paths(include_header: str) -> str:
     post = (">" if len(include_header_split) > 0 else "") + ">".join(include_header_split[1:])
     include_header = sanitize_relative_path(include_header_split[0])
     return pre + include_header + post
-
-
-class Reference:
-    def __init__(self, x=None):
-        self.ref = x
 
 
 def is_integer(s, x: Reference = None):
