@@ -27,15 +27,13 @@ from concept_hierarchy.data.concept_hierarchy import (
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.jsonschema import CHSchemaNode
-from concept_hierarchy.data.parsers.jsonschema_parser import CHSchemaValidator, parse_schema
+from concept_hierarchy.data.parsers.jsonschema_parser import parse_schema
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
 from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     ConstraintGroup,
     NonStructureConstraintFormula,
-    NonTypeTemplateConstraintFormula,
     StructureConstraintFormula,
-    TemplateConstraintFormulaValidator,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
@@ -743,78 +741,6 @@ def check_types_in_hidden_implementation_definition(
     datum.instantiable = c.abstract
 
 
-class SchemaValidator(CHSchemaValidator):
-    x_template_variable_constraint: NonStructureConstraintFormula | None = None
-
-    def __init__(
-        self,
-        context: ConceptHierarchyContext,
-        type_validator: TypeValidator,
-        template_constraint_validator: TemplateConstraintFormulaValidator,
-        concept_name: str,
-    ):
-        self.context = context
-        self.type_validator = type_validator
-        self.template_constraint_validator = template_constraint_validator
-        self.concept_name = concept_name
-        if SchemaValidator.x_template_variable_constraint is None:
-            res = parse_constraint_definition(
-                "And(Concept, Not(ValueDomain))",
-                self.template_constraint_validator,
-                LocationId(),
-                allow_unconstrained=True,
-            )
-            assert isinstance(res, NonStructureConstraintFormula)
-            SchemaValidator.x_template_variable_constraint = res
-
-    def parse_custom_type(
-        self, type_name: str, location_id: LocationId, accept_x_as_template_variable: bool
-    ) -> TypeValue:
-        self.type_validator.add_template_variable("x", SchemaValidator.x_template_variable_constraint, location_id)
-        try:
-            res = parse_convert_type_in_template_context(self.concept_name, type_name, self.type_validator, location_id)
-            self.type_validator.delete_template_variable("x", location_id)
-            return res
-        except ConceptHierarchyError as e:
-            self.type_validator.delete_template_variable("x", location_id)
-            raise e
-
-    def is_concept(self, concept_name: str) -> bool:
-        return self.context.ch.is_concept(concept_name)
-
-    def is_template_variable(self, template_variable_name: str) -> bool:
-        return template_variable_name in self.context.template_context.variables
-
-    def _get_literal_argument_constraint(
-        self, template_variable_candidate: str
-    ) -> NonStructureConstraintFormula | None:
-        try:
-            index = self.context.template_context.variables.index(template_variable_candidate)
-            if not isinstance(self.context.template_context.constraint, ConstraintGroup):
-                # FIXME: determine the constraint on the template_variable_candidate
-                #  even if the constraint is not a ConstraintGroup
-                return None
-            return self.context.template_context.constraint.group_constraints[index]
-        except ValueError:
-            return None
-
-    def is_boolean_template_variable(self, template_variable_candidate: str) -> bool:
-        constraint = self._get_literal_argument_constraint(template_variable_candidate)
-        return isinstance(constraint, NonTypeTemplateConstraintFormula) and constraint.is_boolean_constraint
-
-    def is_integer_template_variable(self, template_variable_candidate: str) -> bool:
-        constraint = self._get_literal_argument_constraint(template_variable_candidate)
-        return isinstance(constraint, NonTypeTemplateConstraintFormula) and constraint.is_integer_constraint
-
-    def is_number_template_variable(self, template_variable_candidate: str) -> bool:
-        constraint = self._get_literal_argument_constraint(template_variable_candidate)
-        return isinstance(constraint, NonTypeTemplateConstraintFormula) and constraint.is_numeric_constraint
-
-    def is_string_template_variable(self, template_variable_candidate: str) -> bool:
-        constraint = self._get_literal_argument_constraint(template_variable_candidate)
-        return isinstance(constraint, NonTypeTemplateConstraintFormula) and constraint.is_string_constraint
-
-
 def check_types_in_value_domain_definition(
     c: ValueDomainDefinition, datum: ValueDomainData, context: ConceptHierarchyContext
 ):
@@ -825,19 +751,19 @@ def check_types_in_value_domain_definition(
         return
 
     local_context = context.set_template_context(datum.template_context)
-    type_validator = ConceptHierarchyTypeValidator(local_context)
-    location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
 
     constraint_validator = ConstraintFormulaValidator(local_context)
     constraint_validator.update_existing_template_variables(set(local_context.template_context.variables))
-    schema_validator = SchemaValidator(local_context, type_validator, constraint_validator, c.name)
 
+    local_context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
+
+    location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
     parsed_instantiations: list[tuple[ConstraintGroup, CHSchemaNode]] = []
     for instantiation_index, (instantiation_constraints, instantiation_schema) in enumerate(c.instantiation):
         # FIXME: the instantiation index is not 0 for a non-template-dependent instantiation definition
         instantiation_location_id = location_id + [instantiation_index]
         parsed_instantiation_schema, errors = parse_schema(
-            instantiation_schema, schema_validator, instantiation_location_id
+            instantiation_schema, local_context.instantiation_schema_validator, instantiation_location_id
         )
         if errors:
             raise CHSyntaxError(f"Parsing {instantiation_schema!r} into a json schema failed!", causes=errors)
@@ -851,6 +777,8 @@ def check_types_in_value_domain_definition(
         constraint = ConstraintGroup(instantiation_location_id, tuple(group_constraints))
         parsed_instantiations.append((constraint, parsed_instantiation_schema))
     datum.instantiation = tuple(parsed_instantiations)
+
+    local_context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
 
 
 def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionData, context: ConceptHierarchyContext):
