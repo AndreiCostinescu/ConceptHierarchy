@@ -495,8 +495,10 @@ def check_types_in_domain_concept_definition(
     - domain concept properties
     - domain concept functions (if present)
     """
-    type_validator = ConceptHierarchyTypeValidator(context)
-    constraint_validator = TypeInstantiationValidator(context)
+    domain_concept_context = context.set_template_context(TemplateContext())
+    type_validator = ConceptHierarchyTypeValidator(domain_concept_context)
+    type_validator.set_identifier_where_types_are_defined(c.name)
+    constraint_validator = TypeInstantiationValidator(domain_concept_context)
     property_types: dict[str, InstantiatedType] = {}
     value_domain_type: InstantiatedType | None = None
     instance_base_type: InstantiatedType | None = None
@@ -511,7 +513,7 @@ def check_types_in_domain_concept_definition(
             )
             try:
                 # check syntax and semantics of types
-                ch_type = parse_convert_type(c.name, value_domain, type_validator, location_id)
+                ch_type = parse_convert_type(value_domain, type_validator, location_id)
             except ConceptHierarchyError as e:
                 raise CHSemanticError(
                     f'Parsing the "{PropertyDefinition.VALUE_DOMAIN}" definition of property {prop_name} into a type '
@@ -523,7 +525,7 @@ def check_types_in_domain_concept_definition(
             property_types[prop_name] = ch_type
             # check that the type is a subtype of ValueDomain!
             if value_domain_type is None:
-                value_domain_type = parse_convert_type(None, "ValueDomain", type_validator, None)
+                value_domain_type = parse_convert_type("ValueDomain", type_validator, LocationId())
             if not constraint_validator.is_subtype(ch_type, value_domain_type, None):
                 raise CHSemanticError(
                     f"The defined ValueDomain of property {prop_name} is not a subtype of ValueDomain!",
@@ -554,11 +556,11 @@ def check_types_in_domain_concept_definition(
             if prop_name in property_types:
                 prop_type = property_types[prop_name]
                 if instance_base_type is None:
-                    instance_base_type = parse_convert_type(None, "InstanceBase", type_validator, None)
+                    instance_base_type = parse_convert_type("InstanceBase", type_validator, LocationId())
                 found_instance_subtype = False
                 for type_name in prop_type.registry:
                     if constraint_validator.is_subtype(
-                        parse_convert_type(None, type_name, type_validator, default_instance_naming_location_id),
+                        parse_convert_type(type_name, type_validator, default_instance_naming_location_id),
                         instance_base_type,
                         default_instance_naming_location_id,
                     ):
@@ -583,7 +585,7 @@ def check_types_in_domain_concept_definition(
         assert isinstance(value_domain, str)
         try:
             # check syntax and semantics of types
-            ch_type = parse_convert_type(c.name, value_domain, type_validator, location_id)
+            ch_type = parse_convert_type(value_domain, type_validator, location_id)
         except ConceptHierarchyError as e:
             raise CHSemanticError(
                 f'Parsing the "{DomainConceptFunctionDefinition.VALUE_DOMAIN}" definition of function '
@@ -596,10 +598,9 @@ def check_types_in_domain_concept_definition(
         # check that the type is a subtype of CustomFunction!
         if domain_concept_function_type is None:
             domain_concept_function_type = parse_convert_type(
-                None,
                 DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions,
                 type_validator,
-                None,
+                LocationId(),
             )
         if not constraint_validator.is_subtype(ch_type, domain_concept_function_type, location_id):
             raise CHSemanticError(
@@ -609,7 +610,7 @@ def check_types_in_domain_concept_definition(
             )
 
     datum.function_types = frozendict(function_types)
-    pass
+    type_validator.clear_identifier_where_types_are_defined()
 
 
 def check_types_in_hidden_implementation_definition(
@@ -791,6 +792,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
     """
     local_context = context.set_template_context(datum.template_context)
     type_validator = ConceptHierarchyTypeValidator(local_context)
+    type_validator.set_identifier_where_types_are_defined(c.name)
     function_evaluation_argument_types: dict[str, InstantiatedType] = {}
     function_evaluation_argument_modifiers: dict[str, FunctionArgumentModifier] = {}
     function_evaluation_argument_reference_types: dict[str, FunctionArgumentReference] = {}
@@ -802,7 +804,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         location_id = c.location_of(FunctionDefinition.function_interface, f_eval_arg_name)
         try:
             # check syntax and semantics of types
-            ch_type = parse_convert_type_in_template_context(c.name, f_eval_arg_type, type_validator, location_id)
+            ch_type = parse_convert_type_in_template_context(f_eval_arg_type, type_validator, location_id)
         except ConceptHierarchyError as e:
             raise CHSemanticError(
                 f"Parsing the definition of the evaluation argument {f_eval_arg_name} into a type "
@@ -828,7 +830,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         location_id = c.location_of(FunctionDefinition.function_interface, FunctionDefinition.function_result)
         try:
             # check syntax and semantics of types
-            ch_type = parse_convert_type_in_template_context(c.name, c.result_type, type_validator, location_id)
+            ch_type = parse_convert_type_in_template_context(c.result_type, type_validator, location_id)
         except ConceptHierarchyError as e:
             raise CHSemanticError(
                 f"Parsing the definition of the {c.definition_type()} result into a type failed: got {c.result_type!r}",
@@ -860,7 +862,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
             location_id = c.location_of(FunctionDefinition.function_sub_scopes, f_arg, new_var_name)
             try:
                 # check syntax and semantics of types
-                ch_type = parse_convert_type_in_template_context(c.name, new_var_type, type_validator, location_id)
+                ch_type = parse_convert_type_in_template_context(new_var_type, type_validator, location_id)
             except ConceptHierarchyError as e:
                 raise CHSemanticError(
                     f"Parsing the definition of the new variable {new_var_name!r} to be added to the sub-scope of "
@@ -881,7 +883,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         location_id = c.location_of(FunctionDefinition.function_add_new_variables_in_existing_scope, new_var_name)
         try:
             # check syntax and semantics of types
-            ch_type = parse_convert_type_in_template_context(c.name, new_var_type, type_validator, location_id)
+            ch_type = parse_convert_type_in_template_context(new_var_type, type_validator, location_id)
         except ConceptHierarchyError as e:
             raise CHSemanticError(
                 f"Parsing the definition of the new variable {new_var_name!r} to be added to the existing scope into a "
@@ -891,6 +893,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
                 causes=[e],
             )
     datum.new_vars_in_scope = frozendict(add_to_existing_scope)
+    type_validator.clear_identifier_where_types_are_defined()
 
 
 def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):
