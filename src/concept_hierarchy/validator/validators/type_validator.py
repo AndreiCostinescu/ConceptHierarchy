@@ -20,7 +20,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
 )
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
-    validate_template_argument_constraints_in_instantiated_types,
+    validate_instantiation_constraints_in_template_argument_value,
 )
 from concept_hierarchy.data.validators.type_validator import (
     TypeTemplateData,
@@ -106,12 +106,11 @@ class ConceptHierarchyTypeValidator(TypeValidator):
     def validate_fully_instantiated_types_in_converted_value(
         self, value: ConceptHierarchyTemplateArgument, location_id: LocationId
     ) -> None:
-        errors = validate_template_argument_constraints_in_instantiated_types(
+        errors = validate_instantiation_constraints_in_template_argument_value(
             value, self.context.type_instantiation_constraints_validator, location_id
         )
         if errors:
             raise CHSemanticError(
-                f"Type validation failed for {value}! Template argument constraints of a fully-instantiated type not "
-                f"satisfied!",
+                f"Type validation failed for {value}! Template argument constraints of a defined type not satisfied!",
                 causes=errors,
             )
