@@ -93,10 +93,10 @@ class ConstraintParser(StringParser):
     """
 
     _LITERAL_TOKENS = [
-        ("boolean", "bool"),
-        ("number", "float"),
-        ("integer", "int"),
-        ("string", "string"),
+        ("boolean", NonTypeTemplateConstraintFormula.BOOLEAN),
+        ("number", NonTypeTemplateConstraintFormula.NUMBER),
+        ("integer", NonTypeTemplateConstraintFormula.INTEGER),
+        ("string", NonTypeTemplateConstraintFormula.STRING),
     ]
 
     def __init__(
@@ -147,9 +147,13 @@ class ConstraintParser(StringParser):
 
         # Literal *value* constraints  â†’  "...", true, false, 3, -1, 3.14
         if self.peek() == '"':
-            return LiteralValueConstraintFormula("string", self.parse_string_literal(True), self.location_id)
+            return LiteralValueConstraintFormula(
+                NonTypeTemplateConstraintFormula.STRING, self.parse_string_literal(True), self.location_id
+            )
         if self.starts_with("true") or self.starts_with("false"):
-            return LiteralValueConstraintFormula("bool", self.parse_bool_literal(), self.location_id)
+            return LiteralValueConstraintFormula(
+                NonTypeTemplateConstraintFormula.BOOLEAN, self.parse_bool_literal(), self.location_id
+            )
         if self.peek().isdigit() or (
             self.peek() == "-" and self.pos + 1 < len(self.text) and self.text[self.pos + 1].isdigit()
         ):
@@ -158,9 +162,9 @@ class ConstraintParser(StringParser):
             # Prefer integer to float when both match (e.g. bare "3")
             ref = Reference()
             if is_integer(raw, ref):
-                return LiteralValueConstraintFormula("int", raw, self.location_id)
+                return LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula.INTEGER, raw, self.location_id)
             if is_number(raw, ref):
-                return LiteralValueConstraintFormula("float", raw, self.location_id)
+                return LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula.NUMBER, raw, self.location_id)
             raise CHSyntaxError(
                 f"Invalid numeric literal at position {start}: {raw!r}",
                 location_id=self.location_id,

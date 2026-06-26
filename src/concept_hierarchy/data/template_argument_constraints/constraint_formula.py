@@ -839,10 +839,15 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
     parameter with ``Literal:int`` to accept any integer instantiation.
     """
 
+    BOOLEAN = "bool"
+    INTEGER = "int"
+    NUMBER = "float"
+    STRING = "string"
+
     def __init__(self, constraint_type: str, location_id: LocationId):
         super().__init__(location_id)
         self._constraint_type = constraint_type
-        if self.constraint_type not in {"bool", "int", "float", "string"}:
+        if self.constraint_type not in {self.BOOLEAN, self.INTEGER, self.NUMBER, self.STRING}:
             raise RuntimeError(f"Unknown literal constraint type: {self.constraint_type}")
 
     def __repr__(self):
@@ -850,19 +855,22 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
 
     @property
     def is_boolean_constraint(self) -> bool:
-        return self.constraint_type == "bool"
+        return self.constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN
 
     @property
     def is_integer_constraint(self) -> bool:
-        return self.constraint_type == "int"
+        return self.constraint_type == NonTypeTemplateConstraintFormula.INTEGER
 
     @property
     def is_numeric_constraint(self) -> bool:
-        return self.constraint_type in {"int", "float"}
+        return self.constraint_type in {
+            NonTypeTemplateConstraintFormula.INTEGER,
+            NonTypeTemplateConstraintFormula.NUMBER,
+        }
 
     @property
     def is_string_constraint(self) -> bool:
-        return self.constraint_type == "string"
+        return self.constraint_type == NonTypeTemplateConstraintFormula.STRING
 
     @property
     def is_unconstrained(self):
@@ -916,22 +924,22 @@ class LiteralValueConstraintFormula(NonTypeTemplateConstraintFormula):
         self.value: bool | int | float | str | None = None
 
         # Parse and store the typed Python value so check() can do exact comparison without reparsing on every call.
-        if constraint_type == "int":
+        if constraint_type == NonTypeTemplateConstraintFormula.INTEGER:
             ref = Reference()
             if not is_integer(raw_value, ref):
                 raise RuntimeError(f"Invalid integer literal value: {raw_value!r}")
             self.value: int = ref.ref
-        elif constraint_type == "float":
+        elif constraint_type == NonTypeTemplateConstraintFormula.NUMBER:
             ref = Reference()
             if not is_number(raw_value, ref):
                 raise RuntimeError(f"Invalid float literal value: {raw_value!r}")
             self.value: float = ref.ref
-        elif constraint_type == "bool":
+        elif constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN:
             if raw_value not in ("true", "false"):
                 raise RuntimeError(f"Boolean literal must be 'true' or 'false', got: {raw_value!r}")
             self.value: bool = raw_value == "true"
         else:  # string
-            assert self.constraint_type == "string"
+            assert self.constraint_type == NonTypeTemplateConstraintFormula.STRING
             if not (raw_value.startswith('"') and raw_value.endswith('"')):
                 raise RuntimeError(f"String literal must be surrounded by double quotes, got: {raw_value!r}")
             self.value: str = raw_value  # keep as raw quoted string; comparison is raw-to-raw

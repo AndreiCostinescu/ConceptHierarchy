@@ -722,29 +722,29 @@ def _validate_type(
 
 
 def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: TemplateArgumentLiteral) -> bool:
-    if formula.constraint_type == "int":
+    if formula.constraint_type == NonTypeTemplateConstraintFormula.INTEGER:
         return is_integer(t_arg.literal_value)
-    elif formula.constraint_type == "float":
+    elif formula.constraint_type == NonTypeTemplateConstraintFormula.NUMBER:
         return is_number(t_arg.literal_value)
-    elif formula.constraint_type == "bool":
-        return t_arg.literal_value in ["true", "bool"]
-    elif formula.constraint_type == "string":
+    elif formula.constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN:
+        return t_arg.literal_value in ["true", "false"]
+    elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
         return t_arg.literal_value.startswith('"') and t_arg.literal_value.endswith('"')
     else:
         raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
 
 
 def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: TemplateArgumentLiteral) -> bool:
-    if formula.constraint_type == "int":
+    if formula.constraint_type == NonTypeTemplateConstraintFormula.INTEGER:
         ref = Reference()
         return is_integer(t_arg.literal_value, ref) and ref.ref == formula.value
-    elif formula.constraint_type == "float":
+    elif formula.constraint_type == NonTypeTemplateConstraintFormula.NUMBER:
         ref = Reference()
         return is_number(t_arg.literal_value, ref) and ref.ref == formula.value
-    elif formula.constraint_type == "bool":
+    elif formula.constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN:
         # t_arg must be exactly "true" or "false"
         return t_arg.literal_value == formula.raw_value
-    elif formula.constraint_type == "string":
+    elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
         return t_arg.literal_value == formula.raw_value
     else:
         raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))

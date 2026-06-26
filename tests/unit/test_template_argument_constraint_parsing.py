@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Comprehensive test suite for _ConstraintParser / parse_constraint_string.
+Comprehensive test suite for _ConstraintParser / parse_constraint_definition.
 
 Grammar under test
 ------------------
@@ -92,7 +92,7 @@ from __future__ import annotations
 
 import pytest
 
-from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_string
+from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
 from concept_hierarchy.data.template_argument_constraints.constraint_formula import (
     ConstraintGroup,
     LiteralValueConstraintFormula,
@@ -192,7 +192,7 @@ def loc() -> LocationId:
 
 
 def _parse(text: str, V: _TestValidator, loc: LocationId) -> TemplateConstraintFormula:
-    return parse_constraint_string(text, V, loc)
+    return parse_constraint_definition(text, V, loc)
 
 
 # ===========================================================================
@@ -236,10 +236,10 @@ class TestNonTypeConstraint:
     @pytest.mark.parametrize(
         "text, expected_ctype",
         [
-            ("Literal:boolean", "bool"),
-            ("Literal:int", "int"),
-            ("Literal:number", "float"),
-            ("Literal:string", "string"),
+            ("Literal:boolean", NonTypeTemplateConstraintFormula.BOOLEAN),
+            ("Literal:int", NonTypeTemplateConstraintFormula.INTEGER),
+            ("Literal:number", NonTypeTemplateConstraintFormula.NUMBER),
+            ("Literal:string", NonTypeTemplateConstraintFormula.STRING),
         ],
     )
     def test_produces_non_type_formula(self, V, loc, text, expected_ctype):
@@ -294,7 +294,7 @@ class TestLiteralValueConstraint:
         r = _parse("true", V, loc)
         assert isinstance(r, LiteralValueConstraintFormula)
         assert r.raw_value == "true"
-        assert r.constraint_type == "bool"
+        assert r.constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN
         assert r.value is True
 
     def test_false(self, V, loc):
@@ -317,7 +317,7 @@ class TestLiteralValueConstraint:
     def test_simple_string(self, V, loc):
         r = _parse('"hello"', V, loc)
         assert isinstance(r, LiteralValueConstraintFormula)
-        assert r.constraint_type == "string"
+        assert r.constraint_type == NonTypeTemplateConstraintFormula.STRING
         assert r.raw_value == '"hello"'
 
     def test_empty_string_literal(self, V, loc):
@@ -337,13 +337,14 @@ class TestLiteralValueConstraint:
     def test_integer_literals(self, V, loc, text):
         r = _parse(text, V, loc)
         assert isinstance(r, LiteralValueConstraintFormula)
-        assert r.constraint_type == "int"
+        assert r.constraint_type == NonTypeTemplateConstraintFormula.INTEGER
         assert r.raw_value == text
 
     def test_integer_preferred_over_float(self, V, loc):
         """Bare '3' must be classified as int, not float."""
         r = _parse("3", V, loc)
-        assert r.constraint_type == "int"
+        assert isinstance(r, LiteralValueConstraintFormula)
+        assert r.constraint_type == NonTypeTemplateConstraintFormula.INTEGER
         assert r.raw_value == "3"
 
     # --- floats ---
@@ -352,10 +353,10 @@ class TestLiteralValueConstraint:
     def test_float_literals(self, V, loc, text):
         r = _parse(text, V, loc)
         assert isinstance(r, LiteralValueConstraintFormula)
-        assert r.constraint_type == "float"
+        assert r.constraint_type == NonTypeTemplateConstraintFormula.NUMBER
 
     def test_float_not_classified_as_int(self, V, loc):
-        assert _parse("3.14", V, loc).constraint_type != "int"
+        assert _parse("3.14", V, loc).constraint_type != NonTypeTemplateConstraintFormula.INTEGER
 
     # --- error cases ---
 
@@ -720,7 +721,7 @@ class TestTemplateArguments:
     def test_arg_non_type_literal(self, V, loc):
         args = _parse("Vector<Literal:int>", V, loc).literal_template_formulae
         assert isinstance(args[0], NonTypeTemplateConstraintFormula)
-        assert args[0].constraint_type == "int"
+        assert args[0].constraint_type == NonTypeTemplateConstraintFormula.INTEGER
 
     def test_arg_integer_literal(self, V, loc):
         args = _parse("Vector<3>", V, loc).literal_template_formulae
@@ -1213,7 +1214,7 @@ class TestWhitespace:
         assert isinstance(_parse("  <Animal>", V, loc), ConstraintGroup)
 
     def test_trailing_whitespace_accepted_at_top_level(self, V, loc):
-        """parse_constraint_string does skip_whitespace before the eof check."""
+        """parse_constraint_definition does skip_whitespace before the eof check."""
         assert isinstance(_parse("Animal   ", V, loc), TemplateConstraintDescendants)
 
     def test_leading_whitespace_inside_and_first_operand(self, V, loc):
