@@ -86,56 +86,20 @@ class TestTemplateArgumentParsing:
             },
             "DogClone": "Dog",
             "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
-            "Integer": {"directParents": ["ValueDomain"], "data": {"instantiation": "integer"}},
+            "Integer": {"directParents": ["ValueDomain"], "data": {}},
             "Duration": {"directParents": ["ValueDomain"], "data": {}},
             "String": {
                 "directParents": ["ValueDomain"],
-                "data": {"defaultSerialization": "string", "instantiation": "string"},
+                "data": {"defaultSerialization": "string"},
             },
-            "TypeName": {"directParents": ["String"], "data": {"instantiation": "string"}},
+            "TypeName": {"directParents": ["String"], "data": {}},
             "ClosedInterval": {
                 "directParents": ["ValueDomain"],
-                "data": {
-                    "templateArguments": {"order": ["T"], "T": "Integer"},
-                    "instantiation": {
-                        "type": "object",
-                        "properties": {"min": {"type": "T"}, "max": {"type": "T"}},
-                        "additionalProperties": False,
-                    },
-                },
+                "data": {"templateArguments": {"order": ["T"], "T": "Integer"}},
             },
             "CustomFunction": {
                 "directParents": ["ValueDomain"],
-                "data": {
-                    "instantiation": {
-                        "type": "object",
-                        "properties": {
-                            "interface": {
-                                "type": "object",
-                                "properties": {"res": {"$ref": "#/$defs/argumentTypeDefinition"}},
-                                "patternProperties": {
-                                    "^[a-z][A-Za-z0-9_]*$": {"$ref": "#/$defs/argumentTypeDefinition"}
-                                },
-                            },
-                            "procedure": "FunctionComposition",
-                        },
-                        "requiredProperties": ["procedure"],
-                        "additionalProperties": False,
-                        "$defs": {
-                            "argumentTypeDefinition": {
-                                "oneOf": [
-                                    "TypeName",
-                                    {
-                                        "type": "array",
-                                        "items": ["TypeName", "string"],
-                                        "minItems": 1,
-                                        "maxItems": 2,
-                                    },
-                                ]
-                            }
-                        },
-                    }
-                },
+                "data": {},
             },
             "Function": {"directParents": ["ValueDomain"], "data": {"abstract": True}},
             "Instance": {

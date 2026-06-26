@@ -191,8 +191,10 @@ def loc() -> LocationId:
     return LocationId(["test_constraint_parser"])
 
 
-def _parse(text: str, V: _TestValidator, loc: LocationId) -> TemplateConstraintFormula:
-    return parse_constraint_definition(text, V, loc)
+def _parse(
+    text: str, V: _TestValidator, loc: LocationId, allow_unconstrained: bool = False
+) -> TemplateConstraintFormula:
+    return parse_constraint_definition(text, V, loc, allow_unconstrained=allow_unconstrained, simplify=False)
 
 
 # ===========================================================================
@@ -204,27 +206,36 @@ class TestUnconstrained:
     """Empty / whitespace-only input, and implicit empty slots, yield Unconstrained."""
 
     def test_empty_string(self, V, loc):
-        result = _parse("", V, loc)
+        result = _parse("", V, loc, True)
         assert isinstance(result, Unconstrained)
         assert isinstance(result, NonStructureConstraintFormula)
 
     def test_spaces_only(self, V, loc):
-        assert isinstance(_parse("   ", V, loc), Unconstrained)
+        assert isinstance(_parse("   ", V, loc, True), Unconstrained)
 
     def test_tab_only(self, V, loc):
-        assert isinstance(_parse("\t", V, loc), Unconstrained)
+        assert isinstance(_parse("\t", V, loc, True), Unconstrained)
 
     def test_mixed_whitespace(self, V, loc):
-        assert isinstance(_parse("  \t\n  ", V, loc), Unconstrained)
+        assert isinstance(_parse("  \t\n  ", V, loc, True), Unconstrained)
 
     def test_newline_only(self, V, loc):
-        assert isinstance(_parse("\n", V, loc), Unconstrained)
+        assert isinstance(_parse("\n", V, loc, True), Unconstrained)
 
     def test_unconstrained_is_non_structure(self, V, loc):
         """Unconstrained belongs to NonStructureConstraintFormula, not Structure."""
-        result = _parse("", V, loc)
+        result = _parse("", V, loc, True)
         assert isinstance(result, NonStructureConstraintFormula)
         assert not isinstance(result, StructureConstraintFormula)
+
+    @pytest.mark.parametrize("entry", ["", "Sequence<>", "Map<Sequence., Constraint<>>"])
+    def test_unconstrained_at_top_level_raises(self, V, loc, entry):
+        """
+        Unconstrained can not be normally used in constraints.
+        Should raise an error if appearing anywhere, even deeply nested
+        """
+        with pytest.raises(CHSemanticError, match="An unconstrained constraint is not allowed here"):
+            _parse(entry, V, loc)
 
 
 # ===========================================================================
@@ -237,7 +248,7 @@ class TestNonTypeConstraint:
         "text, expected_ctype",
         [
             ("Literal:boolean", NonTypeTemplateConstraintFormula.BOOLEAN),
-            ("Literal:int", NonTypeTemplateConstraintFormula.INTEGER),
+            ("Literal:integer", NonTypeTemplateConstraintFormula.INTEGER),
             ("Literal:number", NonTypeTemplateConstraintFormula.NUMBER),
             ("Literal:string", NonTypeTemplateConstraintFormula.STRING),
         ],
@@ -249,14 +260,14 @@ class TestNonTypeConstraint:
 
     @pytest.mark.parametrize(
         "text",
-        ["Literal:boolean", "Literal:int", "Literal:number", "Literal:string"],
+        ["Literal:boolean", "Literal:integer", "Literal:number", "Literal:string"],
     )
     def test_not_a_type_formula(self, V, loc, text):
         result = _parse(text, V, loc)
         assert not isinstance(result, TypeTemplateConstraintFormula)
 
     def test_repr(self, V, loc):
-        assert repr(_parse("Literal:int", V, loc)) == "Literal:int"
+        assert repr(_parse("Literal:integer", V, loc)) == "Literal:int"
         assert repr(_parse("Literal:boolean", V, loc)) == "Literal:bool"
         assert repr(_parse("Literal:number", V, loc)) == "Literal:float"
         assert repr(_parse("Literal:string", V, loc)) == "Literal:string"
@@ -588,52 +599,83 @@ class TestBooleanOperators:
         assert isinstance(inner_and, TemplateConstraintAnd)
         assert len(inner_and.sub_formulae) == 2
 
-    # --- operand type enforcement: non-TypeTemplateConstraintFormula raises CHSyntaxError ---
+    @pytest.mark.parametrize("constraint_type", ["And", "Or"])
+    @pytest.mark.parametrize(
+        "constraint_data",
+        [
+            "3, Literal:integer",
+            '"", "123", Literal:string',
+            "Animal, Dog",
+            "true, false",
+            ", 1",
+            "1, ",
+            "Animal, ",
+            ", 3, ",
+            "1, , 2",
+        ],
+    )
+    def test_same_constraint_type(self, V, loc, constraint_type, constraint_data):
+        _parse(f"{constraint_type}({constraint_data})", V, loc, allow_unconstrained=True)
+
+    def test_not_with_literal_value_raises(self, V, loc):
+        """Now, logical operators are allowed to operate on literal values."""
+        r = _parse('Not("hello")', V, loc)
+        assert isinstance(r, TemplateConstraintNot)
+        assert isinstance(r.sub_formula, LiteralValueConstraintFormula)
+        assert r.sub_formula.constraint_type == "string"
+        assert r.sub_formula.value == '"hello"'
+
+    # --- operand type enforcement: mixing different constraint types raises CHSemanticError ---
 
     def test_and_empty_raises(self, V, loc):
-        """And() → Unconstrained slot → not TypeTemplateConstraintFormula → CHSyntaxError."""
-        with pytest.raises(CHSyntaxError):
+        """And() → Unconstrained slot → not allowed."""
+        with pytest.raises(CHSemanticError, match="An unconstrained constraint is not allowed here"):
             _parse("And()", V, loc)
 
     def test_or_empty_raises(self, V, loc):
-        with pytest.raises(CHSyntaxError):
+        with pytest.raises(CHSemanticError, match="An unconstrained constraint is not allowed here"):
             _parse("Or()", V, loc)
 
     def test_not_empty_raises(self, V, loc):
         """Not() → Unconstrained slot → not TypeTemplateConstraintFormula → CHSyntaxError."""
-        with pytest.raises(CHSyntaxError):
+        with pytest.raises(CHSemanticError, match="An unconstrained constraint is not allowed here"):
             _parse("Not()", V, loc)
 
     def test_and_whitespace_only_raises(self, V, loc):
         """And( ) still resolves operand to Unconstrained → CHSyntaxError."""
-        with pytest.raises(CHSyntaxError):
+        with pytest.raises(CHSemanticError, match="An unconstrained constraint is not allowed here"):
             _parse("And( )", V, loc)
 
     def test_not_whitespace_only_raises(self, V, loc):
-        with pytest.raises(CHSyntaxError):
+        with pytest.raises(CHSemanticError, match="An unconstrained constraint is not allowed here"):
             _parse("Not( )", V, loc)
 
     def test_and_with_literal_value_raises(self, V, loc):
-        """LiteralValueConstraintFormula is not TypeTemplateConstraintFormula."""
-        with pytest.raises(CHSyntaxError):
+        """LiteralValueConstraintFormula has different constraint type than TypeTemplateConstraintFormula."""
+        with pytest.raises(
+            CHSemanticError,
+            match=r"Can not combine template variable constraints of different types: \['int', 'type'\]",
+        ):
             _parse("And(3, Animal)", V, loc)
 
-    def test_not_with_literal_value_raises(self, V, loc):
-        with pytest.raises(CHSyntaxError):
-            _parse('Not("hello")', V, loc)
-
     def test_or_with_bool_value_raises(self, V, loc):
-        with pytest.raises(CHSyntaxError):
+        with pytest.raises(
+            CHSemanticError,
+            match=r"Can not combine template variable constraints of different types: \['bool', 'type'\]",
+        ):
             _parse("Or(true, Animal)", V, loc)
 
     def test_and_with_non_type_constraint_raises(self, V, loc):
         """NonTypeTemplateConstraintFormula (Literal:X) is not TypeTemplateConstraintFormula."""
-        with pytest.raises(CHSyntaxError):
-            _parse("And(Literal:int, Animal)", V, loc)
+        with pytest.raises(
+            CHSemanticError,
+            match=r"Can not combine template variable constraints of different types: \['float', 'int', 'type'\]",
+        ):
+            _parse("And(3.14, Literal:integer, Animal)", V, loc)
 
-    def test_not_with_non_type_constraint_raises(self, V, loc):
-        with pytest.raises(CHSyntaxError):
-            _parse("Not(Literal:string)", V, loc)
+    def test_not_with_unconstrained_is_error_raises(self, V, loc):
+        with pytest.raises(AssertionError):
+            _parse("Not( )", V, loc, allow_unconstrained=True)
 
     # --- unclosed operators raise ---
 
@@ -719,7 +761,7 @@ class TestTemplateArguments:
         assert isinstance(args[0], TemplateConstraintNot)
 
     def test_arg_non_type_literal(self, V, loc):
-        args = _parse("Vector<Literal:int>", V, loc).literal_template_formulae
+        args = _parse("Vector<Literal:integer>", V, loc).literal_template_formulae
         assert isinstance(args[0], NonTypeTemplateConstraintFormula)
         assert args[0].constraint_type == NonTypeTemplateConstraintFormula.INTEGER
 
@@ -827,7 +869,7 @@ class TestConstraintGroup:
         assert isinstance(r.group_constraints[0], TemplateConstraintAscendants)
 
     def test_single_non_type(self, V, loc):
-        r = _parse("<Literal:int>", V, loc)
+        r = _parse("<Literal:integer>", V, loc)
         assert isinstance(r.group_constraints[0], NonTypeTemplateConstraintFormula)
 
     def test_single_literal_value(self, V, loc):
@@ -855,7 +897,7 @@ class TestConstraintGroup:
         assert r.group_constraints[1].literal == "Plant"
 
     def test_three_mixed_elements(self, V, loc):
-        r = _parse("<Animal, Literal:int, Plant*>", V, loc)
+        r = _parse("<Animal, Literal:integer, Plant*>", V, loc)
         assert len(r.group_constraints) == 3
         assert isinstance(r.group_constraints[0], TemplateConstraintDescendants)
         assert isinstance(r.group_constraints[1], NonTypeTemplateConstraintFormula)
@@ -879,7 +921,7 @@ class TestConstraintGroup:
         is called first (mandatory), and it returns Unconstrained when it sees '>'.
         The group is therefore never truly empty.
         """
-        r = _parse("<>", V, loc)
+        r = _parse("<>", V, loc, allow_unconstrained=True)
         assert isinstance(r, ConstraintGroup)
         assert len(r.group_constraints) == 1, "<> must produce exactly 1 slot (Unconstrained), not 0"
         assert isinstance(r.group_constraints[0], Unconstrained)
@@ -892,14 +934,14 @@ class TestConstraintGroup:
         Both are valid because Vector accepts exactly 1 template argument.
         """
         no_brackets = _parse("Vector", V, loc)
-        empty_brackets = _parse("Vector<>", V, loc)
+        empty_brackets = _parse("Vector<>", V, loc, allow_unconstrained=True)
         assert no_brackets.literal_template_formulae == (), "No-bracket form must have empty tuple"
         assert len(empty_brackets.literal_template_formulae) == 1, "Empty-bracket form must have exactly 1 slot"
         assert isinstance(empty_brackets.literal_template_formulae[0], Unconstrained)
 
     def test_empty_brackets_as_template_arg_unconstrained_slot(self, V, loc):
         """Vector<> fills the single required slot with Unconstrained → valid."""
-        r = _parse("Vector<>", V, loc)
+        r = _parse("Vector<>", V, loc, allow_unconstrained=True)
         assert isinstance(r, TemplateConstraintDescendants)
         assert r.literal == "Vector"
         assert len(r.literal_template_formulae) == 1
@@ -907,11 +949,11 @@ class TestConstraintGroup:
 
     def test_empty_brackets_all_hierarchy_variants(self, V, loc):
         """All five hierarchy operators work with empty brackets on a 1-arg concept."""
-        r_desc = _parse("Vector<>", V, loc)
-        r_aDesc = _parse("Vector<>*", V, loc)
-        r_self = _parse("Vector<>.", V, loc)
-        r_asc = _parse("^Vector<>", V, loc)
-        r_aAsc = _parse("^Vector<>*", V, loc)
+        r_desc = _parse("Vector<>", V, loc, allow_unconstrained=True)
+        r_aDesc = _parse("Vector<>*", V, loc, allow_unconstrained=True)
+        r_self = _parse("Vector<>.", V, loc, allow_unconstrained=True)
+        r_asc = _parse("^Vector<>", V, loc, allow_unconstrained=True)
+        r_aAsc = _parse("^Vector<>*", V, loc, allow_unconstrained=True)
         assert isinstance(r_desc, TemplateConstraintDescendants)
         assert isinstance(r_aDesc, TemplateConstraintAbstractDescendants)
         assert isinstance(r_self, TemplateConstraintSelf)
@@ -1202,7 +1244,7 @@ class TestWhitespace:
         assert isinstance(_parse("   Animal", V, loc), TemplateConstraintDescendants)
 
     def test_leading_whitespace_before_literal_type(self, V, loc):
-        assert isinstance(_parse("  Literal:int", V, loc), NonTypeTemplateConstraintFormula)
+        assert isinstance(_parse("  Literal:integer", V, loc), NonTypeTemplateConstraintFormula)
 
     def test_leading_whitespace_before_bool(self, V, loc):
         assert isinstance(_parse("  true", V, loc), LiteralValueConstraintFormula)
@@ -1239,14 +1281,14 @@ class TestWhitespace:
             _parse("And(Animal )", V, loc)
 
     def test_empty_and_with_whitespace_still_raises(self, V, loc):
-        """And( ) → Unconstrained slot → not TypeTemplateConstraintFormula → CHSyntaxError."""
-        with pytest.raises(CHSyntaxError):
+        """And( ) → Unconstrained slot → not allowed."""
+        with pytest.raises(CHSemanticError, match="An unconstrained constraint is not allowed here"):
             _parse("And( )", V, loc)
 
     def test_empty_conj_with_whitespace_still_raises(self, V, loc):
         """Conj( ) → ) does not start a structure constraint → CHSyntaxError."""
         with pytest.raises(CHSyntaxError):
-            _parse("Conj( )", V, loc)
+            _parse("Conj( )", V, loc, allow_unconstrained=True)
 
 
 # ===========================================================================
@@ -1263,7 +1305,7 @@ class TestErrorCases:
             "true extra",
             "42 extra",
             '"hello" trailing',
-            "Literal:int trailing",
+            "Literal:integer trailing",
             "And(Animal, Plant) extra",
             "<Animal> trailing",
             "Conj(<A>, <B>) trailing",
@@ -1365,13 +1407,13 @@ class TestComplexCombinations:
 
     def test_conj_with_empty_brackets_in_groups(self, V, loc):
         """Conj(<Vector<>>, <Animal>) — the first group contains Vector with Unconstrained arg."""
-        r = _parse("Conj(<Vector<>>, <Animal>)", V, loc)
+        r = _parse("Conj(<Vector<>>, <Animal>)", V, loc, allow_unconstrained=True)
         g0 = r.structure_constraints[0]
         vec = g0.group_constraints[0]
         assert isinstance(vec.literal_template_formulae[0], Unconstrained)
 
     def test_all_literal_types_in_group(self, V, loc):
-        r = _parse("<Literal:boolean, Literal:int, Literal:number, Literal:string>", V, loc)
+        r = _parse("<Literal:boolean, Literal:integer, Literal:number, Literal:string>", V, loc)
         assert len(r.group_constraints) == 4
         assert all(isinstance(e, NonTypeTemplateConstraintFormula) for e in r.group_constraints)
 

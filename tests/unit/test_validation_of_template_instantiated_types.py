@@ -88,7 +88,7 @@ class TestTemplateArgumentParsing:
         "SubTemplate1_Templated": {
             "directParents": ["Template1"],
             "data": {
-                "templateArguments": {"order": ["T1", "T2"], "substitution": {"Template1:T": "T1"}},
+                "templateArguments": {"order": ["T1", "T2"], "T1": "Concept", "substitution": {"Template1:T": "T1"}},
             },
         },
     }
@@ -111,6 +111,19 @@ class TestTemplateArgumentParsing:
 
     def test_model_succeeds(self):
         self.get_model(self._model_data)
+
+    def test_model_fails_with_wrong_substitution_of(self):
+        """
+        SubTemplate1_template substitutes Template1:T, which must be a DomainConcept; but T2 is not a domain concept!
+        """
+        new_model = self.clone_model()
+        new_model["SubTemplate1_Templated"]["data"]["templateArguments"]["substitution"]["Template1:T"] = "T2"
+        with pytest.raises(
+            CHSemanticError,
+            match="Merging template context with determined constraints during substitution-instantiation of Template1 "
+            "lead to no possible template-instantiation of SubTemplate1_Templated",
+        ):
+            self.get_model(new_model)
 
     def test_sub_templated_concept_without_substitution_fails(self):
         new_model = self.shallow_copy_for_adding_or_removing_concepts()
