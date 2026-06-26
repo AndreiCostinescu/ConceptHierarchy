@@ -48,11 +48,13 @@ class CustomConceptDataConstraint:
         include_parent_data: bool,
         concept_restriction: list[str],
         value: CHSchemaNode,
+        require_all_keys: bool,
     ):
         self.for_properties_or_functions = for_properties_or_functions
         self.include_parent_data = include_parent_data
         self.concept_restriction = concept_restriction
         self.value = value
+        self.require_all_keys = require_all_keys
 
     @property
     def is_template_dependent(self):
@@ -96,7 +98,6 @@ class CHSchemaNode:
     additional_properties: CHSchemaNode | bool | None = None
     property_names: CHSchemaNode | None = None
     required: list[str] = field(default_factory=list)
-    require_all_properties: bool = False
     dependent_schemas: dict[str, CHSchemaNode] = field(default_factory=dict)
 
     # --- array structure ----------------------------------------------

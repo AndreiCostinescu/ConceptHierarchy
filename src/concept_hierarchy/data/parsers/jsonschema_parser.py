@@ -383,7 +383,11 @@ def _finish_custom_type_node(
 
 
 def _parse_custom_concept_data_constraint(
-    constraint: str, value_schema: CHSchemaNode, validator: CHSchemaValidator, location_id: LocationId
+    constraint: str,
+    value_schema: CHSchemaNode,
+    require_all_keys: bool,
+    validator: CHSchemaValidator,
+    location_id: LocationId,
 ) -> CustomConceptDataConstraint:
     custom_concept_data_parser = StringParser(constraint, location_id)
     if custom_concept_data_parser.try_consume("props"):
@@ -420,7 +424,7 @@ def _parse_custom_concept_data_constraint(
             concept_restriction.append(concept_name)
         custom_concept_data_parser.consume(")")
     return CustomConceptDataConstraint(
-        for_properties_of_functions, include_parent_data, concept_restriction, value_schema
+        for_properties_of_functions, include_parent_data, concept_restriction, value_schema, require_all_keys
     )
 
 
@@ -500,23 +504,30 @@ def _finish_builtin_node(
                 node.properties[key] = child(sub, "properties", key)
         elif isinstance(props, list):
             # parse properties+/functions+ formula
-            if not (len(props) == 2 and isinstance(props[0], str)) and not (
-                all((len(x) == 2 and isinstance(x[0], str)) for x in props)
-            ):
+            def check_structure(_x):
+                if not isinstance(_x, list) or not (2 <= len(_x) <= 3) or not isinstance(props[0], str):
+                    return False
+                if len(_x) == 2:
+                    return True
+                return isinstance(_x[2], bool)
+
+            if not (check_structure(props)) and not all(check_structure(x) for x in props):
                 record(
                     errors,
                     collect_all_errors,
                     CHSyntaxError(
-                        f'"properties" must be an object, a 2-elem array specifying concept-related data, or an array '
-                        f"of 2-elem arrays that is interpreted as a union of concept-related data!\nGot {props!r}",
+                        f'"properties" must be an object, a 2- or 3-elem array specifying concept-related data, or an '
+                        f"array of 2- or 3-elem arrays that is interpreted as a union of concept-related data!\nGot "
+                        f"{props!r}",
                         location_id=location_id + ["properties"],
                     ),
                 )
-            elif len(props) == 2 and all(isinstance(x, str) for x in props):
+            elif check_structure(props):
+                require_all_keys = False if len(props) == 2 else props[2]
                 try:
                     node.custom_concept_data_constraints.append(
                         _parse_custom_concept_data_constraint(
-                            props[0], child_with_x(props[1], "custom concept data", 1), validator, location_id
+                            props[0], child_with_x(props[1], "properties", 1), require_all_keys, validator, location_id
                         )
                     )
                 except ConceptHierarchyError as e:
@@ -524,14 +535,33 @@ def _finish_builtin_node(
             else:
                 for custom_entry_index, custom_constraint_entry in enumerate(props):
                     try:
-                        node.custom_concept_data_constraints.append(
-                            _parse_custom_concept_data_constraint(
-                                custom_constraint_entry[0],
-                                child_with_x(custom_constraint_entry[1], "custom concept data", custom_entry_index, 1),
-                                validator,
-                                location_id,
-                            )
+                        require_all_keys = False if len(custom_constraint_entry) == 2 else custom_constraint_entry[2]
+                        new_custom_concept_data_constraint = _parse_custom_concept_data_constraint(
+                            custom_constraint_entry[0],
+                            child_with_x(custom_constraint_entry[1], "properties", custom_entry_index, 1),
+                            require_all_keys,
+                            validator,
+                            location_id,
                         )
+                        for existing_custom_constraint in node.custom_concept_data_constraints:
+                            if (
+                                existing_custom_constraint.for_properties_or_functions
+                                == new_custom_concept_data_constraint.for_properties_or_functions
+                            ):
+                                custom_constraint_type = (
+                                    "props"
+                                    if existing_custom_constraint.for_properties_or_functions
+                                    == ForPropertyOrFunction.PROPERTY
+                                    else "funcs"
+                                )
+                                # FIXME: allow OR-constraint: allow specifying props(A, B, C) OR props(D, E)
+                                raise CHSemanticError(
+                                    f"There already is a custom concept data constraint on {custom_constraint_type} in "
+                                    f"the list. Currently not allowed to have an OR-constraint on the same custom "
+                                    f"constraint type: {custom_constraint_type}. Merge them together!",
+                                    location_id=node.location_id + ["properties", custom_entry_index, 0],
+                                )
+                        node.custom_concept_data_constraints.append(new_custom_concept_data_constraint)
                     except ConceptHierarchyError as e:
                         record(errors, collect_all_errors, e)
         else:
@@ -566,9 +596,6 @@ def _finish_builtin_node(
 
     if "propertyNames" in work:
         node.property_names = child(work.pop("propertyNames"), "propertyNames")
-
-    if "requireAllKeysFromProperties" in work:
-        node.require_all_properties = work.pop("requireAllKeysFromProperties")
 
     if "required" in work:
         req = work.pop("required")
