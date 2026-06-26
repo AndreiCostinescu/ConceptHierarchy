@@ -14,32 +14,59 @@
 
 from __future__ import annotations
 
+from copy import copy
+
 from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext
+from concept_hierarchy.data.parsers.expression_parser import ExpressionParserValidator
+from concept_hierarchy.data.parsers.jsonschema_parser import CHSchemaValidator
+from concept_hierarchy.data.template_argument_constraints.constraint_formula import TemplateConstraintFormulaValidator
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.validators.template_argument_constraints_validator import (
+    TemplateConstraintArgumentValidator,
+)
+from concept_hierarchy.data.validators.type_validator import TypeValidator
+from concept_hierarchy.data.validators.value_instantiation_validator import CHValueValidator
 from concept_hierarchy.errors import LocationId
 from concept_hierarchy.models import ConceptHierarchyModel
 
 
 class ConceptHierarchyContext:
-    def __init__(
-        self,
-        concept_hierarchy_model: ConceptHierarchy,
-        template_context: TemplateContext,
-        variable_context: VariableContext,
-    ):
+    def __init__(self, concept_hierarchy_model: ConceptHierarchy):
         self.model = concept_hierarchy_model
-        self.template_context = template_context
-        self.variable_context = variable_context
+        self.template_context: TemplateContext | None = None
+        self.variable_context: VariableContext | None = None
+        # first the template constraint formulae are validated
+        self.template_constraint_formula_validator: TemplateConstraintFormulaValidator | None = None
+        # then types are parsed and validated
+        self.type_validator: TypeValidator | None = None
+        # then, during type validator, the template arguments are validated
+        self.template_argument_value_validator: TemplateConstraintArgumentValidator | None = None
+        # then value domain instantiation schemas must be parsed & validated
+        self.instantiation_schema_validator: CHSchemaValidator | None = None
+        # then value domain instantiation values must be parsed and validated
+        self.instantiation_values_validator: CHValueValidator | None = None
+        # and, finally, full expressions can be validated
+        self.expression_parser_validator: ExpressionParserValidator | None = None
 
     @property
     def ch(self) -> ConceptHierarchyModel:
         return self.model.ch
 
+    def overwrite_template_context(self, template_context: TemplateContext) -> ConceptHierarchyContext:
+        res = copy(self)
+        res.template_context = template_context
+        return res
+
+    def overwrite_variable_context(self, variable_context: VariableContext) -> ConceptHierarchyContext:
+        res = copy(self)
+        res.variable_context = variable_context
+        return res
+
     def set_template_context(self, template_context: TemplateContext) -> ConceptHierarchyContext:
-        if self.template_context.empty:
-            return ConceptHierarchyContext(self.model, template_context, self.variable_context)
+        if self.template_context is None:
+            self.overwrite_template_context(template_context)
         raise RuntimeError(
             f"Use the extend method to extend an existing template_context; "
             f"this one {self.template_context!r} is not empty, can't set!"
@@ -48,32 +75,22 @@ class ConceptHierarchyContext:
     def template_context_extend(
         self, template_context: TemplateContext, location_id: LocationId
     ) -> ConceptHierarchyContext:
-        return ConceptHierarchyContext(
-            self.model, self.template_context.add_context(template_context, location_id), self.variable_context
-        )
+        return self.overwrite_template_context(self.template_context.add_context(template_context, location_id))
 
     def template_context_make_neg(self) -> ConceptHierarchyContext:
-        return ConceptHierarchyContext(
-            self.model,
+        return self.overwrite_template_context(
             TemplateContext(
                 self.template_context.variables,
                 self.template_context.variadic_variables,
                 self.template_context.make_constraint_neg(),
-            ),
-            self.variable_context,
+            )
         )
 
     def add_new_variable(self, variable: str, variable_type: TypeValue) -> ConceptHierarchyContext:
-        return ConceptHierarchyContext(
-            self.model, self.template_context, self.variable_context.add_variable(variable, variable_type)
-        )
+        return self.overwrite_variable_context(self.variable_context.add_variable(variable, variable_type))
 
     def add_new_variables(self, variables: dict[str, TypeValue | dict]) -> ConceptHierarchyContext:
-        return ConceptHierarchyContext(
-            self.model, self.template_context, self.variable_context.add_variables(variables)
-        )
+        return self.overwrite_variable_context(self.variable_context.add_variables(variables))
 
     def add_variable_context(self, variable_context: VariableContext) -> ConceptHierarchyContext:
-        return ConceptHierarchyContext(
-            self.model, self.template_context, self.variable_context.add_context(variable_context)
-        )
+        return self.overwrite_variable_context(self.variable_context.add_context(variable_context))
