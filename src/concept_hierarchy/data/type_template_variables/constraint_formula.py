@@ -845,11 +845,12 @@ class NonTypeTemplateConstraintFormula(NonStructureConstraintFormula):
     INTEGER = "int"
     NUMBER = "float"
     STRING = "string"
+    ALL_CONSTRAINT_TYPES: set[str] = {BOOLEAN, INTEGER, NUMBER, STRING}
 
     def __init__(self, constraint_type: str, location_id: LocationId):
         super().__init__(location_id)
         self._constraint_type = constraint_type
-        if self.constraint_type not in {self.BOOLEAN, self.INTEGER, self.NUMBER, self.STRING}:
+        if self.constraint_type not in self.ALL_CONSTRAINT_TYPES:
             raise RuntimeError(f"Unknown literal constraint type: {self.constraint_type}")
 
     def __repr__(self):
