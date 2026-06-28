@@ -26,7 +26,7 @@ done explicitly, so that:
 * every reported error carries a precise path into the *value*, and
 * custom-type nodes — which may appear anywhere, including inside
   ``anyOf``/``oneOf``/``allOf`` — are routed to
-  :meth:`CHValueContext.parse_custom_type` instead of being treated as
+  :meth:`CHValueValidator.parse_custom_type` instead of being treated as
   plain JSON values.
 
 ``required`` is also checked explicitly (rather than via ``jsonschema``) so

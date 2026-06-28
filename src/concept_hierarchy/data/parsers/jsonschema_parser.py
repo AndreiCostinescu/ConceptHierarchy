@@ -407,7 +407,7 @@ def _finish_custom_type_node(
             )
 
     # A custom-type node has no draft-07 structure of its own -- treat it as "anything goes" for both meta-schema
-    # checking and (later) shallow per-node value checks (the actual check is delegated to CHValueContext.check_value).
+    # checking and (later) shallow per-node value checks (actual check is delegated to CHValueValidator.check_value).
     node.safe_canonical = True
     node.shallow_canonical = True
 

@@ -729,7 +729,7 @@ Matching zero branches, or matching more than one, is rejected.
 - **Source:** `data/validators/value_instantiation_validator.py` — `_validate_one_of`
 
 ### 12.11 A custom-typed schema node's value must satisfy the value context's check
-Values at a custom-type node (e.g. an `InstanceBase` or `Reference` type) are delegated to `CHValueContext.check_value`, which may itself return a `CHSemanticError`.
+Values at a custom-type node (e.g. an `InstanceBase` or `Reference` type) are delegated to `CHValueValidator.check_value`, which may itself return a `CHSemanticError`.
 
 - **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
 

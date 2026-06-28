@@ -45,7 +45,7 @@ class ParsedValue(ABC):
     Concrete subclasses:
 
     * :class:`ParsedCustomValue` — a custom-type leaf validated and parsed
-      by :meth:`~value_instantiation_validator.CHValueContext.parse_custom_type`.
+      by :meth:`~value_instantiation_validator.CHValueValidator.parse_custom_type`.
     * :class:`ParsedStructural` — a boolean schema, a builtin-type schema,
       or any composite draft-07 schema (``properties``, ``allOf``, …).
 
@@ -86,7 +86,7 @@ class ParsedValue(ABC):
 @dataclass
 class ParsedCustomValue(ParsedValue):
     """A custom-type leaf node parsed by
-    :meth:`~value_instantiation_validator.CHValueContext.parse_custom_type`.
+    :meth:`~value_instantiation_validator.CHValueValidator.parse_custom_type`.
 
     Attributes:
         custom_type: The resolved :class:`~concept_hierarchy_types.TypeValue`
