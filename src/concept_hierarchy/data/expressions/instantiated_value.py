@@ -70,6 +70,14 @@ class ParsedValue(ABC):
         :attr:`location_id`, gives the child's :attr:`location_id`.
         """
 
+    @abstractmethod
+    def iter_expressions(self) -> Iterator[tuple[tuple[PathSegment, ...], Expression]]:
+        """Yield ``(relative_path_tuple, expression)`` for every expression in the value.
+
+        The relative path is a tuple of path segments that, when appended to
+        :attr:`location_id`, gives the expression's :attr:`location_id`.
+        """
+
     def walk(self) -> Iterator[ParsedValue]:
         """Depth-first walk over ``self`` and all descendants."""
         yield self
@@ -112,6 +120,10 @@ class ParsedCustomValue(ParsedValue):
     def iter_children(self) -> Iterator[tuple[tuple[PathSegment, ...], ParsedValue]]:
         """No structural children — expression traversal is the caller's concern."""
         yield from []
+
+    def iter_expressions(self) -> Iterator[tuple[tuple[PathSegment, ...], Expression]]:
+        if self.expression:
+            yield (), self.expression
 
 
 @dataclass
@@ -209,3 +221,37 @@ class ParsedStructural(ParsedValue):
             yield ("then_else",), self.then_else_parsed
         for key, child in self.dependent_schemas_parsed.items():
             yield ("dependencies", key), child
+
+    def iter_expressions(self) -> Iterator[tuple[tuple[PathSegment, ...], Expression]]:
+        for key, child in self.properties_parsed.items():
+            for expr_location, expr in child.iter_expressions():
+                yield ("properties", key) + expr_location, expr
+        for key, matches in self.pattern_properties_parsed.items():
+            for pattern, child in matches:
+                for expr_location, expr in child.iter_expressions():
+                    yield ("patternProperties", key, pattern) + expr_location, expr
+        for key, child in self.additional_properties_parsed.items():
+            for expr_location, expr in child.iter_expressions():
+                yield ("additionalProperties", key) + expr_location, expr
+        for i, child in enumerate(self.items_parsed):
+            if child is not None:
+                for expr_location, expr in child.iter_expressions():
+                    yield ("items", i) + expr_location, expr
+        if self.contains_parsed is not None:
+            for expr_location, expr in self.contains_parsed.iter_expressions():
+                yield ("contains",) + expr_location, expr
+        for i, child in enumerate(self.all_of_parsed):
+            for expr_location, expr in child.iter_expressions():
+                yield ("allOf", i) + expr_location, expr
+        for i, child in enumerate(self.any_of_parsed):
+            for expr_location, expr in child.iter_expressions():
+                yield ("anyOf", i) + expr_location, expr
+        if self.one_of_parsed is not None:
+            for expr_location, expr in self.one_of_parsed.iter_expressions():
+                yield ("onfOf",) + expr_location, expr
+        if self.then_else_parsed is not None:
+            for expr_location, expr in self.then_else_parsed.iter_expressions():
+                yield ("then_else",) + expr_location, expr
+        for key, child in self.dependent_schemas_parsed.items():
+            for expr_location, expr in child.iter_expressions():
+                yield ("dependencies", key) + expr_location, expr
