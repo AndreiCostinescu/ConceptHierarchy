@@ -42,6 +42,7 @@ from abc import ABC, abstractmethod
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression import Expression
+from concept_hierarchy.data.expressions.expression_utils import ExpressionRef
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
@@ -75,7 +76,7 @@ class CHValueValidator(ABC):
     def parse_custom_type(
         self,
         custom_type: TypeValue,
-        ref: str,
+        ref: ExpressionRef,
         default_expr: object,
         value: object,
         location_id: LocationId,
@@ -106,7 +107,7 @@ class CHValueValidator(ABC):
     def check_value(
         self,
         type_name: TypeValue,
-        ref: str,
+        ref: ExpressionRef,
         default_expr: object,
         value: object,
         location_id: LocationId,

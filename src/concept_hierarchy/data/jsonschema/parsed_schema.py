@@ -36,6 +36,7 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
+from concept_hierarchy.data.expressions.expression_utils import ExpressionRef
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import LocationId, PathSegment
@@ -80,7 +81,7 @@ class CHSchemaNode:
     # --- custom types -------------------------------------------------
     is_custom_type: bool = False
     custom_type: TypeValue | None = None
-    ref: str | None = None  # "Reference" | "NoRef", only set if is_custom_type
+    ref: ExpressionRef | None = None  # "Reference" | "NoRef", only set if is_custom_type
     has_default: bool = False
     default_expr: object = None
     """
@@ -284,7 +285,7 @@ class CHSchemaNode:
         if self.is_boolean_schema:
             kind = f"bool({self.canonical})"
         elif self.is_custom_type:
-            kind = f"custom:{self.custom_type.full_name}({self.ref})"
+            kind = f"custom:{self.custom_type.full_name} ({self.ref.value})"
         else:
             kind = f"type={self.type_value!r}" if self.type_value is not None else "composite"
         location_id_str = ", ".join(f'"{x}"' for x in self.location_id)

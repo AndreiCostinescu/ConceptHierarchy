@@ -373,7 +373,7 @@ def _finish_custom_type_node(
     except ConceptHierarchyError as e:
         record(errors, collect_all_errors, e)
 
-    ref = work.get("referenceType", ValueDomainArgumentReference.NO_REF.value)
+    ref = ValueDomainArgumentReference(work.get("referenceType", ValueDomainArgumentReference.NO_REF.value))
     if "referenceType" in work and work["referenceType"] not in validator.argument_reference_types:
         record(
             errors,
@@ -384,7 +384,7 @@ def _finish_custom_type_node(
                 location_id=location_id + ["referenceType"],
             ),
         )
-        ref = ValueDomainArgumentReference.NO_REF.value
+        ref = ValueDomainArgumentReference.NO_REF
     node.ref = ref
 
     if "default" in work:
