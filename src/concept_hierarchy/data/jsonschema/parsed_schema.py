@@ -155,6 +155,60 @@ class CHSchemaNode:
     """
 
     # ------------------------------------------------------------------
+    def __repr__(self):
+        non_empty_fields = []
+        non_empty_fields.append(f"location={self.location_id}")
+        if self.is_custom_type:
+            if self.custom_type is not None:
+                non_empty_fields.append(f"type={self.custom_type}")
+            if self.ref is not None:
+                non_empty_fields.append(f"ref={self.ref}")
+            if self.has_default:
+                non_empty_fields.append(f"default={self.default_expr}")
+        elif self.type_value is not None:
+            non_empty_fields.append(f"type={self.type_value}")
+            types = self.type_value
+            if not isinstance(types, list):
+                types = [types]
+            if "object" in types:
+                if self.properties:
+                    non_empty_fields.append(f"properties={self.properties}")
+                if self.custom_concept_data_constraints:
+                    non_empty_fields.append(f"custom concept data constraints={self.custom_concept_data_constraints}")
+                if self.property_names is not None:
+                    non_empty_fields.append(f"property_names={self.property_names}")
+                if self.pattern_properties:
+                    non_empty_fields.append(f"patternProperties={self.pattern_properties}")
+                if self.additional_properties is not None:
+                    non_empty_fields.append(f"additionalProperties={self.additional_properties}")
+                non_empty_fields.append(f"required={self.required}")
+                if self.dependent_schemas:
+                    non_empty_fields.append(f"dependent={self.dependent_schemas}")
+            if "array" in types:
+                if self.items is not None:
+                    non_empty_fields.append(f"items={self.items}")
+                if self.additional_items is not None:
+                    non_empty_fields.append(f"additional_items={self.additional_items}")
+                if self.contains is not None:
+                    non_empty_fields.append(f"contains={self.contains}")
+        else:
+            if self.any_of:
+                non_empty_fields.append(f"any_of={self.any_of}")
+            if self.all_of:
+                non_empty_fields.append(f"all_of={self.all_of}")
+            if self.one_of:
+                non_empty_fields.append(f"one_of={self.one_of}")
+            if self.not_ is not None:
+                non_empty_fields.append(f"not_={self.not_}")
+            if self.if_ is not None:
+                non_empty_fields.append(f"if={self.if_}")
+            if self.then_ is not None:
+                non_empty_fields.append(f"then_={self.then_}")
+            if self.else_ is not None:
+                non_empty_fields.append(f"else_={self.else_}")
+        joined = ", ".join(non_empty_fields)
+        return f"CHSchemaNode({joined})"
+
     @property
     def is_boolean_schema(self) -> bool:
         return isinstance(self.canonical, bool)
