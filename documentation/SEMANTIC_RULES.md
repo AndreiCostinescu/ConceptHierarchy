@@ -332,6 +332,14 @@ The same tuple of template-argument constraint formulae may not be used as the s
 - **Source:** `definitions/concept_definition_value_domain.py` — `check_instantiation`
 - **Location:** `["concepts", <concept>, "data", "instantiation", <index>]`
 
+### 6.4 Template ValueDomains can not define a defaultSerialization
+This is because one can not infer the template variable values from the `defaultSerialization` value alone.
+The `defaultSerialization` value is used to determine a value's type when the expected value type is unknown.
+And one can not differentiate different the template variable values from the same `defaultSerialization` value.
+
+- **Source:** `definitions/concept_definition_value_domain.py` — `check_default_serialization`
+- **Location:** `["concepts", <concept>, "data", "defaultSerialization"]`
+
 ---
 
 ## 7. Function Definitions (Function concepts)
