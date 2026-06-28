@@ -75,6 +75,15 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         # check "defaultSerialization"
         self.default_serialization = self.data.get(ValueDomainDefinition.value_domain_default_serialization, None)
         if self.default_serialization is not None:
+            if len(self.template_argument_order) > 0:
+                raise CHSemanticError(
+                    f"Template-dependent {self.definition_type()} can not define a default serialization! "
+                    f'Remove the keyword in "{self.name}". One can\'t infer the template arguments of "{self.name}" '
+                    f"from the serialization value alone.\n\tIf you really need this feature, contact the developers "
+                    f"and explain your use case.",
+                    location_id=self.location_id(ValueDomainDefinition.value_domain_default_serialization),
+                    part=PathPart.KEY,
+                )
             if not isinstance(self.default_serialization, str):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s defaultSerialization must be a JSON string, not "
@@ -87,7 +96,9 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     f'Invalid "{ValueDomainDefinition.value_domain_default_serialization}" string value for '
                     f"{self.definition_type()} {self.name}: got: {self.default_serialization!r}, allowed: "
                     f"{self.allowed_default_serializations}",
-                    location_id=self.location_id(self.default_serialization),
+                    location_id=self.location_id(
+                        ValueDomainDefinition.value_domain_default_serialization, self.default_serialization
+                    ),
                     part=PathPart.VALUE,
                 )
 
