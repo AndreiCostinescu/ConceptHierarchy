@@ -34,7 +34,9 @@ class ConceptHierarchyTypeValidator(TypeValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.cached_template_data: dict[str, TypeTemplateData] = {}
+        """The cache can persist between validations. This does not change: it is the (processed) definition data."""
         self.identifier_for_types: str | None = None
+        self.empty_template_context_for_non_template_concepts = TemplateContext()
 
     def full_type_name(self, concept_name: str) -> str:
         if self.is_concept(concept_name):
@@ -50,15 +52,16 @@ class ConceptHierarchyTypeValidator(TypeValidator):
             type_def_data = self.context.ch.concepts[concept_name]
             if not isinstance(type_def_data, HiddenImplementationDefinition):
                 type_template_data = TypeTemplateData(
-                    context=TemplateContext(),
+                    get_context=lambda: self.empty_template_context_for_non_template_concepts,
                     variadic_group_identifiers={},
                     defined_variadic_group_identifiers={},
                 )
             else:
                 type_model_data = self.context.model.concepts[concept_name]
                 assert isinstance(type_model_data, TypeData)
+                type_data: TypeData = type_model_data
                 type_template_data = TypeTemplateData(
-                    context=type_model_data.template_context,
+                    get_context=lambda: type_data.template_context,
                     variadic_group_identifiers=type_def_data.variadic_template_argument_group_identifiers,
                     defined_variadic_group_identifiers=type_def_data.defined_variadic_group_identifiers,
                 )

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Callable
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.parsers.type_parser import parse_type
@@ -49,7 +50,7 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 
 @dataclass(frozen=True)
 class TypeTemplateData:
-    context: TemplateContext
+    get_context: Callable[[], TemplateContext]
     variadic_group_identifiers: dict[str, str]
     defined_variadic_group_identifiers: dict[str, str]
 
@@ -174,7 +175,8 @@ def validate_type_and_parse_to_variadic_groups(
         )
 
     # check type's template arguments
-    type_is_templated = template_data.context.variables != ()
+    template_context = template_data.get_context()
+    type_is_templated = template_context.variables != ()
     if type_is_templated != ch_type.is_templated:
         if type_is_templated:
             raise CHSemanticError(
@@ -190,8 +192,8 @@ def validate_type_and_parse_to_variadic_groups(
         return ch_type
 
     parsed_template_arguments = ch_type.template_arguments
-    nr_template_arguments = template_data.context.nr_variables
-    nr_variadic_template_arguments = len(template_data.context.variadic_variables)
+    nr_template_arguments = template_context.nr_variables
+    nr_variadic_template_arguments = len(template_context.variadic_variables)
     nr_parsed_template_arguments = len(parsed_template_arguments)
 
     if (nr_template_arguments - nr_variadic_template_arguments) > nr_parsed_template_arguments:
@@ -215,10 +217,10 @@ def validate_type_and_parse_to_variadic_groups(
         "" in template_data.defined_variadic_group_identifiers or nr_variadic_template_arguments < nr_template_arguments
     )
     count_values_without_variadic_identifier = 0
-    for t_arg_name, parsed_t_arg_val in zip(template_data.context.variables, parsed_template_arguments):
+    for t_arg_name, parsed_t_arg_val in zip(template_context.variables, parsed_template_arguments):
         is_variadic_group = isinstance(parsed_t_arg_val, TemplateArgumentVariadicGroup)
         uses_variadic_groups |= is_variadic_group
-        if (t_arg_name in template_data.context.variadic_variables) != is_variadic_group:
+        if (t_arg_name in template_context.variadic_variables) != is_variadic_group:
             # if found a variadic group at a position where none was expected,
             # or didn't find a variadic group at a position where one was expected,
             #  then the ParsedType is using the syntax with variadic group ids
@@ -259,7 +261,7 @@ def validate_type_and_parse_to_variadic_groups(
             location_id=location_id,
         )
     non_variadic_template_arguments = [
-        x for x in template_data.context.variables if x not in template_data.context.variadic_variables
+        x for x in template_context.variables if x not in template_context.variadic_variables
     ]
     if "" not in template_data.defined_variadic_group_identifiers and count_values_without_variadic_identifier < len(
         non_variadic_template_arguments
@@ -272,12 +274,12 @@ def validate_type_and_parse_to_variadic_groups(
         )
     # Only bring to canonic form (i.e. only using variadic groups) if variadic ids are used
     if uses_variadic_ids:
-        ch_type = make_canonic(ch_type, template_data.context.variables, template_data.variadic_group_identifiers)
+        ch_type = make_canonic(ch_type, template_context.variables, template_data.variadic_group_identifiers)
     return validate_template_argument_values_of_type(
         ch_type,
         validator,
         location_id,
-        template_data.context,
+        template_context,
     )
 
 
