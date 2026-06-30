@@ -298,9 +298,12 @@ def make_canonic(
     # create curated template argument
     curated_template_arguments: list[TemplateArgumentValue] = []
     passed_number_of_variadic_template_arguments = 0
+    count_template_arguments_parsed = 0
     for index, t_arg in enumerate(template_argument_order):
         if t_arg in variadic_group_identifiers:
             t_arg_var_id = variadic_group_identifiers[t_arg]
+            if t_arg_var_id == "":
+                t_arg_var_id = None
             if t_arg_var_id in variadic_groups:
                 new_variadic_group_elements: list[ParsedType | TemplateArgumentLiteral] = []
                 for group_elem in variadic_groups[t_arg_var_id]:
@@ -320,6 +323,7 @@ def make_canonic(
                                 function_arguments=group_elem.function_arguments,
                             )
                         )
+                count_template_arguments_parsed += len(new_variadic_group_elements)
                 curated_template_arguments.append(TemplateArgumentVariadicGroup(tuple(new_variadic_group_elements)))
             else:
                 curated_template_arguments.append(TemplateArgumentVariadicGroup(()))
@@ -329,7 +333,12 @@ def make_canonic(
             # all non-variadic template argument values live inside the variadic_groups[None] list entry
             index_in_empty_variadic_group = index - passed_number_of_variadic_template_arguments
             assert len(variadic_groups[None]) > index_in_empty_variadic_group
+            count_template_arguments_parsed += 1
             curated_template_arguments.append(variadic_groups[None][index_in_empty_variadic_group])
+    assert count_template_arguments_parsed == len(ch_type.template_arguments), (
+        f"Expected to parse {len(ch_type.template_arguments)} arguments, parsed only {count_template_arguments_parsed} "
+        f"arguments!"
+    )
     return ParsedType(
         variadic_group_identifier=ch_type.variadic_group_identifier,
         name=ch_type.name,
