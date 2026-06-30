@@ -15,7 +15,7 @@ Each rule corresponds to a `CHSemanticError` raise in the source code.
      Note: `git diff --name-status <old>..HEAD` quickly shows file renames so you can check
      whether a Source path in an existing rule is now stale.
 
-     Last verified against commit 2ee46134b37d19208796365acdfef1d8ff2e460d, plus uncommitted/staged working-tree
+     Last verified against commit c29bdd055edacc1da852ec6a2054a1c6018eb98c, plus uncommitted/staged working-tree
      changes present at verification time in:
        data/validators/value_instantiation_validator.py, data/validators/template_argument_constraints_validator.py,
        data/validators/type_validator.py, data/type_template_variables/constraint_formula.py,
@@ -27,10 +27,9 @@ Each rule corresponds to a `CHSemanticError` raise in the source code.
        and the staged-but-not-committed: data/expressions/ module (expression.py, expression_errors.py,
        function_composition.py, subexpressions.py), data/parsers/expression_parser.py.
      Full audit performed: all CHSemanticError raise sites cross-checked against all rules.
-     Notable changes from this audit: removed Rule 12.12 (requireAllKeysFromProperties — dead code, CHSchemaNode
-     no longer has require_all_properties; enforcement not re-implemented for the new require_all_keys on
-     CustomConceptDataConstraint); added Rule 11.17 (TemplateDependentType instantiation constraint compatibility).
-     (examples/animal_kingdom.json also modified but is not a source-of-rules file.) -->
+     Notable changes from previous audit: added Rules 2.20–2.22 (distinctFrom structural checks),
+     4.2 (minInstances > maxInstances), 4.3 (distinctFrom duplicates), and 14.7 (type template variable
+     in expression). -->
 
 ---
 
@@ -195,6 +194,24 @@ The same function name may not be defined in more than one domain concept.
 - **Source:** `validator/checker.py` — `check_after_parsing_concepts`
 - **Location:** `["concepts", <concept>, "data", "functions", <func>]`
 
+### 2.20 `distinctFrom` entries must reference defined concepts
+Each name in a domain concept's `distinctFrom` array must be a concept that exists in the hierarchy.
+
+- **Source:** `validator/checker.py` — `check_after_parsing_concepts`
+- **Location:** `["concepts", <concept>, "data", "distinctFrom", <index>]`
+
+### 2.21 `distinctFrom` entries must reference domain concepts
+Each name in a domain concept's `distinctFrom` array must be a `DomainConcept`. References to `Function` or `ValueDomain` concepts are rejected, since those are distinct from all domain concepts by construction.
+
+- **Source:** `validator/checker.py` — `check_after_parsing_concepts`
+- **Location:** `["concepts", <concept>, "data", "distinctFrom", <index>]`
+
+### 2.22 `distinctFrom` entries must not reference this concept or its ancestors
+A concept cannot be required to be distinct from itself or from any of its ancestor concepts — such a constraint can never be satisfied (the concept is always a subconcept of its ancestors). If a concept should be non-instantiable, set `maxInstances: 0` instead.
+
+- **Source:** `validator/checker.py` — `check_after_parsing_concepts`
+- **Location:** `["concepts", <concept>, "data", "distinctFrom", <index>]`
+
 ---
 
 ## 3. Specialization (Inheritance Overrides for Properties and Functions)
@@ -253,10 +270,22 @@ A domain concept function specialization value must be a `FunctionComposition` p
 ## 4. Concept Classification (Domain Concepts)
 
 ### 4.1 Every domain concept must carry data
-A domain concept that is not the root concept must define at least one of: `properties`, `functions`, or `management`.
+A domain concept that is not the root concept must define at least one of the recognized domain concept data keys (e.g. `properties`, `functions`, `management`, `minInstances`, `maxInstances`, `distinctFrom`).
 
 - **Source:** `definitions/concept_definition_domain_concept.py` — `concept_data_check`
 - **Location:** the concept's own location
+
+### 4.2 `minInstances` must not exceed `maxInstances`
+If both `minInstances` and `maxInstances` are set on a domain concept, `minInstances` must be ≤ `maxInstances`. A definition where `minInstances > maxInstances` makes the concept impossible to instantiate; the correct way to declare a non-instantiable concept is to omit `minInstances` and set `maxInstances: 0`.
+
+- **Source:** `definitions/concept_definition_domain_concept.py` — `concept_data_check`
+- **Location:** the concept's own location (value)
+
+### 4.3 `distinctFrom` array must not contain duplicate entries
+The names listed in a domain concept's `distinctFrom` array must be unique — duplicate entries are rejected.
+
+- **Source:** `definitions/concept_definition_domain_concept.py` — `concept_data_check`
+- **Location:** `["concepts", <concept>, "data", "distinctFrom"]` (value)
 
 ---
 

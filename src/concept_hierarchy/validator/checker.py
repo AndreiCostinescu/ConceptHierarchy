@@ -690,6 +690,36 @@ class ConceptHierarchyChecker:
                                 location_id=c.location_of(DomainConceptDefinition.domain_concept_functions, func_name),
                                 part=PathPart.KEY,
                             )
+                    #  - check that all concept names in distinct_from are:
+                    #   1) domain concepts,
+                    #   2) different from this concept, and
+                    #   3) not parents of this concept
+                    for index, distinct_from_concept in enumerate(c.distinct_from):
+                        if not self.ch.is_concept(distinct_from_concept):
+                            raise CHSemanticError(
+                                f"{DomainConceptDefinition.domain_concept_distinct_from} entry {index} of {c.name} "
+                                f'("{distinct_from_concept}") is not a concept!',
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_distinct_from)
+                                + [index],
+                            )
+                        if not self.ch.is_domain_concept(distinct_from_concept):
+                            raise CHSemanticError(
+                                f"{DomainConceptDefinition.domain_concept_distinct_from} entry {index} of {c.name} "
+                                f'("{distinct_from_concept}") is must be a domain concept; because the rest is distinct'
+                                f" by construction!!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_distinct_from)
+                                + [index],
+                            )
+                        if self.ch.is_a_subconcept_of_b(c.name, distinct_from_concept, include_self=True):
+                            raise CHSemanticError(
+                                f'Concept {c.name} must be distinct from itself? Because "{distinct_from_concept}" is'
+                                f" either the same concept as {c.name} or a parent concept of {c.name}!"
+                                f"\n\tIf you want to make this concept non-instantiable, set its "
+                                f'"{DomainConceptDefinition.domain_concept_max_instances}" property in '
+                                f"{DomainConceptDefinition.concept_definition_data} to 0!",
+                                location_id=c.location_of(DomainConceptDefinition.domain_concept_distinct_from)
+                                + [index],
+                            )
             except ConceptHierarchyError as e:
                 errors.append(e)
         if errors:

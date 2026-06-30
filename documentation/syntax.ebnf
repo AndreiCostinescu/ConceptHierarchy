@@ -47,6 +47,9 @@ DomainConceptDefinitionItem
         ::= ConceptPropertyContainerDefinition
           | ConceptFunctionContainerDefinition
           | ConceptManagementDefinition
+          | (ws '"minInstances"' ws ':' ws natural ws)
+          | (ws '"maxInstances"' ws ':' ws natural ws)
+          | (ws '"distinctFrom"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws)
 
 // Domain Properties
 ConceptPropertyContainerDefinition
