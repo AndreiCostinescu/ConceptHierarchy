@@ -309,7 +309,6 @@ def check_types_in_hidden_implementation_definition(
                 )
 
     datum.parent_template_variable_substitution = frozendict(substitution_values)
-    datum.instantiable = not c.abstract
 
     constraint_validator.update_existing_template_variables(set())
     type_validator.clear_identifier_where_types_are_defined()
@@ -510,6 +509,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
 def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):
     # First process template types
     for c_name, c in context.ch.concepts.items():
+        context.model.concepts.instantiable = not c.abstract
         if isinstance(c, HiddenImplementationDefinition):
             check_types_in_hidden_implementation_definition(c, context.model.value_domains[c_name], context)
     # Then check types in the Concept Hierarchy (property types, Function argument types, etc.)

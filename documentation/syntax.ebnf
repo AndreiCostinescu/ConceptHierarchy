@@ -28,7 +28,7 @@ ConceptDefinition
 ConceptContentDefinition
         ::= ConceptReference | InstantiatedValueDomain | (ws '{' ConceptDefMember (',' ConceptDefMember)* '}' ws)
 ConceptDefMember
-        ::= Description | ConceptParents | ConceptData
+        ::= Description | ConceptParents | ConceptData | ConceptAbstract
 Description
         ::= ws '"description"' ws ':' ws string ws
 ConceptParents
@@ -39,6 +39,8 @@ ConceptData
             | PathToExternalFile)
 PathToExternalFile
         ::= ws string ws
+ConceptAbstract
+        ::= ws '"abstract"' ws ':' ws boolean ws
 
 //// Domain Concept Data
 DomainConceptData
@@ -177,15 +179,12 @@ ValueDomainConceptData
         ::= ValueDomainDataEntry (',' ValueDomainDataEntry)*
 ValueDomainDataEntry
         ::= ValueDomainImplementation
-          | ValueDomainAbstract
           | ValueDomainDefaultSerialization
           | ValueDomainInstantiation
           | ValueDomainInterface
           | TemplateArgumentDefinitionBlock
 ValueDomainImplementation
         ::= ws '"implementation"' ws ':' ws string ws
-ValueDomainAbstract
-        ::= ws '"abstract"' ws ':' ws boolean ws
 ValueDomainDefaultSerialization
         ::= ws '"defaultSerialization"' ws ':' ws
             ('null' | '"null"' | '"boolean"' | '"integer"' | '"number"' | '"string"') ws

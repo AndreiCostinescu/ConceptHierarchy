@@ -30,7 +30,7 @@ class TestTemplateArgumentParsing:
     _model_data = {
         "Concept": {},
         "DomainConcept": {"directParents": ["Concept"], "data": {"properties": {"example": "NonTemplate1"}}},
-        "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
+        "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
         "NonTemplateValueDomain": {"directParents": ["ValueDomain"], "data": {}},
         "TemplateValueDomain": {"directParents": ["ValueDomain"], "data": {}},
         "NonTemplate1": {"directParents": ["NonTemplateValueDomain"], "data": {}},

@@ -24,14 +24,13 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId,
 
 class HiddenImplementationDefinition(ConceptDefinition, ABC):
     hidden_implementation: str = "implementation"
-    hidden_abstract: str = "abstract"
     hidden_template_arguments: str = "templateContext"
     hidden_template_arguments_order: str = "order"
     hidden_template_arguments_substitutions: str = "substitution"
     hidden_template_arguments_variadic_ids: str = "variadicGroupIdentifiers"
     default_template_argument_constraint: str = "ValueDomain"
     variadic_group_identifier_characters: str = "!$"
-    implementation_related_keys: set[str] = {hidden_implementation, hidden_abstract, hidden_template_arguments}
+    implementation_related_keys: set[str] = {hidden_implementation, hidden_template_arguments}
     template_arguments_data_keys: set[str] = {
         hidden_template_arguments_order,
         hidden_template_arguments_substitutions,
@@ -45,11 +44,6 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         super().__init__(name, definition_data, definition_location_id)
 
         self.implementation: str | None = None
-        self.abstract: bool | None = None
-        """
-        An abstract ValueDomain can not be instantiated. 
-        An abstract Function can not be instantiated and does not have to define its interface (but it can)!
-        """
         self.template_arguments: tuple[str, ...] | dict | None = None
 
         # if template_argument_order is (), then there are no template arguments
@@ -68,7 +62,6 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
     def from_node(cls, concept_definition: ConceptDefinition):
         domain_concept = cls._from_node(concept_definition)
         domain_concept.implementation = None
-        domain_concept.abstract = None
         domain_concept.template_arguments = None
 
         domain_concept.template_argument_order = ()
@@ -88,13 +81,12 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         return self.data_location_id
 
     def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
-        # process top-level implementation-related data keywords (abstract/implementation/templateContext)
+        # process top-level implementation-related data keywords (implementation/templateContext)
         # after processing parent keywords
         check_res = super().location_of_impl(*keywords)
         found_keyword_in_here = False
         if check_res.first_remaining in [
             HiddenImplementationDefinition.hidden_implementation,
-            HiddenImplementationDefinition.hidden_abstract,
             HiddenImplementationDefinition.hidden_template_arguments,
         ]:
             self.check_location_id(
@@ -108,7 +100,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
             # This is the guarantee that the top-level data keywords were found in this function,
             # so no more processing in subclasses is required!
             found_keyword_in_here = check_res.check_successful is True
-            # stop the check if reached the leaf-nodes: implementation or abstract
+            # stop the check if reached the leaf-nodes: implementation
             if (
                 found_keyword_in_here
                 and check_res.last_consumed != HiddenImplementationDefinition.hidden_template_arguments
@@ -242,20 +234,6 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                     location_id=self.location_id(HiddenImplementationDefinition.hidden_implementation),
                     part=PathPart.VALUE,
                 )
-
-    def check_abstract(self):
-        # check "abstract"
-        self.abstract = self.data.get(HiddenImplementationDefinition.hidden_abstract, None)
-        if self.abstract is not None:
-            if not isinstance(self.abstract, bool):
-                raise CHSyntaxError(
-                    f"The definition of a {self.definition_type()}'s abstract marker must be a JSON boolean, not "
-                    f"{self.abstract!r} for the {self.definition_type()} {self.name}",
-                    location_id=self.location_id(HiddenImplementationDefinition.hidden_abstract),
-                    part=PathPart.VALUE,
-                )
-        else:
-            self.abstract = False
 
     def check_template_arguments(self):
         # check "templateContext"
@@ -527,7 +505,6 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
             )
 
         self.check_implementation()
-        self.check_abstract()
         self.check_template_arguments()
         # missing checks:
         #  - template constraint formulae

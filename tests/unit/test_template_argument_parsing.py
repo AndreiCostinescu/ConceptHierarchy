@@ -85,7 +85,7 @@ class TestTemplateArgumentParsing:
                 },
             },
             "DogClone": "Dog",
-            "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
+            "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
             "Integer": {"directParents": ["ValueDomain"], "data": {}},
             "Duration": {"directParents": ["ValueDomain"], "data": {}},
             "String": {
@@ -101,7 +101,7 @@ class TestTemplateArgumentParsing:
                 "directParents": ["ValueDomain"],
                 "data": {},
             },
-            "Function": {"directParents": ["ValueDomain"], "data": {"abstract": True}},
+            "Function": {"directParents": ["ValueDomain"], "data": {}, "abstract": True},
             "Instance": {
                 "directParents": ["ValueDomain"],
                 "data": {
@@ -113,10 +113,7 @@ class TestTemplateArgumentParsing:
                     }
                 },
             },
-            "FunctionReturning": {
-                "directParents": ["Function"],
-                "data": {"abstract": True, "templateContext": ["T"]},
-            },
+            "FunctionReturning": {"directParents": ["Function"], "data": {"templateContext": ["T"]}, "abstract": True},
             "Add": {
                 "directParents": ["FunctionReturning"],
                 "data": {

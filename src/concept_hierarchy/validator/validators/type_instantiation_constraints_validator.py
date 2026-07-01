@@ -94,11 +94,7 @@ class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
     def concept_check(self, a_type: ConceptHierarchyType, b_name: str, check_type: HierarchyCheckType) -> bool:
         # perform the subconcept check!
         a_name = a_type.clean_name
-        a_def_data = self.context.ch.concepts[a_name]
-        if not isinstance(a_def_data, HiddenImplementationDefinition):
-            a_is_abstract = False
-        else:
-            a_is_abstract = a_def_data.abstract
+        a_is_abstract = self.context.ch.concepts[a_name].abstract
         match check_type:
             case HierarchyCheckType.SELF:
                 include_abstract = True

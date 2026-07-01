@@ -94,9 +94,8 @@
         "DogClone": "Dog",
         "ValueDomain": {
             "directParents": ["Concept"],
-            "data": {
-                "abstract": true
-            }
+            "data": { },
+            "abstract": true
         },
         "Numeric": {
             "directParents": ["ValueDomain"],
@@ -334,16 +333,15 @@
         },
         "Function": {
             "directParents": ["ValueDomain"],
-            "data": {
-                "abstract": true
-            }
+            "data": { },
+            "abstract": true
         },
         "FunctionReturning": {
             "directParents": ["Function"],
             "data": {
-                "abstract": true,
                 "templateContext": ["T"]
-            }
+            },
+            "abstract": true
         },
         "Add": {
             "directParents": ["FunctionReturning"],

@@ -114,7 +114,8 @@
                     },
                     { "$ref": "#/$defs/concepts/$defs/conceptData" }
                   ]
-                }
+                },
+                "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" }
               },
               "required": ["directParents", "data"],
               "additionalProperties": false
@@ -139,7 +140,6 @@
               "type": "object",
               "properties": {
                 "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
-                "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
                 "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
                 "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
                 "instantiation": {
@@ -172,7 +172,6 @@
               "type": "object",
               "properties": {
                 "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
-                "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
                 "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
                 "interface": { "$ref": "#/$defs/concepts/$defs/functionInterface" },
                 "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
@@ -219,7 +218,6 @@
             "maxInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
             "distinctFrom": { "type": "array", "items": "string" },
             "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
-            "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
             "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
             "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
             "instantiation": {

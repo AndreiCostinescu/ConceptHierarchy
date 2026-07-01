@@ -41,7 +41,14 @@ class ConceptHierarchyData:
         self.name = name
 
 
+@lazy_properties
 class ConceptData(ConceptHierarchyData):
+    instantiable: bool
+    """
+    An abstract ValueDomain can not be instantiated. 
+    An abstract Function can not be instantiated and does not have to define its interface (but it can)!
+    """
+
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name)
         self.parents = parents
@@ -63,11 +70,6 @@ class TypeData(ConceptData):
     template_context: TemplateContext
     parent_template_variable_substitution: frozendict[tuple[str, str], ConceptHierarchyTemplateArgument]
     """Contains all substitution values of the template arguments of all parents (also non direct parents!)"""
-    instantiable: bool
-    """
-    An abstract ValueDomain can not be instantiated. 
-    An abstract Function can not be instantiated and does not have to define its interface (but it can)!
-    """
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)

@@ -31,7 +31,23 @@ class ConceptDefinition(ConceptHierarchyDefinition):
     concept_definition_data: str = "data"
     concept_description: str = "description"
     concept_direct_parents: str = "directParents"
-    concept_data_keys: set[str] = {concept_direct_parents, concept_description, concept_definition_data}
+    concept_direct_children: str = "directChildren"
+    concept_distinct_from: str = "distinctFrom"
+    concept_distinct_group: str = "distinctGroup"
+    concept_min_instances: str = "minInstances"
+    concept_max_instances: str = "maxInstances"
+    concept_abstract: str = "abstract"
+    concept_data_keys: set[str] = {
+        concept_direct_parents,
+        concept_description,
+        concept_definition_data,
+        concept_direct_children,
+        concept_distinct_from,
+        concept_distinct_group,
+        concept_min_instances,
+        concept_max_instances,
+        concept_abstract,
+    }
 
     def __init__(
         self,
@@ -43,6 +59,17 @@ class ConceptDefinition(ConceptHierarchyDefinition):
     ):
         self.parents: tuple[str, ...] = ()
         self.description: str | None = None
+        self.fixed_children: tuple[str, ...] | None = None
+        self.min_instances: int | None = None
+        self.max_instances: int | None = None
+        self.distinct_from: tuple[str, ...] | None = None
+        self.distinct_group: tuple[str, ...] | None = None
+        self.abstract: bool | None = None
+        """
+        An abstract concept (DomainConcept, ValueDomain, Function) can not be instantiated. 
+        An abstract Function can not be instantiated and does not have to define its interface (but it can)!
+        """
+
         self.data: dict[str, object] = {}
         self._data_def: object = None
         self.external_data_resolver = external_data_resolver
@@ -74,6 +101,20 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                 location_id=self.location_id(),
                 part=PathPart.VALUE,
             )
+
+    def check_abstract(self):
+        # check "abstract"
+        self.abstract = self.definition_data.get(ConceptDefinition.concept_abstract, None)
+        if self.abstract is not None:
+            if not isinstance(self.abstract, bool):
+                raise CHSyntaxError(
+                    f"The definition of a {self.definition_type()}'s abstract marker must be a JSON boolean, not "
+                    f"{self.abstract!r} for the {self.definition_type()} {self.name}",
+                    location_id=self.location_id(ConceptDefinition.concept_abstract),
+                    part=PathPart.VALUE,
+                )
+        else:
+            self.abstract = False
 
     def check(self):
         super().check()
@@ -155,6 +196,8 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                     ) from e
                 raise e
 
+        self.check_abstract()
+
     def definition_type(self) -> str:
         return ConceptDefinition.concept_name
 
@@ -173,7 +216,9 @@ class ConceptDefinition(ConceptHierarchyDefinition):
             previous_location=self.definition_location_id[-1],
             allow_start_at_this_location=True,
         )
-        # processes top-level concept keys: (data, description, directParents)
+        # processes top-level concept keys:
+        #  data, description, directParents, directChildren, distinctFrom, distinctGroup,
+        #  minInstances, maxInstances, abstract
         assert isinstance(self.definition_data, dict)
         self.check_location_id(
             check_res,

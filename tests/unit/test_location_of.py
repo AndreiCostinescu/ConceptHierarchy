@@ -59,7 +59,7 @@ model_data = {
             },
         },
         "DogClone": "Dog",
-        "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
+        "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
         "Integer": {"directParents": ["ValueDomain"], "data": {}},
         "Duration": {"directParents": ["ValueDomain"], "data": {}},
         "String": {

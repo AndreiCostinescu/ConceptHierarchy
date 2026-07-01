@@ -28,7 +28,7 @@ ANIMAL_KINGDOM = {
             "data": {"properties": {"age": "Integer", "name": "String"}},
         },
         "Dog": {"directParents": ["Animal"], "data": {"properties": {"breed": "String"}}},
-        "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
+        "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
         "Integer": {"directParents": ["ValueDomain"], "data": {"instantiation": "integer"}},
         "String": {"directParents": ["ValueDomain"], "data": {"instantiation": "string"}},
     },
