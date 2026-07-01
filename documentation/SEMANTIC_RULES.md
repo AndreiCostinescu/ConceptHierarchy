@@ -787,3 +787,51 @@ The custom `"props(...)"`/`"funcs(...)"` concept-data-constraint syntax restrict
 
 - **Source:** `data/parsers/jsonschema_parser.py` — `_finish_builtin_node`
 - **Location:** the keyword's own location (e.g. `[..., "minItems"]`)
+
+---
+
+## 14. Expression Resolution (FunctionComposition / Value Expressions) — *work in progress*
+
+`data/parsers/expression_parser.py` resolves a raw JSON expression (a property default value, a Function-call argument, an inversion/variation procedure, etc.) into one of: a `ValueDomain` instantiation, a Function evaluation/composition, a global-variable reference, or an instance-property reference, given an expected type/reference/modifier. The `ExpressionError` hierarchy (`data/expressions/expression_errors.py`) is a `CHSemanticError` subclass used for these failures.
+
+**Status note:** `validator/checker.py` now calls `check_expressions()` (via `validator/expression_checks.py`) as part of `ConceptHierarchyChecker.check()`. `check_expressions_in_concept_hierarchy` now has a partial implementation that iterates over instantiation schema nodes and calls `parse_expression` for nodes with `default` expressions — however, `checker.py` carries a TODO to set `instantiation_value_validator` and `expression_parser_validator` on the context, so the path is not yet fully wired. The per-concept-type helpers (`check_expressions_in_domain_concept_definition`, `check_expressions_in_function_definition`, `check_expressions_in_hidden_implementation_definition`) remain stubs (`pass`). The new `data/parsers/expression_parser.py` is an active rewrite: `parse_expression` (the main entry point) and `_parse_syntax_of_expression` have partial implementations, but `_parse_syntax_of_expression` raises `NotImplementedError` for dict-shaped expressions (Function calls / ValueDomain casts) and for the final instantiation-schema validation path. Rules 14.1–14.6 from the old `expression_parser_old.py` are not yet ported. So the rules below exist as raise sites in source but are **not yet fully reachable** from `check_model()`; they are documented now to track them from the start.
+
+### 14.1 An expression must resolve to a recognized form for its expected type/reference/modifier
+If an expression can't be interpreted as a `ValueDomain` instantiation (direct or cast), a Function evaluation whose result satisfies the expected type, a known variable, or an instance property, it is rejected as an `UnknownExpression`.
+
+- **Source:** `data/parsers/expression_parser.py` — `parse_expression`
+- **Trigger:** raises `UnknownExpression` (subclass of `CHSemanticError`)
+
+### 14.2 An abstract ValueDomain cannot be instantiated by an expression
+A `{ "TypeName": {...} }`-shaped expression (or a bare instantiation of the expected type) is rejected if the resolved `ValueDomain` type is abstract.
+
+- **Source:** `data/parsers/expression_parser.py` — `interpret_as_instantiation`, `is_datum_a_value_domain_instantiation`
+- **Trigger:** raises `AbstractInstantiation`
+
+### 14.3 An abstract Function cannot be evaluated by an expression
+A Function-call-shaped expression is rejected if the resolved Function type is abstract.
+
+- **Source:** `data/parsers/expression_parser.py` — `is_datum_a_function_call`
+- **Trigger:** raises `AbstractEvaluation`
+
+### 14.4 The `isFunctionEvaluation` keyword may only be used where a FunctionComposition value is expected
+The extra `"isFunctionEvaluation"` dictionary key (used to disambiguate a `FunctionComposition`-returning instantiation/call from an evaluation of it) is rejected if the expected type at that point is not a `FunctionComposition` subtype — both for `ValueDomain`-shaped expressions and for Function-call-shaped expressions (including the case where the call's own result type isn't a `FunctionComposition`).
+
+- **Source:** `data/parsers/expression_parser.py` — `is_datum_a_value_domain_instantiation` (raises `WrongFunctionEvaluationKeywordPlacementInValueDomainInstantiation`), `is_datum_a_function_call` (raises `WrongFunctionEvaluationKeywordPlacementInFunctionEvaluation`, at two trigger points)
+
+### 14.5 A resolved expression's kind must be permitted for the requested reference/modifier combination
+Once an expression resolves to a `ValueDomain` literal, a Function-evaluation (ref or no-ref), or a variable, that `ExpressionType` must be among the kinds permitted for the requested `ExpressionRef`/`ExpressionMod` combination (e.g. a non-reference literal can't satisfy a `Get`-by-reference requirement).
+
+- **Source:** `data/parsers/expression_parser.py` — `parse_expression`
+- **Trigger:** raises `WrongExpressionType`
+
+### 14.6 An expression expected to define a CustomFunction must sanitize into one
+When the expected type is a subtype of `CustomFunction`, the raw expression must be processable (via `sanitize_function_definition`) into a valid `CustomFunction` definition shape.
+
+- **Source:** `data/parsers/expression_parser.py` — `parse_expression`
+
+### 14.7 A type template variable may not be used directly as a value expression
+When a string expression matches the name of a template variable, that variable must be a *literal* template variable (constrained to `int`/`float`/`bool`/`string`). A *type* template variable (constrained to a concept-hierarchy type) cannot appear as an expression value — its type is unknown at parse time and cannot be serialized/deserialized via the instantiation schema.
+
+- **Source:** `data/parsers/expression_parser.py` — `_parse_syntax_of_expression`
+- **Location:** the expression's location
