@@ -168,9 +168,6 @@ def validate_instantiation_constraints_in_template_argument_value(
         template_context: TemplateContext = validator.get_template_context()
         to_check_template_context = TemplateContextDeterminator(template_context)
         # check if there are no substitution errors => no matter which substitution, instantiation will fail
-        print(f"At {ch_type}")
-        if str(ch_type) == "Interval<Add:T1>":
-            print("DEBUG")
         errors = validate_complete_instantiation_of_concept(
             ch_type.clean_name, ch_type.template_arguments, to_check_template_context, validator, location_id
         )
@@ -178,14 +175,11 @@ def validate_instantiation_constraints_in_template_argument_value(
             return errors
         # check if the resulting template context merged with the existing context is not empty
         #   => the existing constraints on the type are incompatible with the instantiation constraints!
-        print(f"  existing formula: {template_context.constraint}")
-        print(f"determined formula: {to_check_template_context.determined.constraint}")
         simplified_formula = simplify_formula(
             StructureConjunction(
                 location_id, (template_context.constraint, to_check_template_context.determined.constraint)
             )
         )
-        print(f"simplified formula: {simplified_formula}")
         # FIXME: should this new formula be added to the existing constraint?
         #  I think so, because the usage of the template arguments demands this constraint as well...
         #  So it must be remembered!
@@ -327,7 +321,7 @@ def validate_complete_instantiation_of_type(
             # there was no non-template-variable-related error and no template constraints => this means failure!
             err = CHSemanticError(
                 f"Sub structure-formula {formula.structure_constraint} passed without constraints on template arguments"
-                f" {template_context} => negation fails",
+                f" {template_context.original} => negation fails",
                 location_id=location_id,
             )
             return [err]
@@ -559,8 +553,8 @@ def _validate_not(
     elif sub_template_context.determined is None:
         # there was no non-template-variable-related error and no template constraints => this means failure!
         err = CHSemanticError(
-            f"Sub formula {formula} passed without constraints on template arguments"
-            f" {template_context} => negation fails",
+            f"Sub formula {formula.sub_formula} passed without constraints on template arguments"
+            f" {template_context.original} => negation fails",
             location_id=location_id,
         )
         errors.append(err)
