@@ -405,22 +405,20 @@ TemplateConstraintSpecialization
 // No variadic group constraint: all template values of the variadic group must satisfy the same constraint!
 // Do not differentiate syntactically the places where Unconstrained, i.e. '', is allowed; checked semantically
 TemplateArgumentConstraintFormula
-        ::= (ws '"' (literalTemplateConstraint | templateArgumentConstraint | '') '"' ws) | LiteralValue
-literalTemplateConstraint
-        ::= ('Literal:' ('boolean' | 'integer' | 'number' | 'string'))
-templateArgumentConstraint
-        ::= templateArgumentConstraintLiteral | templateArgumentConstraintOperatorCall
-templateArgumentConstraintOperatorCall
-        ::= ((('And' | 'Or') '(' templateArgumentConstraint (', ' templateArgumentConstraint)* ')') |
-             ('Not(' templateArgumentConstraint ')'))
-templateArgumentConstraintLiteral
-        ::= ((templateArgumentConstraintLiteralName '*'?)
-          | ('^' templateArgumentConstraintLiteralName '*'?)
-          | (templateArgumentConstraintLiteralName '.'))
-templateArgumentConstraintLiteralName
-        ::= upperCaseName ('<' (ws | (templateConstraintFormula (', ' templateConstraintFormula)*)) '>')?
+        ::= (ws '"' templateConstraintFormula '"' ws) | LiteralValue
 templateConstraintFormula
-        ::= literalTemplateConstraint | literalValue | templateArgumentConstraint | ''
+        ::= templateConstraintOperator | templateConstraint
+templateConstraintOperator
+        ::= ((('And' | 'Or') '(' templateConstraintFormula (', ' templateConstraintFormula)* ')') |
+             ('Not(' templateConstraintFormula ')'))
+templateConstraint
+        ::= literalTemplateConstraint | typeTemplateConstraint | ''
+literalTemplateConstraint
+        ::= ('Literal:' ('boolean' | 'integer' | 'number' | 'string')) | literalValue
+typeTemplateConstraint
+        ::= ((typeName '*'?) | ('^' typeName '*'?) | (typeName '.'))
+typeName
+        ::= upperCaseName ('<' (ws | (templateConstraintFormula (', ' templateConstraintFormula)*)) '>')?
 
 //// Template-Instantiated Types
 // ── Entry point ─────────────────────────────────────────────────────────────
