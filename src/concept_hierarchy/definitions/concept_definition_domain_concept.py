@@ -85,16 +85,10 @@ class DomainConceptDefinition(ConceptDefinition):
     domain_concept_management_consolidation: str = "consolidation"
     domain_concept_specialization: str = "_specializations"
     domain_concept_specialization_for_this: str = "_forThis"
-    domain_concept_min_instances: str = "minInstances"
-    domain_concept_max_instances: str = "maxInstances"
-    domain_concept_distinct_from: str = "distinctFrom"
     domain_concept_data_keys: set[str] = {
         domain_concept_properties,
         domain_concept_functions,
         domain_concept_management,
-        domain_concept_min_instances,
-        domain_concept_max_instances,
-        domain_concept_distinct_from,
     }
     property_data_keys: set[str] = {
         PropertyDefinition.VALUE_DOMAIN,
@@ -123,9 +117,6 @@ class DomainConceptDefinition(ConceptDefinition):
         self.properties: dict[str, dict] = {}
         self.functions: dict[str, dict] = {}
         self.management: dict[str, dict] = {}
-        self.min_instances: int | None = None
-        self.max_instances: int | None = None
-        self.distinct_from: list[str] = []
 
         # [prop name -> data to be inherited by subconcepts (prop-def-key -> value)]
         # will be extended with the "implicit get" values => they won't just contain the specified values in the concept
@@ -155,9 +146,6 @@ class DomainConceptDefinition(ConceptDefinition):
         domain_concept.properties = {}
         domain_concept.functions = {}
         domain_concept.management = {}
-        domain_concept.min_instances = None
-        domain_concept.max_instances = None
-        domain_concept.distinct_from = []
 
         domain_concept.property_specializations_for_sub = {}
         domain_concept.function_specializations_for_sub = {}
@@ -177,7 +165,7 @@ class DomainConceptDefinition(ConceptDefinition):
 
     def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
         check_res = super().location_of_impl(*keywords)
-        # check top-level properties, functions, management, minInstance, maxInstance, distinctFrom keys
+        # check top-level properties, functions, management keys
         self.check_location_id(
             check_res,
             DomainConceptDefinition.definition_location(self) + [check_res.first_remaining],
@@ -1088,66 +1076,6 @@ class DomainConceptDefinition(ConceptDefinition):
         #    EXPRESSION CHECK
         #  - "consolidation" is a valid FunctionComposition expression (with variable context "instance")
         #    EXPRESSION CHECK
-
-        if DomainConceptDefinition.domain_concept_min_instances in self.data:
-            self.min_instances = self.data[DomainConceptDefinition.domain_concept_min_instances]
-            if not isinstance(self.min_instances, int) or self.min_instances < 0:
-                raise CHSyntaxError(
-                    f"The definition of {self.definition_type()} "
-                    f'"{DomainConceptDefinition.domain_concept_min_instances}" must be a non-negative integer, not '
-                    f"{self.min_instances}",
-                    location_id=self.location_id(DomainConceptDefinition.domain_concept_min_instances),
-                    part=PathPart.VALUE,
-                )
-
-        if DomainConceptDefinition.domain_concept_max_instances in self.data:
-            self.max_instances = self.data[DomainConceptDefinition.domain_concept_max_instances]
-            if not isinstance(self.max_instances, int) or self.max_instances < 0:
-                raise CHSyntaxError(
-                    f"The definition of {self.definition_type()} "
-                    f'"{DomainConceptDefinition.domain_concept_max_instances}" must be a non-negative integer, not '
-                    f"{self.max_instances}",
-                    location_id=self.location_id(DomainConceptDefinition.domain_concept_max_instances),
-                    part=PathPart.VALUE,
-                )
-
-        if (
-            self.min_instances is not None
-            and self.max_instances is not None
-            and self.min_instances > self.max_instances
-        ):
-            raise CHSemanticError(
-                f'Defined a {self.definition_type()} with "{DomainConceptDefinition.domain_concept_min_instances}" '
-                f'greater than "{DomainConceptDefinition.domain_concept_max_instances}".\n\tThis effectively makes '
-                f"this concept not-instantiable.\n\tThe clearer way to do this is to remove "
-                f'"{DomainConceptDefinition.domain_concept_min_instances}" and to set '
-                f'"{DomainConceptDefinition.domain_concept_max_instances}" to 0.',
-                location_id=self.location_id(),
-                part=PathPart.VALUE,
-            )
-
-        if DomainConceptDefinition.domain_concept_distinct_from in self.data:
-            self.distinct_from = self.data[DomainConceptDefinition.domain_concept_distinct_from]
-            if not isinstance(self.distinct_from, list) or not all(isinstance(x, str) for x in self.distinct_from):
-                raise CHSyntaxError(
-                    f'The definition of domain concept "{DomainConceptDefinition.domain_concept_distinct_from}" '
-                    f"distinct group must be a JSON array of strings, not {self.distinct_from!r}",
-                    location_id=self.location_id(DomainConceptDefinition.domain_concept_distinct_from),
-                    part=PathPart.VALUE,
-                )
-            if len(set(self.distinct_from)) != len(self.distinct_from):
-                raise CHSemanticError(
-                    f"The definition of distinct group {self.distinct_from!r} contains duplicates! Please remove them",
-                    location_id=self.location_id(DomainConceptDefinition.domain_concept_distinct_from),
-                    part=PathPart.VALUE,
-                )
-        # missing checks:
-        #  - check that all concept names in distinct_from are:
-        #   1) domain concepts,
-        #   2) different from this concept, and
-        #   3) not parents of this concept
-        #   STRUCTURE CHECK
-        #       - done in checker.py - check_after_parsing_concepts
 
     def is_property_available(self, prop_name: str):
         return prop_name in self.available_property_data

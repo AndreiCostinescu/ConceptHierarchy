@@ -59,11 +59,11 @@ class ConceptDefinition(ConceptHierarchyDefinition):
     ):
         self.parents: tuple[str, ...] = ()
         self.description: str | None = None
-        self.fixed_children: tuple[str, ...] | None = None
-        self.min_instances: int | None = None
+        self.fixed_children: tuple[str, ...] = ()
+        self.min_instances: int = 0
         self.max_instances: int | None = None
-        self.distinct_from: tuple[str, ...] | None = None
-        self.distinct_group: tuple[str, ...] | None = None
+        self.distinct_from: tuple[str, ...] = ()
+        self.distinct_group: tuple[str, ...] = ()
         self.abstract: bool | None = None
         """
         An abstract concept (DomainConcept, ValueDomain, Function) can not be instantiated. 
@@ -73,6 +73,8 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self.data: dict[str, object] = {}
         self._data_def: object = None
         self.external_data_resolver = external_data_resolver
+
+        self._was_abstract_defined: bool = False
 
         # initialize this member before calling super, which calls the check function
         self._data_location_id: LocationId = LocationId([ConceptDefinition.concept_definition_data])
@@ -105,7 +107,8 @@ class ConceptDefinition(ConceptHierarchyDefinition):
     def check_abstract(self):
         # check "abstract"
         self.abstract = self.definition_data.get(ConceptDefinition.concept_abstract, None)
-        if self.abstract is not None:
+        self._was_abstract_defined = self.abstract is not None
+        if self._was_abstract_defined:
             if not isinstance(self.abstract, bool):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s abstract marker must be a JSON boolean, not "
@@ -197,6 +200,69 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                 raise e
 
         self.check_abstract()
+
+        for min_max_instances in [ConceptDefinition.concept_min_instances, ConceptDefinition.concept_max_instances]:
+            if min_max_instances in self.definition_data:
+                min_max_instances_value = self.definition_data[min_max_instances]
+                if not isinstance(min_max_instances_value, int) or min_max_instances_value < 0:
+                    raise CHSyntaxError(
+                        f'The definition of {self.definition_type()} "{min_max_instances}" must be a non-negative '
+                        f"integer, not {min_max_instances_value}",
+                        location_id=self.location_id(min_max_instances),
+                        part=PathPart.VALUE,
+                    )
+                if min_max_instances == ConceptDefinition.concept_min_instances:
+                    self.min_instances = min_max_instances_value
+                else:
+                    assert min_max_instances == ConceptDefinition.concept_max_instances
+                    self.max_instances = min_max_instances_value
+
+        if (
+            self.min_instances is not None
+            and self.max_instances is not None
+            and self.min_instances > self.max_instances
+        ):
+            raise CHSemanticError(
+                f'Defined a {self.definition_type()} with "{ConceptDefinition.concept_min_instances}" greater than '
+                f'"{ConceptDefinition.concept_max_instances}".\n\tThis effectively makes this concept not-instantiable.'
+                f'\n\tThe clearer way to do this is to remove "{ConceptDefinition.concept_min_instances}" and to set '
+                f'"{ConceptDefinition.concept_max_instances}" to 0.',
+                location_id=self.location_id(),
+                part=PathPart.VALUE,
+            )
+
+        if self.max_instances == 0 and self._was_abstract_defined and self.abstract is False:
+            raise CHSemanticError(
+                f'Setting "{ConceptDefinition.concept_max_instances}": 0 makes this concept abstract, but defined '
+                f'"{ConceptDefinition.concept_abstract}": false.\n\tThis is a contradiction: resolve by removing the '
+                f'"{ConceptDefinition.concept_abstract}" keyword, setting it to "true" or making '
+                f'"{ConceptDefinition.concept_max_instances}" > 0.',
+                location_id=self.location_id(ConceptDefinition.concept_abstract),
+                part=PathPart.VALUE,
+            )
+
+        if ConceptDefinition.concept_distinct_from in self.data:
+            self.distinct_from = self.data[ConceptDefinition.concept_distinct_from]
+            if not isinstance(self.distinct_from, list) or not all(isinstance(x, str) for x in self.distinct_from):
+                raise CHSyntaxError(
+                    f'The definition of domain concept "{ConceptDefinition.concept_distinct_from}" distinct group must '
+                    f"be a JSON array of strings, not {self.distinct_from!r}",
+                    location_id=self.location_id(ConceptDefinition.concept_distinct_from),
+                    part=PathPart.VALUE,
+                )
+            if len(set(self.distinct_from)) != len(self.distinct_from):
+                raise CHSemanticError(
+                    f"The definition of distinct group {self.distinct_from!r} contains duplicates! Please remove them",
+                    location_id=self.location_id(ConceptDefinition.concept_distinct_from),
+                    part=PathPart.VALUE,
+                )
+        # missing checks:
+        #  - check that all concept names in distinct_from are:
+        #   1) concepts,
+        #   2) different from this concept, and
+        #   3) not parents of this concept
+        #   STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
 
     def definition_type(self) -> str:
         return ConceptDefinition.concept_name

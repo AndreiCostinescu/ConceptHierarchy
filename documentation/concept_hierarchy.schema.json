@@ -115,6 +115,11 @@
                     { "$ref": "#/$defs/concepts/$defs/conceptData" }
                   ]
                 },
+                "directChildren": { "type": "array", "items": "string" },
+                "distinctFrom": { "type": "array", "items": "string" },
+                "distinctGroup": { "type": "array", "items": "string" },
+                "minInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
+                "maxInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
                 "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" }
               },
               "required": ["directParents", "data"],
@@ -214,9 +219,6 @@
             "properties": { "$ref": "#/$defs/concepts/$defs/domainConceptProperties" },
             "functions": { "$ref": "#/$defs/concepts/$defs/domainConceptFunctions" },
             "management": { "$ref": "#/$defs/concepts/$defs/conceptManagement" },
-            "minInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
-            "maxInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
-            "distinctFrom": { "type": "array", "items": "string" },
             "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
             "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
             "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },

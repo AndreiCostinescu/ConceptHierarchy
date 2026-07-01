@@ -28,19 +28,23 @@ ConceptDefinition
 ConceptContentDefinition
         ::= ConceptReference | InstantiatedValueDomain | (ws '{' ConceptDefMember (',' ConceptDefMember)* '}' ws)
 ConceptDefMember
-        ::= Description | ConceptParents | ConceptData | ConceptAbstract
+        ::= Description
+          | (ws '"directParents"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws)
+          | ConceptData
+          | (ws '"directChildren"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws)
+          | (ws '"distinctFrom"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws)
+          | (ws '"distinctGroup"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws)
+          | (ws '"abstract"' ws ':' ws boolean ws)
+          | (ws '"minInstances"' ws ':' ws natural ws)
+          | (ws '"maxInstances"' ws ':' ws natural ws)
 Description
         ::= ws '"description"' ws ':' ws string ws
-ConceptParents
-        ::= ws '"directParents"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws
 ConceptData
         ::= ws '"data"' ws ':' (
             (ws '{' (DomainConceptData | ValueDomainConceptData | FunctionConceptData) '}' ws)
             | PathToExternalFile)
 PathToExternalFile
         ::= ws string ws
-ConceptAbstract
-        ::= ws '"abstract"' ws ':' ws boolean ws
 
 //// Domain Concept Data
 DomainConceptData
@@ -49,9 +53,6 @@ DomainConceptDefinitionItem
         ::= ConceptPropertyContainerDefinition
           | ConceptFunctionContainerDefinition
           | ConceptManagementDefinition
-          | (ws '"minInstances"' ws ':' ws natural ws)
-          | (ws '"maxInstances"' ws ':' ws natural ws)
-          | (ws '"distinctFrom"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws)
 
 // Domain Properties
 ConceptPropertyContainerDefinition
