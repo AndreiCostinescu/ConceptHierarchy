@@ -19,6 +19,7 @@ errors.py — Custom exception hierarchy for the ConceptHierarchy compiler.
 from __future__ import annotations
 
 import json
+import warnings
 from collections import UserList
 from enum import Enum
 from typing import TypeAlias
@@ -130,3 +131,17 @@ class CHSemanticError(ConceptHierarchyError):
 
 class CodegenError(ConceptHierarchyError):
     """Raised when code generation fails for a valid hierarchy."""
+
+
+class CHWarning(CHSemanticError, Warning):
+    def __str__(self):
+        return "\n" + self.print()
+
+
+def warn(
+    message: str,
+    location_id: LocationIdLike | LocationId | None,
+    part: PathPart | None = None,
+    causes: list[ConceptHierarchyError] | None = None,
+) -> None:
+    warnings.warn(CHWarning(message, location_id, part, causes))

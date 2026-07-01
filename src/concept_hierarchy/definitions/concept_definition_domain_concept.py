@@ -19,7 +19,7 @@ from enum import Enum
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.definition import LocationOfCheckData
 from concept_hierarchy.definitions.utils import check_ch_name
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart, warn
 
 
 class MultipleSpecializationException(Exception):
@@ -871,9 +871,7 @@ class DomainConceptDefinition(ConceptDefinition):
 
         has_data = any(x in self.data for x in DomainConceptDefinition.domain_concept_data_keys)
         if not self.is_root_concept and not has_data:
-            raise CHSemanticError(
-                f"Found a domain concept with no data defined: {self.name!r}", self.location_id(), part=PathPart.VALUE
-            )
+            warn(f"Found a domain concept with no data defined: {self.name!r}", self.location_id(), part=PathPart.VALUE)
 
         self.initialize_domain_concept_data(
             ForPropertyOrFunction.PROPERTY,
