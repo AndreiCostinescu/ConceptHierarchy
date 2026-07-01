@@ -100,7 +100,7 @@
         },
         "Numeric": {
             "directParents": ["ValueDomain"],
-            "data": {}
+            "data": { }
         },
         "Number": {
             "directParents": ["Numeric"],
@@ -162,7 +162,7 @@
                 "instantiation": {
                     "type": "object",
                     "properties": {
-                        "concepts": "Sequence<ConceptValue>",
+                        "concepts": "List<ConceptValue>",
                         "properties": "ConceptParameters",
                         "instanceName": "string"
                     }
@@ -192,7 +192,7 @@
                 }
             }
         },
-        "Sequence": {
+        "List": {
             "directParents": ["ValueDomain"],
             "data": {
                 "templateArguments": ["T"],
@@ -330,7 +330,7 @@
         },
         "FunctionComposition": {
             "directParents": ["ValueDomain"],
-            "data": {}
+            "data": { }
         },
         "Function": {
             "directParents": ["ValueDomain"],
@@ -361,8 +361,8 @@
                     "res": "T"
                 },
                 "inversion": [
-                    [["Numeric"], {}],
-                    [[""], {}]
+                    [["Numeric"], { }],
+                    [[""], { }]
                 ]
             }
         },
@@ -396,7 +396,7 @@
         },
         "GetCurrentTime": {
             "directParents": ["Function"],
-            "data": {"interface": {"arg1": "Duration", "res": "Duration"}}
+            "data": { "interface": { "arg1": "Duration", "res": "Duration" } }
         }
     },
     "instances": {
