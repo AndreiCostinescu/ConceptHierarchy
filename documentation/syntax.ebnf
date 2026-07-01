@@ -196,7 +196,7 @@ InstantiationDefinition
 InstantiationListEntry
         ::= ws '[' TemplateConstraintSpecialization ',' CustomJsonSchema ']' ws
 TemplateArgumentDefinitionBlock
-        ::= ws '"templateArguments"' ws ':'
+        ::= ws '"templateContext"' ws ':'
             (TemplateOrderContent | ExplicitTemplateArgumentDefinitionBlock)
 TemplateOrderContent
         ::= ws '[' (ws | (TemplateArgumentReference '...'? (',' TemplateArgumentReference '...'?)*)) ']' ws

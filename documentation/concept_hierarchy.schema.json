@@ -140,7 +140,7 @@
               "properties": {
                 "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
                 "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
-                "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
+                "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
                 "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
                 "instantiation": {
                   "oneOf": [
@@ -173,7 +173,7 @@
               "properties": {
                 "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
                 "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
-                "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
+                "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
                 "interface": { "$ref": "#/$defs/concepts/$defs/functionInterface" },
                 "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
                 "variations": { "$ref": "#/$defs/concepts/$defs/functionVariations" },
@@ -220,7 +220,7 @@
             "distinctFrom": { "type": "array", "items": "string" },
             "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
             "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" },
-            "templateArguments": { "$ref": "#/$defs/concepts/$defs/templateArguments" },
+            "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
             "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
             "instantiation": {
               "oneOf": [
@@ -872,8 +872,8 @@
           "additionalProperties": false
         },
 
-        "templateArguments": {
-          "description": "Template arguments definition",
+        "templateContext": {
+          "description": "Definition of a ValueDomain's template context",
           "oneOf": [
             {
               "type": "array",

@@ -95,7 +95,7 @@ class TestTemplateArgumentParsing:
             "TypeName": {"directParents": ["String"], "data": {}},
             "ClosedInterval": {
                 "directParents": ["ValueDomain"],
-                "data": {"templateArguments": {"order": ["T"], "T": "Integer"}},
+                "data": {"templateContext": {"order": ["T"], "T": "Integer"}},
             },
             "CustomFunction": {
                 "directParents": ["ValueDomain"],
@@ -105,7 +105,7 @@ class TestTemplateArgumentParsing:
             "Instance": {
                 "directParents": ["ValueDomain"],
                 "data": {
-                    "templateArguments": {
+                    "templateContext": {
                         "order": ["AcceptConcepts...", "RejectConcepts..."],
                         "AcceptConcepts": "And(Concept, Not(ValueDomain))",
                         "RejectConcepts": "And(Concept, Not(ValueDomain))",
@@ -115,12 +115,12 @@ class TestTemplateArgumentParsing:
             },
             "FunctionReturning": {
                 "directParents": ["Function"],
-                "data": {"abstract": True, "templateArguments": ["T"]},
+                "data": {"abstract": True, "templateContext": ["T"]},
             },
             "Add": {
                 "directParents": ["FunctionReturning"],
                 "data": {
-                    "templateArguments": {"order": ["T"], "substitution": {"T": "T"}},
+                    "templateContext": {"order": ["T"], "substitution": {"T": "T"}},
                     "interface": {"arg1": "T", "arg2": "T", "res": "T"},
                 },
             },
@@ -164,7 +164,7 @@ class TestTemplateArgumentParsing:
 
     def test_specify_variadic_argument_in_constraints(self):
         model_data = self.clone_model()
-        instance_data = model_data["concepts"]["Instance"]["data"]["templateArguments"]
+        instance_data = model_data["concepts"]["Instance"]["data"]["templateContext"]
         res = instance_data.pop("AcceptConcepts")
         instance_data["AcceptConcepts..."] = res
         with pytest.raises(
@@ -176,7 +176,7 @@ class TestTemplateArgumentParsing:
 
     def test_specify_variadic_argument_in_variadic_group_identifiers(self):
         model_data = self.clone_model()
-        instance_data = model_data["concepts"]["Instance"]["data"]["templateArguments"]["variadicGroupIdentifiers"]
+        instance_data = model_data["concepts"]["Instance"]["data"]["templateContext"]["variadicGroupIdentifiers"]
         res = instance_data.pop("AcceptConcepts")
         instance_data["AcceptConcepts..."] = res
         with pytest.raises(

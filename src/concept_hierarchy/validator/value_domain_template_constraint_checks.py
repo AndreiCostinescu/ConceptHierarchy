@@ -66,6 +66,6 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
         if vd_data.template_context.is_empty_constraint:
             raise CHSemanticError(
                 f"The template constraints of {vd_name} prevent any type-instantiation!",
-                location_id=vd.location_of("templateArguments"),
+                location_id=vd.location_of("templateContext"),
                 part=PathPart.VALUE,
             )

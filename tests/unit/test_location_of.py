@@ -69,7 +69,7 @@ model_data = {
         "TypeName": {"directParents": ["String"], "data": {}},
         "ClosedInterval": {
             "directParents": ["ValueDomain"],
-            "data": {"templateArguments": {"order": ["T"], "T": "Integer"}},
+            "data": {"templateContext": {"order": ["T"], "T": "Integer"}},
         },
         "CustomFunction": {
             "directParents": ["ValueDomain"],
@@ -231,7 +231,7 @@ class TestLocationOf:
             expected_value += ["data"]
             if c_name == "Animal":
                 expected_value += ["ext:external_animal_data.json"]
-            expected_value += ["templateArguments"]
+            expected_value += ["templateContext"]
             if c.is_templatable() or any(
                 concepts[p].is_templatable()
                 for p in c.parents

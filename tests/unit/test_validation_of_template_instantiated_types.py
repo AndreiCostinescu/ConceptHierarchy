@@ -38,12 +38,12 @@ class TestTemplateArgumentParsing:
         "NonTemplate2": {"directParents": ["NonTemplateValueDomain"], "data": {}},
         "Template1_DefaultConstraints": {
             "directParents": ["TemplateValueDomain"],
-            "data": {"templateArguments": ["T"]},
+            "data": {"templateContext": ["T"]},
         },
         "Template1": {
             "directParents": ["TemplateValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T"],
                     "T": "And(Concept, Not(ValueDomain))",
                 }
@@ -51,12 +51,12 @@ class TestTemplateArgumentParsing:
         },
         "Template2_DefaultConstraints": {
             "directParents": ["TemplateValueDomain"],
-            "data": {"templateArguments": ["T1", "T2"]},
+            "data": {"templateContext": ["T1", "T2"]},
         },
         "Template2": {
             "directParents": ["TemplateValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T1", "T2"],
                     "T1": "And(Concept, Not(ValueDomain))",
                     "T2": "NonTemplateValueDomain",
@@ -65,12 +65,12 @@ class TestTemplateArgumentParsing:
         },
         "Template3_DefaultConstraints": {
             "directParents": ["TemplateValueDomain"],
-            "data": {"templateArguments": {"order": ["T"]}},
+            "data": {"templateContext": {"order": ["T"]}},
         },
         "Template3_NonTemplate": {
             "directParents": ["TemplateValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T"],
                     "T": "NonTemplateValueDomain",
                 }
@@ -79,7 +79,7 @@ class TestTemplateArgumentParsing:
         "Template3_Template": {
             "directParents": ["TemplateValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T"],
                     "T": "TemplateValueDomain",
                 }
@@ -88,7 +88,7 @@ class TestTemplateArgumentParsing:
         "SubTemplate1_Templated": {
             "directParents": ["Template1"],
             "data": {
-                "templateArguments": {"order": ["T1", "T2"], "T1": "Concept", "substitution": {"Template1:T": "T1"}},
+                "templateContext": {"order": ["T1", "T2"], "T1": "Concept", "substitution": {"Template1:T": "T1"}},
             },
         },
     }
@@ -117,7 +117,7 @@ class TestTemplateArgumentParsing:
         SubTemplate1_template substitutes Template1:T, which must be a DomainConcept; but T2 is not a domain concept!
         """
         new_model = self.clone_model()
-        new_model["SubTemplate1_Templated"]["data"]["templateArguments"]["substitution"]["Template1:T"] = "T2"
+        new_model["SubTemplate1_Templated"]["data"]["templateContext"]["substitution"]["Template1:T"] = "T2"
         with pytest.raises(
             CHSemanticError,
             match="Merging template context with determined constraints during substitution-instantiation of Template1 "
@@ -130,7 +130,7 @@ class TestTemplateArgumentParsing:
         new_model["SubTemplatedConceptWithoutSubstitution"] = {"directParents": ["Template1"], "data": {}}
         with pytest.raises(
             CHSemanticError,
-            match=r'Missing "templateArguments" definition in SubTemplatedConceptWithoutSubstitution, because it '
+            match=r'Missing "templateContext" definition in SubTemplatedConceptWithoutSubstitution, because it '
             r'must define a substitution for "Template1:T"!',
         ):
             self.get_model(new_model)
@@ -140,7 +140,7 @@ class TestTemplateArgumentParsing:
         new_model["SubTemplatedTemplateConceptWithoutSubstitution"] = {
             "directParents": ["Template1"],
             "data": {
-                "templateArguments": ["T1"],
+                "templateContext": ["T1"],
             },
         }
         with pytest.raises(
@@ -155,13 +155,13 @@ class TestTemplateArgumentParsing:
         new_model["SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution"] = {
             "directParents": ["Template1", "Template3_Template"],
             "data": {
-                "templateArguments": {"order": ["T"], "substitution": {"T": "T"}},
+                "templateContext": {"order": ["T"], "substitution": {"T": "T"}},
             },
         }
         with pytest.raises(
             CHSemanticError,
             match=r'\["concepts": "SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution": "data": '
-            r'"templateArguments": "substitution" \(key\)\] \n    The substitution specification of template '
+            r'"templateContext": "substitution" \(key\)\] \n    The substitution specification of template '
             r"argument T is ambiguous in SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution because "
             r"the parent concepts \[\'Template1\', \'Template3_Template\'\] define the template argument with the"
             r' same name. Use the "<ParentConceptName>:<ParentTemplateArgumentName>" syntax to define the '
@@ -174,12 +174,12 @@ class TestTemplateArgumentParsing:
         new_model["SubTemplatedConceptWithAmbiguousShorthandSubstitution"] = {
             "directParents": ["Template1", "Template3_NonTemplate"],
             "data": {
-                "templateArguments": {"substitution": {"T": "NonTemplate1"}},
+                "templateContext": {"substitution": {"T": "NonTemplate1"}},
             },
         }
         with pytest.raises(
             CHSemanticError,
-            match=r'\["concepts": "SubTemplatedConceptWithAmbiguousShorthandSubstitution": "data": "templateArguments":'
+            match=r'\["concepts": "SubTemplatedConceptWithAmbiguousShorthandSubstitution": "data": "templateContext":'
             r' "substitution" \(key\)\] \n    The substitution specification of template argument T is ambiguous'
             r" in SubTemplatedConceptWithAmbiguousShorthandSubstitution because the parent concepts "
             r"\[\'Template1\', \'Template3_NonTemplate\'\] define the template argument with the same name. Use "

@@ -90,25 +90,25 @@ Each concept is classified as one of: `Function`, `ValueDomain`, or `DomainConce
 A template argument name may not coincide with any concept name in the hierarchy, since this creates ambiguity in constraint formulae, instantiations, and substitutions.
 
 - **Source:** `validator/checker.py` — `check_after_parsing_concepts`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "order", <index>]`
+- **Location:** `["concepts", <concept>, "data", "templateContext", "order", <index>]`
 
 ### 2.3 Parent template arguments must be substituted
-For a templated `Function`/`ValueDomain`, every template argument of every parent must be substituted: either via the `"DirectParentName:ArgumentName"` syntax or the shorthand `"ArgumentName"` syntax (when unambiguous). Missing the `templateArguments`/`substitution` structure entirely, or omitting a specific parent argument, is rejected.
+For a templated `Function`/`ValueDomain`, every template argument of every parent must be substituted: either via the `"DirectParentName:ArgumentName"` syntax or the shorthand `"ArgumentName"` syntax (when unambiguous). Missing the `templateContext`/`substitution` structure entirely, or omitting a specific parent argument, is rejected.
 
 - **Source:** `validator/checker.py` — `check_after_parsing_concepts`
-- **Location:** `["concepts", <concept>, "data"]` or `[..., "templateArguments", "substitution"]`
+- **Location:** `["concepts", <concept>, "data"]` or `[..., "templateContext", "substitution"]`
 
 ### 2.4 Shorthand template substitution must be unambiguous
 When two or more parent concepts define a template argument with the same name, the shorthand `"ArgumentName"` substitution syntax is ambiguous; the `"ParentName:ArgumentName"` syntax must be used instead.
 
 - **Source:** `validator/checker.py` — `check_after_parsing_concepts`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "substitution"]`
+- **Location:** `["concepts", <concept>, "data", "templateContext", "substitution"]`
 
 ### 2.5 No extra template substitution keys
 The substitution definition may not contain keys that do not correspond to a template argument of any parent concept.
 
 - **Source:** `validator/checker.py` — `check_after_parsing_concepts`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "substitution"]`
+- **Location:** `["concepts", <concept>, "data", "templateContext", "substitution"]`
 
 ### 2.6 Parents of a ValueDomain must be ValueDomains
 A `ValueDomain` (other than direct children of `Concept`) may only have `ValueDomain` concepts as parents.
@@ -301,43 +301,43 @@ The `implementation` field specifies a file path without extension. Paths contai
 A template argument name may not be declared twice in the `order` list of the same definition.
 
 - **Source:** `definitions/concept_definition_hidden_implementation.py` — `check_template_argument_definition_list`
-- **Location:** `["concepts", <concept>, "data", "templateArguments"["order"], <index>]`
+- **Location:** `["concepts", <concept>, "data", "templateContext", ["order"]?, <index>]`
 
 ### 5.3 Template argument constraints must be defined on declared template arguments
-A constraint entry in the `templateArguments` object must use a key that is already declared in the `order` list of the same definition.
+A constraint entry in the `templateContext` object must use a key that is already declared in the `order` list of the same definition.
 
 - **Source:** `definitions/concept_definition_hidden_implementation.py` — `check_template_arguments`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", <arg>]` (key)
+- **Location:** `["concepts", <concept>, "data", "templateContext", <arg>]` (key)
 
 ### 5.4 Variadic group identifiers may only be defined on declared template arguments
 Each key in `variadicGroupIdentifiers` must name an argument present in `template_argument_order`.
 
 - **Source:** `definitions/concept_definition_hidden_implementation.py` — `check_template_arguments`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "variadicGroupIdentifiers", <arg>]` (key)
+- **Location:** `["concepts", <concept>, "data", "templateContext", "variadicGroupIdentifiers", <arg>]` (key)
 
 ### 5.5 Variadic group identifiers may only be defined on variadic template arguments
 A key in `variadicGroupIdentifiers` must name an argument that was declared with the `...` variadic marker.
 
 - **Source:** `definitions/concept_definition_hidden_implementation.py` — `check_template_arguments`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "variadicGroupIdentifiers", <arg>]` (key)
+- **Location:** `["concepts", <concept>, "data", "templateContext", "variadicGroupIdentifiers", <arg>]` (key)
 
 ### 5.6 The empty variadic group identifier is only allowed for all-variadic-template concepts
 An empty string `""` may be used as a variadic group identifier only when every template argument of the concept is variadic.
 
 - **Source:** `definitions/concept_definition_hidden_implementation.py` — `check_template_arguments`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "variadicGroupIdentifiers", <arg>]` (value)
+- **Location:** `["concepts", <concept>, "data", "templateContext", "variadicGroupIdentifiers", <arg>]` (value)
 
 ### 5.7 Variadic group identifiers must be defined for either all or none of the variadic template arguments
 If one variadic template argument has a `variadicGroupIdentifiers` entry, every variadic template argument of the concept must also have one.
 
 - **Source:** `definitions/concept_definition_hidden_implementation.py` — `check_template_arguments`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "variadicGroupIdentifiers"]`
+- **Location:** `["concepts", <concept>, "data", "templateContext", "variadicGroupIdentifiers"]`
 
 ### 5.8 Duplicate variadic group identifiers are not allowed
 The same variadic group identifier string may not be assigned to two different variadic template arguments.
 
 - **Source:** `definitions/concept_definition_hidden_implementation.py` — `check_template_arguments`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "variadicGroupIdentifiers", <arg>]` (value)
+- **Location:** `["concepts", <concept>, "data", "templateContext", "variadicGroupIdentifiers", <arg>]` (value)
 
 ---
 
@@ -486,16 +486,16 @@ When setting the value domain for a function defined on a domain concept, the sp
 - **Location:** `["concepts", <concept>, "data", "functions", <func>, "valueDomain"]`
 
 ### 9.7 Template argument substitution values must parse and validate
-Each value substituted for a parent's template argument (in `templateArguments.substitution`) must successfully parse into a template argument value and satisfy the template constraints of any fully-instantiated types it contains.
+Each value substituted for a parent's template argument (in `templateContext.substitution`) must successfully parse into a template argument value and satisfy the template constraints of any fully-instantiated types it contains.
 
 - **Source:** `validator/concept_hierarchy_type_checks.py` — `check_types_in_hidden_implementation_definition`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "substitution", <key>]`
+- **Location:** `["concepts", <concept>, "data", "templateContext", "substitution", <key>]`
 
 ### 9.8 Template substitution must satisfy the parent's template constraints
 The full set of substitution values for a parent's template arguments must, together, satisfy that parent's own template constraint formula.
 
 - **Source:** `validator/concept_hierarchy_type_checks.py` — `check_types_in_hidden_implementation_definition`
-- **Location:** `["concepts", <concept>, "data", "templateArguments", "substitution"]`
+- **Location:** `["concepts", <concept>, "data", "templateContext", "substitution"]`
 
 ### 9.9 A Function's evaluation argument type must parse as a valid type
 Each evaluation argument's declared type must be parseable into a concept-hierarchy type.
@@ -700,7 +700,7 @@ Every sub-formula of an `And`/`Or` constraint must agree on its `constraint_type
 After building the `TemplateContext` from a `ValueDomain`'s declared template-argument constraint formulae, that context must not be empty — i.e. the constraints (each individually valid per 11.14) must not combine to leave no satisfiable instantiation at all.
 
 - **Source:** `validator/value_domain_template_constraint_checks.py` — `check_value_domain_template_constraint_formulae`
-- **Location:** `["concepts", <concept>, "data", "templateArguments"]`
+- **Location:** `["concepts", <concept>, "data", "templateContext"]`
 
 ### 11.17 A template-dependent type's instantiation constraints must not contradict the existing template variable constraints
 When validating a `TemplateDependentType` (a type whose template arguments still contain template variables) against the instantiation constraints of its concept, the constraints implied by that instantiation are simplified together with the constraints already in scope on the surrounding template variables. If the simplified conjunction is empty — i.e. no assignment to the template variables can simultaneously satisfy the existing constraints and the instantiation constraints — the type is rejected.

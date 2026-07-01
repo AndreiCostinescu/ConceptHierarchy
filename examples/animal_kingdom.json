@@ -144,7 +144,7 @@
         "Map": {
             "directParents": ["ValueDomain"],
             "data": {
-                "templateArguments": ["K", "V"],
+                "templateContext": ["K", "V"],
                 "instantiation": [
                     [["String", ""], "object"],
                     [["", ""], {
@@ -172,7 +172,7 @@
         "Instance": {
             "directParents": ["ValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["AcceptConcepts...", "RejectConcepts..."],
                     "AcceptConcepts": "And(Concept, Not(ValueDomain))",
                     "RejectConcepts": "And(Concept, Not(ValueDomain))",
@@ -195,7 +195,7 @@
         "List": {
             "directParents": ["ValueDomain"],
             "data": {
-                "templateArguments": ["T"],
+                "templateContext": ["T"],
                 "instantiation": {
                     "type": "array",
                     "items": "T"
@@ -223,7 +223,7 @@
         "Interval": {
             "directParents": ["ValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T"],
                     "T": "Or(Number, Duration)"
                 }
@@ -232,7 +232,7 @@
         "ClosedInterval": {
             "directParents": ["ValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T"],
                     "T": "Integer"
                 },
@@ -249,7 +249,7 @@
         "Vector": {
             "directParents": ["ValueDomain"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["N"],
                     "N": 3
                 },
@@ -264,13 +264,13 @@
         "Variation": {
             "directParents": ["ValueDomain"],
             "data": {
-                "templateArguments": ["T"]
+                "templateContext": ["T"]
             }
         },
         "SubTypeVariation": {
             "directParents": ["Variation"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["SubT", "T"],
                     "SubT": "And(T, Not(T.))",
                     "substitution": {
@@ -282,7 +282,7 @@
         "DifferentTemplateArguments": {
             "directParents": ["SubTypeVariation"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["First", "Second", "Third"],
                     "Second": "Not(First.)",
                     "Third": "And(Not(First.), Not(Second.))",
@@ -342,13 +342,13 @@
             "directParents": ["Function"],
             "data": {
                 "abstract": true,
-                "templateArguments": ["T"]
+                "templateContext": ["T"]
             }
         },
         "Add": {
             "directParents": ["FunctionReturning"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T"],
                     "T": "Not(Or(Duration, Number))",
                     "substitution": {
@@ -369,7 +369,7 @@
         "Increment": {
             "directParents": ["Add"],
             "data": {
-                "templateArguments": {
+                "templateContext": {
                     "order": ["T"],
                     "substitution": {
                         "T": "T"
@@ -385,7 +385,7 @@
         "CreateLocalVariable": {
             "directParents": ["Function"],
             "data": {
-                "templateArguments": ["T"],
+                "templateContext": ["T"],
                 "interface": {
                     "varName": "String"
                 },

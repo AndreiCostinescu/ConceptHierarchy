@@ -25,7 +25,7 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId,
 class HiddenImplementationDefinition(ConceptDefinition, ABC):
     hidden_implementation: str = "implementation"
     hidden_abstract: str = "abstract"
-    hidden_template_arguments: str = "templateArguments"
+    hidden_template_arguments: str = "templateContext"
     hidden_template_arguments_order: str = "order"
     hidden_template_arguments_substitutions: str = "substitution"
     hidden_template_arguments_variadic_ids: str = "variadicGroupIdentifiers"
@@ -88,7 +88,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         return self.data_location_id
 
     def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
-        # process top-level implementation-related data keywords (abstract/implementation/templateArguments)
+        # process top-level implementation-related data keywords (abstract/implementation/templateContext)
         # after processing parent keywords
         check_res = super().location_of_impl(*keywords)
         found_keyword_in_here = False
@@ -114,15 +114,15 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 and check_res.last_consumed != HiddenImplementationDefinition.hidden_template_arguments
             ):
                 raise StopLocationOfCheck(check_res)
-        # other sub-keywords/-locations that can be processed in this class live in "templateArguments"
+        # other sub-keywords/-locations that can be processed in this class live in "templateContext"
         if HiddenImplementationDefinition.hidden_template_arguments not in self.data:
-            # if there are no templateArguments defined in the data, there is nothing left to process
+            # if there is no templateContext defined in the data, there is nothing left to process
             return check_res
         # differentiate between the array definition and the object definition
         template_arguments_data = self.data[HiddenImplementationDefinition.hidden_template_arguments]
         assert isinstance(template_arguments_data, (list, dict))
         if isinstance(template_arguments_data, list):
-            # process "order" keyword, which is actually the top-level templateArguments definition for the array-syntax
+            # process "order" keyword, which is actually the top-level templateContext definition for the array-syntax
             self.check_location_id(
                 check_res,
                 HiddenImplementationDefinition.definition_location(self)
@@ -131,7 +131,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
                 previous_location=HiddenImplementationDefinition.hidden_template_arguments,
                 allow_start_at_this_location=True,
             )
-            # stop check if templateArguments was found (found_keyword_in_here) or if order was found
+            # stop check if templateContext was found (found_keyword_in_here) or if order was found
             if found_keyword_in_here or check_res.check_successful:
                 assert check_res.last_consumed == HiddenImplementationDefinition.hidden_template_arguments_order
                 raise StopLocationOfCheck(check_res)
@@ -191,7 +191,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
             allow_start_at_this_location=False,
         )
         if found_keyword_in_here or check_res.check_successful:
-            # found_keyword_in_here means processed templateArguments keyword => don't continue parsing other keywords
+            # found_keyword_in_here means processed templateContext keyword => don't continue parsing other keywords
             raise StopLocationOfCheck(check_res)
         return check_res
 
@@ -258,7 +258,7 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
             self.abstract = False
 
     def check_template_arguments(self):
-        # check "templateArguments"
+        # check "templateContext"
         # can only be completely parsed after the concept data is initialized for all concepts
         #   because of constraints and substitutions requiring template-instantiations of other concepts
         self.template_arguments = self.data.get(HiddenImplementationDefinition.hidden_template_arguments, None)
