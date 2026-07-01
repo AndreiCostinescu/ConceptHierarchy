@@ -96,7 +96,7 @@ class TemplateContext:
     def __repr__(self):
         return (
             f"TemplateContext(vars: {self.variables!r}, variadic: {self.variadic_variables!r}, "
-            f"constraint: {self.constraint!r})"
+            f"constraint: {(None if self.empty else self.constraint)!r})"
         )
 
     def set_constraint(self, constraint: StructureConstraintFormula | None) -> None:
