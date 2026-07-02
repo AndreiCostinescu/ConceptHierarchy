@@ -87,7 +87,7 @@
           "oneOf": [
             {
               "description": "Reference to another concept (aliasing)",
-              "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain"
+              "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain"
             },
             {
               "description": "Full concept definition",
@@ -304,7 +304,7 @@
           "description": "Template argument name (must start with uppercase, may end with ... for variadic)"
         },
 
-        "instantiatedValueDomain": {
+        "typeAppliedValueDomain": {
           "type": "string",
           "pattern": "^[A-Z][A-Za-z0-9_]*(<.*>)?$",
           "description": "Instantiated ValueDomain reference with optional template arguments"
@@ -607,7 +607,7 @@
           "description": "Property definition: either just the ValueDomain name or a full definition object",
           "oneOf": [
             {
-              "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain"
+              "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain"
             },
             {
               "type": "object",
@@ -615,13 +615,13 @@
                 "description": { "type": "string" },
                 "valueDomain": {
                   "oneOf": [
-                    { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                     { "$ref": "#/$defs/concepts/$defs/valueDomainCreation" }
                   ]
                 },
                 "constraint": {
                   "oneOf": [
-                    { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                     { "$ref": "#/$defs/concepts/$defs/valueDomainCreation" }
                   ]
                 },
@@ -692,7 +692,7 @@
           "properties": {
             "constraint": {
               "oneOf": [
-                { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                 { "$ref": "#/$defs/concepts/$defs/valueDomainCreation" },
                 { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
               ]
@@ -896,13 +896,13 @@
                     "^[A-Z][A-Za-z0-9_]*(:[A-Z][A-Za-z0-9_]*)?$": {
                       "oneOf": [
                         { "$ref": "#/$defs/concepts/$defs/templateSubstitutionValueLiteral" },
-                        { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                        { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                         {
                           "type": "array",
                           "items": {
                             "oneOf": [
                               { "$ref": "#/$defs/concepts/$defs/templateSubstitutionValueLiteral" },
-                              { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                              { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                               { "type": "string", "pattern": "^[A-Z][A-Za-z0-9_]*(\\.\\.\\.)$" }
                             ]
                           }
@@ -1017,11 +1017,11 @@
         "valueDomainCreationArgumentTypeDefinition": {
           "description": "ValueDomain creation argument type definition",
           "oneOf": [
-            { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+            { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
             {
               "type": "array",
               "items": [
-                { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                 { "type": "string", "enum": ["NoRef", "Reference"] }
               ],
               "minItems": 1,
@@ -1033,11 +1033,11 @@
         "functionEvaluationArgumentTypeDefinition": {
           "description": "Function Evaluation argument type definition",
           "oneOf": [
-            { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+            { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
             {
               "type": "array",
               "items": [
-                { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                 { "type": "string", "enum": ["Get", "Modify", "GetModify"] },
                 { "type": "string", "enum": ["NoRef", "Reference", "EmptyReference"] }
               ],
@@ -1050,11 +1050,11 @@
         "functionEvaluationResultTypeDefinition": {
           "description": "Function Evaluation Result type definition",
           "oneOf": [
-            { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+            { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
             {
               "type": "array",
               "items": [
-                { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                 { "type": "string", "enum": ["Get", "Modify"] },
                 { "type": "string", "enum": ["NoRef", "Reference"] }
               ],
@@ -1194,11 +1194,11 @@
           "patternProperties": {
             "^[a-z][A-Za-z0-9_]*$": {
               "oneOf": [
-                { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                 {
                   "type": "array",
                   "items": [
-                    { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                     { "type": "boolean" }
                   ],
                   "minItems": 2,
@@ -1219,11 +1219,11 @@
               "patternProperties": {
                 "^[a-z][A-Za-z0-9_]*$": {
                   "oneOf": [
-                    { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                     {
                       "type": "array",
                       "items": [
-                        { "$ref": "#/$defs/concepts/$defs/instantiatedValueDomain" },
+                        { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                         { "type": "boolean" }
                       ],
                       "minItems": 2,

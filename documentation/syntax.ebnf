@@ -26,7 +26,7 @@ ExternalFileEnumeration
 ConceptDefinition
         ::= ConceptReference ':' ConceptContentDefinition
 ConceptContentDefinition
-        ::= ConceptReference | InstantiatedValueDomain | (ws '{' ConceptDefMember (',' ConceptDefMember)* '}' ws)
+        ::= ConceptReference | TypeAppliedValueDomain | (ws '{' ConceptDefMember (',' ConceptDefMember)* '}' ws)
 ConceptDefMember
         ::= Description
           | (ws '"directParents"' ws ':' ws '[' ConceptReference (',' ConceptReference)* ']' ws)
@@ -65,13 +65,13 @@ PropertyContentDefinition
 PropertyDefinition
         ::= PropertyReference ':' PropertyDomainDefinition
 PropertyDomainDefinition
-        ::= InstantiatedValueDomain
+        ::= TypeAppliedValueDomain
           | (ws '{' PropertyDomainDefinitionElement (',' PropertyDomainDefinitionElement)* '}' ws)
 PropertyDomainDefinitionElement
         ::= Description
-          | (ws '"valueDomain"' ws ':' (InstantiatedValueDomain | ValueDomainCreation))
+          | (ws '"valueDomain"' ws ':' (TypeAppliedValueDomain | ValueDomainCreation))
           | (ws '"static"' ws ':' ws boolean ws)
-          | (ws '"constraint"' ws ':' (InstantiatedValueDomain | ValueDomainCreation))
+          | (ws '"constraint"' ws ':' (TypeAppliedValueDomain | ValueDomainCreation))
           | (ws '"default"' ws ':' ValueDomainSerialization)
           | (ws '"assumptions"' ws ':' ValueDomainSerialization)
           | (ws '"hooks"' ws ':' ws '{' DefinitionOfHookForProperty (',' DefinitionOfHookForProperty)* '}' ws)
@@ -105,7 +105,7 @@ PropertySpecializationDefinition
                 (ws | (SpecializablePropertyDefinitionElement (',' SpecializablePropertyDefinitionElement)*))
             '}' ws
 SpecializablePropertyDefinitionElement
-        ::= (ws '"constraint"' ws ':' (InstantiatedValueDomain | ValueDomainCreation |
+        ::= (ws '"constraint"' ws ':' (TypeAppliedValueDomain | ValueDomainCreation |
                                        InheritedValueDisambiguation)))
           | (ws '"default"' ws ':' (ValueDomainSerialization | InheritedValueDisambiguation))
           | (ws '"assumptions"' ws ':' (ValueDomainSerialization | InheritedValueDisambiguation))
@@ -143,7 +143,7 @@ DomainFunctionInterfaceDefinition
             '}' ws
 DomainFunctionDefinitionElement
         ::= Description
-          | (ws '"valueDomain"' ws ':' InstantiatedValueDomain)
+          | (ws '"valueDomain"' ws ':' TypeAppliedValueDomain)
           | (ws '"static"' ws ':' ws boolean ws)
           | (ws '"default"' ws ':' DomainFunctionCustomProcedure)
 FunctionsSpecializationDefinitionContainer
@@ -222,10 +222,10 @@ TemplateArgumentSubstitutionDefinition
         ::= (ParentTemplateArgumentReference | (ws '"' upperCaseName ':' upperCaseName '"' ws)) ':'
             TemplateArgumentValueForSubstitution
 TemplateArgumentValueForSubstitution
-        ::= LiteralValue | InstantiatedValueDomain |
+        ::= LiteralValue | TypeAppliedValueDomain |
             (ws '[' (ws | (VariadicGroupValue (',' VariadicGroupValue)*)) ']' ws)
 VariadicGroupValue
-        ::= LiteralValue | InstantiatedValueDomain | (ws upperCaseName '...' ws)
+        ::= LiteralValue | TypeAppliedValueDomain | (ws upperCaseName '...' ws)
 LiteralValue
         ::= ws (boolean | number | ('"\\"' character* '\\""')) ws
 TemplateVariadicGroupsDefinition
@@ -287,8 +287,8 @@ FunctionUpdateVariableScope
                            (',' FunctionNewVariableScopeForArgumentNewVariableDefinition)*))
             '}' ws
 FunctionNewVariableScopeForArgumentNewVariableDefinition
-        ::= NewFunctionVariableReference ':' (InstantiatedValueDomain |
-                                              (ws '[' InstantiatedValueDomain ',' ws boolean ws ']' ws))
+        ::= NewFunctionVariableReference ':' (TypeAppliedValueDomain |
+                                              (ws '[' TypeAppliedValueDomain ',' ws boolean ws ']' ws))
 FunctionNewVariableScope
         ::= ws '"subScopes"' ws ':' ws '{'
                 (ws | (FunctionNewVariableScopeForArgument (',' FunctionNewVariableScopeForArgument)*))
@@ -315,13 +315,13 @@ SimpleFunctionEvaluationInterfaceArgumentDefinition
           | FunctionEvaluationResultDefinition
 FunctionEvaluationArgumentDefinition
         ::= ArgumentReference ':' (
-                InstantiatedValueDomain |
-                (ws '[' InstantiatedValueDomain (',' AllModifiers (',' AllReferenceTypes)?)? ']' ws)
+                TypeAppliedValueDomain |
+                (ws '[' TypeAppliedValueDomain (',' AllModifiers (',' AllReferenceTypes)?)? ']' ws)
             )
 FunctionEvaluationResultDefinition
         ::= ws '"res"' ws ':' (
-                InstantiatedValueDomain |
-                (ws '[' InstantiatedValueDomain (',' BaseModifiers (',' BaseReferenceTypes)?)? ']' ws)
+                TypeAppliedValueDomain |
+                (ws '[' TypeAppliedValueDomain (',' BaseModifiers (',' BaseReferenceTypes)?)? ']' ws)
             )
 AllModifiers
         ::= ws ('"Get"' | '"Modify"' | '"GetModify"') ws
@@ -351,7 +351,7 @@ ValueDomainSerialization
 InheritedValueDisambiguation
         ::= ws '"inheritFrom:' upperCaseName? '"' ws
 ValueDomainCreation
-        ::= ws '{' InstantiatedValueDomain ':' ws '{'
+        ::= ws '{' TypeAppliedValueDomain ':' ws '{'
                 (ws | (ValueDomainMemberCreation (',' ValueDomainMemberCreation)*))
             '}' ws '}' ws
 ValueDomainMemberCreation
@@ -425,7 +425,7 @@ typeName
 // Important to have the ', ' (with the space) as separator everywhere in the instantiation!
 //     hooks are defined using this convention and they rely on exact string matching!
 // So if spacing is off, then hooks will not match and thus not be executed!
-InstantiatedValueDomain ::= ws '"' namedType '"' ws
+TypeAppliedValueDomain ::= ws '"' namedType '"' ws
 
 // ── Top-level named type ─────────────────────────────────────────────────────
 // Literals, variadicId, and '...' are all forbidden at this level.
@@ -444,8 +444,8 @@ templateArgWithGrp      ::= variadicGroup | literalValue | namedType
 
 // Mode 2 — variadicId mode: variadicId allowed, variadic groups forbidden
 templateArgListWithVar  ::= templateArgWithVar (', ' templateArgWithVar)*
-templateArgWithVar      ::= variadicId? (literalValue | namedType)
-variadicId              ::= [!$]+
+templateArgWithVar      ::= variadicId (literalValue | namedType)
+variadicId              ::= [!$]*
 
 // ── Variadic group ───────────────────────────────────────────────────────────
 // Only usable as a template argument in group mode.
