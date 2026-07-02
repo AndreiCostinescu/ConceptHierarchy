@@ -15,21 +15,25 @@ Each rule corresponds to a `CHSemanticError` raise in the source code.
      Note: `git diff --name-status <old>..HEAD` quickly shows file renames so you can check
      whether a Source path in an existing rule is now stale.
 
-     Last verified against commit c29bdd055edacc1da852ec6a2054a1c6018eb98c, plus uncommitted/staged working-tree
+     Last verified against commit e1f2028 (last committed state of the develop branch as of this update), plus uncommitted/staged working-tree
      changes present at verification time in:
        data/validators/value_instantiation_validator.py, data/validators/template_argument_constraints_validator.py,
        data/validators/type_validator.py, data/type_template_variables/constraint_formula.py,
        data/type_template_variables/template_substitution.py, data/jsonschema/parsed_schema.py,
        data/parsers/jsonschema_parser.py, data/parsers/template_argument_constraint_parser.py,
+       definitions/concept_definition.py, definitions/concept_definition_domain_concept.py,
        definitions/concept_definition_functions.py, validator/checker.py, validator/expression_checks.py,
        validator/concept_hierarchy_type_checks.py, validator/value_domain_template_constraint_checks.py,
        validator/validators/type_validator.py,
        and the staged-but-not-committed: data/expressions/ module (expression.py, expression_errors.py,
        function_composition.py, subexpressions.py), data/parsers/expression_parser.py.
      Full audit performed: all CHSemanticError raise sites cross-checked against all rules.
-     Notable changes from previous audit: added Rules 2.20–2.22 (distinctFrom structural checks),
-     4.2 (minInstances > maxInstances), 4.3 (distinctFrom duplicates), and 14.7 (type template variable
-     in expression). -->
+     Notable changes from this audit: removed Rule 4.1 (domain concept must carry data — downgraded to
+     warning); removed Rule 2.21 (distinctFrom must be domain concept — check removed from checker.py);
+     added Rule 4.2 (abstract:false + maxInstances:0 contradiction); moved sources for
+     minInstances/maxInstances/distinctFrom checks to concept_definition.py and updated location paths
+     (these are now top-level concept keywords, not inside "data"); renumbered old 4.2→4.1,
+     old 4.3 stays 4.3, old 2.22→2.21. -->
 
 ---
 
@@ -195,22 +199,16 @@ The same function name may not be defined in more than one domain concept.
 - **Location:** `["concepts", <concept>, "data", "functions", <func>]`
 
 ### 2.20 `distinctFrom` entries must reference defined concepts
-Each name in a domain concept's `distinctFrom` array must be a concept that exists in the hierarchy.
+Each name in a concept's `distinctFrom` array must be a concept that exists in the hierarchy.
 
 - **Source:** `validator/checker.py` — `check_after_parsing_concepts`
-- **Location:** `["concepts", <concept>, "data", "distinctFrom", <index>]`
+- **Location:** `["concepts", <concept>, "distinctFrom", <index>]`
 
-### 2.21 `distinctFrom` entries must reference domain concepts
-Each name in a domain concept's `distinctFrom` array must be a `DomainConcept`. References to `Function` or `ValueDomain` concepts are rejected, since those are distinct from all domain concepts by construction.
-
-- **Source:** `validator/checker.py` — `check_after_parsing_concepts`
-- **Location:** `["concepts", <concept>, "data", "distinctFrom", <index>]`
-
-### 2.22 `distinctFrom` entries must not reference this concept or its ancestors
-A concept cannot be required to be distinct from itself or from any of its ancestor concepts — such a constraint can never be satisfied (the concept is always a subconcept of its ancestors). If a concept should be non-instantiable, set `maxInstances: 0` instead.
+### 2.21 `distinctFrom` entries must not reference this concept or its ancestors
+A concept cannot be required to be distinct from itself or from any of its ancestor concepts — such a constraint can never be satisfied (the concept is always a subconcept of its ancestors). If a concept should be non-instantiable, set `abstract: true` instead.
 
 - **Source:** `validator/checker.py` — `check_after_parsing_concepts`
-- **Location:** `["concepts", <concept>, "data", "distinctFrom", <index>]`
+- **Location:** `["concepts", <concept>, "distinctFrom", <index>]`
 
 ---
 
@@ -267,25 +265,25 @@ A domain concept function specialization value must be a `FunctionComposition` p
 
 ---
 
-## 4. Concept Classification (Domain Concepts)
+## 4. Concept-Level Instantiation Constraints (all concept types)
 
-### 4.1 Every domain concept must carry data
-A domain concept that is not the root concept must define at least one of the recognized domain concept data keys (e.g. `properties`, `functions`, `management`, `minInstances`, `maxInstances`, `distinctFrom`).
+### 4.1 `minInstances` must not exceed `maxInstances`
+If both `minInstances` and `maxInstances` are set on a concept, `minInstances` must be ≤ `maxInstances`. A definition where `minInstances > maxInstances` makes the concept impossible to instantiate; the correct way to declare a non-instantiable concept is to omit `minInstances` and set `maxInstances: 0` (or use `abstract: true`).
 
-- **Source:** `definitions/concept_definition_domain_concept.py` — `concept_data_check`
-- **Location:** the concept's own location
-
-### 4.2 `minInstances` must not exceed `maxInstances`
-If both `minInstances` and `maxInstances` are set on a domain concept, `minInstances` must be ≤ `maxInstances`. A definition where `minInstances > maxInstances` makes the concept impossible to instantiate; the correct way to declare a non-instantiable concept is to omit `minInstances` and set `maxInstances: 0`.
-
-- **Source:** `definitions/concept_definition_domain_concept.py` — `concept_data_check`
+- **Source:** `definitions/concept_definition.py` — `check_concept_instances`
 - **Location:** the concept's own location (value)
 
-### 4.3 `distinctFrom` array must not contain duplicate entries
-The names listed in a domain concept's `distinctFrom` array must be unique — duplicate entries are rejected.
+### 4.2 `abstract: false` must not be combined with `maxInstances: 0`
+Setting `maxInstances: 0` makes a concept non-instantiable (i.e. effectively abstract), but explicitly setting `abstract: false` at the same time contradicts this. Resolve by either removing `abstract` (or setting it to `true`), or by setting `maxInstances` to a positive value.
 
-- **Source:** `definitions/concept_definition_domain_concept.py` — `concept_data_check`
-- **Location:** `["concepts", <concept>, "data", "distinctFrom"]` (value)
+- **Source:** `definitions/concept_definition.py` — `check_concept_instances`
+- **Location:** `["concepts", <concept>, "abstract"]` (value)
+
+### 4.3 `distinctFrom` array must not contain duplicate entries
+The names listed in a concept's `distinctFrom` array must be unique — duplicate entries are rejected.
+
+- **Source:** `definitions/concept_definition.py` — `check_concept_instances`
+- **Location:** `["concepts", <concept>, "distinctFrom"]` (value)
 
 ---
 
