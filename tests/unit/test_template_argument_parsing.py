@@ -113,6 +113,21 @@ class TestTemplateArgumentParsing:
                     }
                 },
             },
+            "SubInstance": {
+                "directParents": ["Instance"],
+                "data": {
+                    "templateContext": {
+                        "order": ["SubAcceptConcepts...", "SubRejectConcepts..."],
+                        "SubAcceptConcepts": "And(Concept, Not(ValueDomain))",
+                        "SubRejectConcepts": "And(Concept, Not(ValueDomain))",
+                        "variadicGroupIdentifiers": {"SubAcceptConcepts": "", "SubRejectConcepts": "!"},
+                        "substitution": {
+                            "AcceptConcepts": "SubAcceptConcepts",
+                            "RejectConcepts": ["SubRejectConcepts..."],
+                        },
+                    }
+                },
+            },
             "FunctionReturning": {"directParents": ["Function"], "data": {"templateContext": ["T"]}, "abstract": True},
             "Add": {
                 "directParents": ["FunctionReturning"],
@@ -146,7 +161,7 @@ class TestTemplateArgumentParsing:
             assert isinstance(c, HiddenImplementationDefinition) == model.ch.is_value_domain(c_name)
             if isinstance(c, HiddenImplementationDefinition):
                 if c.is_templatable():
-                    assert c_name in ["ClosedInterval", "Instance", "FunctionReturning", "Add"]
+                    assert c_name in ["ClosedInterval", "Instance", "SubInstance", "FunctionReturning", "Add"]
 
     def test_parsing_fails(self):
         model_data = self.clone_model()
@@ -158,6 +173,74 @@ class TestTemplateArgumentParsing:
 
     def test_parsing_succeeds_after(self):
         self.get_model(self._model_data)
+
+    def test_parsing_variadic_argument_substitution(self):
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = "SubAcceptConcepts"
+        substitution_data["RejectConcepts"] = "SubRejectConcepts"
+        # test should succeed
+        self.get_model(model_data)
+
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = "[SubAcceptConcepts...]"
+        substitution_data["RejectConcepts"] = "[SubRejectConcepts...]"
+        # test should succeed
+        self.get_model(model_data)
+
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = ["SubAcceptConcepts..."]
+        substitution_data["RejectConcepts"] = ["SubRejectConcepts..."]
+        # test should succeed
+        self.get_model(model_data)
+
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = ["[SubAcceptConcepts...]"]
+        substitution_data["RejectConcepts"] = ["[SubRejectConcepts...]"]
+        # test should fail syntactically because of nested list
+        with pytest.raises(
+            CHSemanticError,
+            match=r"Parsing \['\[SubAcceptConcepts...]'\] into a template argument value for Instance:AcceptConcepts "
+            r"substitution in SubInstance failed:[\s\S]*Variadic groups are only allowed in template arguments!",
+        ):
+            self.get_model(model_data)
+
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = ["SubAcceptConcepts"]
+        substitution_data["RejectConcepts"] = ["SubRejectConcepts"]
+        # test should fail semantically because variadic template variables are used in variadic group without expansion
+        with pytest.raises(
+            CHSemanticError,
+            match=r"Used the variadic template variable 'SubAcceptConcepts' in a variadic group without the expansion "
+            r"operator '...'! Add the operator to make this usage valid!",
+        ):
+            self.get_model(model_data)
+
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = ["SubAcceptConcepts...", "SubRejectConcepts..."]
+        substitution_data["RejectConcepts"] = "[SubRejectConcepts..., SubAcceptConcepts...]"
+        # test should succeed
+        self.get_model(model_data)
+
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = "[SubRejectConcepts..., SubAcceptConcepts...]"
+        substitution_data["RejectConcepts"] = "[SubRejectConcepts..., SubAcceptConcepts...]"
+        # test should succeed
+        self.get_model(model_data)
+
+        model_data = self.clone_model()
+        substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
+        substitution_data["AcceptConcepts"] = "[SubInstance<SubAcceptConcepts..., SubRejectConcepts...>]"
+        substitution_data["RejectConcepts"] = "[SubInstance<!SubRejectConcepts..., !SubAcceptConcepts...>]"
+        # test should fail, but because Instance is not a DomainConcept, not because the syntax
+        with pytest.raises(CHSemanticError, match="1234"):
+            self.get_model(model_data)
 
     def test_specify_variadic_argument_in_constraints(self):
         model_data = self.clone_model()
