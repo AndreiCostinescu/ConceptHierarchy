@@ -36,6 +36,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     VariadicTemplateVariable,
 )
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
+    TemplateContextDeterminator,
     TypeTemplateInstantiationValidator,
     validate_complete_instantiation_of_concept,
 )
@@ -162,7 +163,7 @@ class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
             substituted_t_args_of_parent.append(subst_val)
         subst_tuple = tuple(substituted_t_args_of_parent)
         errors = validate_complete_instantiation_of_concept(
-            parent_type_name, subst_tuple, TemplateContext(), self, location_id
+            parent_type_name, subst_tuple, TemplateContextDeterminator(), self, location_id
         )
         if errors:
             raise RuntimeError(
