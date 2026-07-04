@@ -44,7 +44,6 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     ExpandedVariadicTemplateVariable,
     Instantiated,
     InstantiatedType,
-    InstantiatedVariadicGroup,
     LiteralValue,
     TemplateDependentType,
     TemplateVariable,
@@ -161,6 +160,14 @@ def validate_template_argument_value_against_constraint(
 def validate_instantiation_constraints_in_template_argument_value(
     ch_type: ConceptHierarchyTemplateArgument, validator: TypeTemplateInstantiationValidator, location_id: LocationId
 ) -> list[ConceptHierarchyError]:
+    if isinstance(ch_type, ConceptHierarchyVariadicGroup):
+        errors = []
+        for group_elem in ch_type.variadic_group:
+            new_location_id = location_id + [group_elem.full_name]
+            errors.extend(
+                validate_instantiation_constraints_in_template_argument_value(group_elem, validator, new_location_id)
+            )
+        return errors
     if isinstance(ch_type, (LiteralValue, TemplateVariable)):
         return []
     assert isinstance(ch_type, (Instantiated, TemplateDependentType))
@@ -194,16 +201,6 @@ def validate_instantiation_constraints_in_template_argument_value(
         return []
 
     assert isinstance(ch_type, Instantiated)
-    if isinstance(ch_type, InstantiatedVariadicGroup):
-        errors = []
-        for group_elem in ch_type.variadic_group:
-            new_location_id = location_id + [group_elem.full_name]
-            sub_errors = validate_instantiation_constraints_in_template_argument_value(
-                group_elem, validator, new_location_id
-            )
-            if sub_errors:
-                errors.extend(sub_errors)
-        return errors
     assert isinstance(ch_type, InstantiatedType)
     # Because this is applied only on instantiated types (i.e. not dependent on template variables),
     #  pass an empty TemplateContext
