@@ -144,17 +144,24 @@ class StringParser:
         start = self.pos
         if self.peek() == "-":
             self.pos += 1
+
+        int_start = self.pos
         while self.pos < len(self.text) and self.text[self.pos].isdigit():
             self.pos += 1
-        if self.pos < len(self.text) and self.text[self.pos] == ".":
+        has_int_part = self.pos > int_start
+
+        has_frac_part = False
+        if self.pos < len(self.text) and self.text[self.pos] == "." and self.text[self.pos : self.pos + 2] != "..":
             self.pos += 1
+            frac_start = self.pos
             while self.pos < len(self.text) and self.text[self.pos].isdigit():
                 self.pos += 1
+            has_frac_part = self.pos > frac_start
 
         raw = self.text[start : self.pos]
-        if not raw or raw == "-":
+        if not has_int_part and not has_frac_part:
             raise CHSyntaxError(
-                f"Expected a numeric literal at position {start}, got {self.remaining()!r}",
+                f"Expected a numeric literal at position {start}, got {raw + self.remaining()!r}",
                 location_id=self.location_id,
             )
 

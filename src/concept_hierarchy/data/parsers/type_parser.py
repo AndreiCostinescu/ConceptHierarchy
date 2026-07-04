@@ -218,13 +218,13 @@ class TypeParser(StringParser):
         c = self.peek()
         if c == '"':
             return True
-        if c == "-" or c.isdigit():
+        if c in {"-", "."} or c.isdigit():
             return True
         for keyword in ("true", "false"):
             if self.starts_with(keyword):
                 end = self.pos + len(keyword)
                 after = self.text[end] if end < len(self.text) else ""
-                if not (after.isalnum() or after == "_"):
+                if not (after.isalnum() or after == "_"):  # characters from `name` (characters allowed in named types)
                     return True
         return False
 
@@ -257,6 +257,12 @@ class TypeParser(StringParser):
         else:
             clean_name = self.parse_number_literal()
             literal_type = "int" if is_integer(clean_name) else "float"
+        if self.peek(3) == "..." and self.peek(4) != "....":
+            raise CHSyntaxError(
+                f"Template argument literals can not use the variadic template variable expansion operator '...'. "
+                f"Found at {self.pos} of {self.text!r}",
+                location_id=self.location_id,
+            )
 
         return TemplateArgumentLiteral(
             variadic_group_identifier=variadic_id,

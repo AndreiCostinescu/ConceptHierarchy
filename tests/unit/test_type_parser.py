@@ -651,6 +651,23 @@ class TestBoolLiterals:
         t = _p1("T<true>")
         assert t.template_args == ("true",)
 
+    def test_bool_template_args_with_identifier_entry(self):
+        t = _p1("T<!$true>")
+        assert t.template_args == ("!$true",)
+        lit = t.template_arguments[0]
+        assert isinstance(lit, TemplateArgumentLiteral)
+        assert lit.clean_name == "true"
+        assert lit.has_variadic_identifier is True
+        assert lit.variadic_group_identifier == "!$"
+
+    def test_bool_template_args_with_expansion_entry(self):
+        with pytest.raises(
+            CHSyntaxError,
+            match=r"Template argument literals can not use the variadic template variable expansion operator '...'. "
+            r"Found at 6 of 'T<true...>'",
+        ):
+            _p1("T<true...>")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 9. Number literals
@@ -730,11 +747,63 @@ class TestNumberLiterals:
         assert t.template_args == ("3.14",)
 
     def test_lone_minus_raises(self):
+        with pytest.raises(CHSyntaxError, match=r"Expected a numeric literal at position"):
+            _p1("T<->")
+
+    def test_double_minus_raises(self):
+        with pytest.raises(CHSyntaxError, match=r"Expected a numeric literal at position"):
+            _p1("T<--1>")
+
+    def test_only_double_minus_raises(self):
+        with pytest.raises(CHSyntaxError, match=r"Expected a numeric literal at position"):
+            _p1("T<-->")
+
+    def test_double_dot_after_number_raises(self):
+        with pytest.raises(
+            CHSyntaxError, match=r"Expected '>' at position 3, got '.'\n  Full input : 'T<1..>'\n  Remaining  : '..>'"
+        ):
+            _p1("T<1..>")
+
+    def test_double_dot_before_number_raises(self):
+        with pytest.raises(CHSyntaxError, match=r"Expected a numeric literal at position"):
+            _p1("T<..1>")
+
+    def test_number_between_dots_raises(self):
+        with pytest.raises(
+            CHSyntaxError, match=r"Expected '>' at position 4, got '.'\n  Full input : 'T<.1.>'\n  Remaining  : '.>'"
+        ):
+            arg = _p1("T<.1.>").template_args[0]
+            print(arg)
+
+    def test_neg_dot_raises(self):
+        with pytest.raises(CHSyntaxError, match=r"Expected a numeric literal at position"):
+            _p1("T<-.>")
+
+    def test_single_dot_raises(self):
+        with pytest.raises(CHSyntaxError, match=r"Expected a numeric literal at position"):
+            _p1("T<.>")
+
+    def test_literal_expansion_raises(self):
         with pytest.raises(
             CHSyntaxError,
-            match=r"Expected a numeric literal at position",
+            match=r"Template argument literals can not use the variadic template variable expansion operator '...'. "
+            r"Found at 3 of 'T<1...>'",
         ):
-            _p1("T<->")
+            _p1("T<1...>")
+
+    def test_too_many_dots_raises(self):
+        with pytest.raises(
+            CHSyntaxError,
+            match=r"Expected '>' at position 3, got '.'\n  Full input : 'T<1....>'\n  Remaining  : '....>'",
+        ):
+            _p1("T<1....>")
+
+    def test_literal_combination_raises(self):
+        with pytest.raises(
+            CHSyntaxError,
+            match=r"Expected '>' at position 3, got 't'\n  Full input : 'T<1true>'\n  Remaining  : 'true>'",
+        ):
+            _p1("T<1true>")
 
     def test_number_in_func_args_parsed_as_name(self):
         # allow_literals=False; digits are not stop-chars → "42" is a name
