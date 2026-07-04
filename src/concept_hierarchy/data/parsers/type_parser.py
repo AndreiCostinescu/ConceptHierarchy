@@ -41,17 +41,17 @@ class TypeParser(StringParser):
 
     Grammar::
 
-        domain              ::= (named_type (',' named_type)* | ε) EOF
-        named_type          ::=         name  type_extra
-        named_type_with_exp ::=         name (type_extra | '...')
+        domain              ::= (named_type (', ' named_type)* | ε) EOF
+        named_type          ::=         name          type_extra
+        exp_named_type      ::=         name ('...' | type_extra)
         type_extra          ::= ('<' (entry_list_with_grp | entry_list_with_var) '>')? ('(' entry_list_with_exp ')')?
-        group               ::= '[' (literal | named_type_with_exp) (', ' (literal | named_type_with_exp))* ']' | '[]'
-        entry_list_with_grp ::= ((group | literal | named_type) (',' (group | literal | named_type))*) | ε
-        entry_list_with_exp ::= (named_type_with_exp (',' named_type_with_exp)*) | ε
-        entry_list_with_var ::= (var_id? (literal | named_type) (',' var_id? (literal | named_type))*) | ε
-        var_id              ::= [!$]+
+        group               ::= '[' (literal | exp_named_type) (', ' (literal | exp_named_type))* ']' | '[]'
+        entry_list_with_grp ::= ((group | literal | named_type) (', ' (group | literal | named_type))*) | ε
+        entry_list_with_exp ::= (exp_named_type (', ' exp_named_type)*) | ε
+        entry_list_with_var ::= (var_id (literal | exp_named_type) (', ' var_id (literal | exp_named_type))*) | ε
+        var_id              ::= [!$]*
         name                ::= [non-delimiter, non-whitespace, non-variadic, non-quote characters]+
-        literal             ::= 'true' | 'false' | number | '"' character* '"'
+        literal             ::= 'true' | 'false' | number | '\\"' character* '\\"'
 
     Usage::
 
@@ -163,8 +163,8 @@ class TypeParser(StringParser):
                 isinstance(entry, ParsedType) and entry.has_variadic_template_expansion
             ):
                 raise CHSyntaxError(
-                    f"Template expansion operator is only allowed in a variadic group or function arguments! Found at "
-                    f"{pos_before_entry_parse} of {self.text!r}",
+                    f"The template expansion operator is only allowed in a type application without variadic groups, in"
+                    f" a variadic group, or in function arguments! Found at {pos_before_entry_parse} of {self.text!r}",
                     location_id=self.location_id,
                 )
             entries.append(entry)
@@ -187,8 +187,6 @@ class TypeParser(StringParser):
             self.pos += 1
         if variadic_id == "":
             variadic_id = None
-
-        self.skip_whitespace()
 
         if self.peek() == "[":
             if not allow_variadic_groups:
@@ -300,19 +298,15 @@ class TypeParser(StringParser):
         self.skip_whitespace()
 
         if has_variadic_template_expansion:
-            if variadic_id:
-                raise CHSyntaxError(
-                    f"The variadic template expansion cannot be used with variadic identifiers (here: {variadic_id})!",
-                    location_id=self.location_id,
-                )
+            # allow expanded names to be prefixed by `variadic_id`
             clean_name = clean_name[:-3]
 
         # ── Template arguments ──────────────────────────────────────────
         template_arguments: list[TemplateArgumentValue] | None = None
         if self.try_consume("<"):
             entries = self._parse_entry_list(
-                stop_chars=frozenset({">"}), allow_variadic_identifiers=True, allow_template_expansion_operator=False
-            )  # templateArgWithGrp/Var ::= variadicGroup | literal | namedType
+                stop_chars=frozenset({">"}), allow_variadic_identifiers=True, allow_template_expansion_operator=True
+            )  # templateArgWithGrp/Var ::= variadicGroup | literal | expandedNamedType (<- prohibit outside)
             try:
                 self.consume(">")
             except RuntimeError as e:
@@ -320,16 +314,25 @@ class TypeParser(StringParser):
             template_arguments = []
             has_variadic_group_as_entry = False
             has_argument_with_variadic_identifier = False
+            has_argument_with_template_expansion = False
             for e in entries:
                 if isinstance(e, TemplateArgumentVariadicGroup):
                     has_variadic_group_as_entry = True
                 elif isinstance(e, TemplateArgumentWithVariadicId):
                     has_argument_with_variadic_identifier |= e.has_variadic_identifier
+                    if isinstance(e, ParsedType):
+                        has_argument_with_template_expansion |= e.has_variadic_template_expansion
                 template_arguments.append(e)
             if has_variadic_group_as_entry and has_argument_with_variadic_identifier:
                 raise CHSyntaxError(
                     f"Can not define template argument values combining variadic groups and types with variadic "
                     f"identifiers! Found at {self.text!r}",
+                    location_id=self.location_id,
+                )
+            if has_variadic_group_as_entry and has_argument_with_template_expansion:
+                raise CHSyntaxError(
+                    f"Can not use template argument expansion outside a variadic group when variadic groups are used! "
+                    f"Found at {self.text!r}",
                     location_id=self.location_id,
                 )
 

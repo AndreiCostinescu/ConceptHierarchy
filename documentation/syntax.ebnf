@@ -444,7 +444,7 @@ templateArgWithGrp      ::= variadicGroup | literalValue | namedType
 
 // Mode 2 — variadicId mode: variadicId allowed, variadic groups forbidden
 templateArgListWithVar  ::= templateArgWithVar (', ' templateArgWithVar)*
-templateArgWithVar      ::= variadicId (literalValue | namedType)
+templateArgWithVar      ::= variadicId (literalValue | expandableName)
 variadicId              ::= [!$]*
 
 // ── Variadic group ───────────────────────────────────────────────────────────

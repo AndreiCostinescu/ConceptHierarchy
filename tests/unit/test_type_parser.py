@@ -464,6 +464,10 @@ class TestVariadicIdentifiers:
         assert arg.literal_type == "string"
         assert arg.full_name == '!"stringLiteral"'
 
+    def test_var_id_with_spaces_raises(self):
+        with pytest.raises(CHSyntaxError, match=r"Expected a type name at position 5; got ' 1, \$ 2>'"):
+            _p1("Map<! 1, $ 2>")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 7. Variadic expansion operator  (...)
@@ -500,30 +504,57 @@ class TestVariadicExpansion:
     def test_expansion_not_allowed_at_top_level(self):
         with pytest.raises(
             CHSyntaxError,
-            match=r"Template expansion operator is only allowed in a variadic group or function arguments",
+            match=r"The template expansion operator is only allowed in a type application without variadic groups, in"
+            r" a variadic group, or in function arguments!",
         ):
             _parse("A...")
 
-    def test_expansion_not_allowed_in_template_args(self):
-        with pytest.raises(
-            CHSyntaxError,
-            match=r"Template expansion operator is only allowed in a variadic group or function arguments",
-        ):
-            _p1("T<A...>")
+    def test_expansion_allowed_in_template_args(self):
+        arg = _p1("T<A...>").template_arguments[0]
+        assert isinstance(arg, ParsedType)
+        assert arg.has_variadic_identifier is False
+        assert arg.has_variadic_template_expansion is True
+        assert arg.clean_name == "A"
 
-    def test_expansion_with_variadic_identifier_forbidden(self):
-        with pytest.raises(
-            CHSyntaxError,
-            match=r"The variadic template expansion cannot be used with variadic identifiers",
-        ):
-            _p1("T<!a...>")
+    def test_expansion_with_variadic_identifier_allowed(self):
+        arg = _p1("T<!a...>").template_arguments[0]
+        assert isinstance(arg, ParsedType)
+        assert arg.has_variadic_identifier is True
+        assert arg.variadic_group_identifier == "!"
+        assert arg.has_variadic_template_expansion is True
+        assert arg.clean_name == "a"
 
-    def test_expansion_with_dollar_identifier_forbidden(self):
+    def test_expansion_with_dollar_identifier_allowed(self):
+        arg = _p1("T<$a...>").template_arguments[0]
+        assert isinstance(arg, ParsedType)
+        assert arg.has_variadic_identifier is True
+        assert arg.variadic_group_identifier == "$"
+        assert arg.has_variadic_template_expansion is True
+        assert arg.clean_name == "a"
+
+    def test_literal_expansion_forbidden(self):
         with pytest.raises(
             CHSyntaxError,
-            match=r"The variadic template expansion cannot be used with variadic identifiers",
+            match="Template argument literals can not use the variadic template variable expansion operator '...'. "
+            "Found at 4 of 'T<!2...>'",
         ):
-            _p1("T<$a...>")
+            _p1("T<!2...>")
+
+    def test_expansion_with_variadic_groups_forbidden(self):
+        with pytest.raises(
+            CHSyntaxError,
+            match=r"Can not define template argument values combining variadic groups and types with variadic "
+            r"identifiers! Found at 'T<!a..., \[a...\]>",
+        ):
+            _p1("T<!a..., [a...]>")
+
+    def test_expansion_with_variadic_ids_in_variadic_group_forbidden(self):
+        with pytest.raises(
+            CHSyntaxError,
+            match=r"Variadic group identifiers are only allowed in template arguments! Found at position 3 of "
+            r"'T<\[!a...\]>'",
+        ):
+            _p1("T<[!a...]>")
 
     def test_expansion_followed_by_template_args_forbidden(self):
         with pytest.raises(
@@ -539,13 +570,19 @@ class TestVariadicExpansion:
         ):
             _p1("T(a...(b))")
 
-    def test_expansion_not_allowed_multiple_in_same_list(self):
+    def test_expansion_allowed_multiple_in_same_list(self):
         # Each entry is checked separately; first "A..." already triggers the error
-        with pytest.raises(
-            CHSyntaxError,
-            match=r"Template expansion operator is only allowed in a variadic group or function arguments",
-        ):
-            _p1("T<A..., B...>")
+        args = _p1("T<A..., B...>").template_args
+        assert isinstance(args[0], ParsedType)
+        assert args[0].has_variadic_identifier is False
+        assert args[0].variadic_group_identifier is None
+        assert args[0].has_variadic_template_expansion is True
+        assert args[0].clean_name == "A"
+        assert isinstance(args[1], ParsedType)
+        assert args[1].has_variadic_identifier is False
+        assert args[1].variadic_group_identifier is None
+        assert args[1].has_variadic_template_expansion is True
+        assert args[1].clean_name == "B"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1422,26 +1459,13 @@ class TestErrorCasesGeneral:
 
     # ── Expansion operator misuse ─────────────────────────────────────────────
 
-    def test_expansion_not_allowed_in_template_args(self):
-        with pytest.raises(
-            CHSyntaxError,
-            match=r"Template expansion operator is only allowed in a variadic group or function arguments",
-        ):
-            _p1("T<A...>")
-
     def test_expansion_not_allowed_at_top_level(self):
         with pytest.raises(
             CHSyntaxError,
-            match=r"Template expansion operator is only allowed in a variadic group or function arguments",
+            match=r"The template expansion operator is only allowed in a type application without variadic groups, in a"
+            r" variadic group, or in function arguments! Found at 0 of 'A...'",
         ):
             _parse("A...")
-
-    def test_expansion_with_var_id_forbidden(self):
-        with pytest.raises(
-            CHSyntaxError,
-            match=r"The variadic template expansion cannot be used with variadic identifiers",
-        ):
-            _p1("T<!a...>")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
