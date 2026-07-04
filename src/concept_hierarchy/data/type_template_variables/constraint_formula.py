@@ -462,12 +462,12 @@ class TypeTemplateConstraintFormula(NonStructureConstraintFormula, ABC):
 
     @staticmethod
     def any_type(location_id: LocationId) -> TypeTemplateConstraintFormula:
-        _any_type = TemplateConstraintAbstractDescendants.__new__(TemplateConstraintAbstractDescendants)
+        _any_type = TemplateConstraintDescendants.__new__(TemplateConstraintDescendants)
         _any_type.location_id = location_id
         _any_type.constraint_on = None
         _any_type.literal = "Concept"
         _any_type.literal_template_formulae = ()
-        _any_type.hierarchy_op = HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+        _any_type.hierarchy_op = HierarchyCheckType.DESCENDANTS_OF
         _any_type.is_template_variable = False
         assert _any_type.is_type_unconstrained
         return _any_type
@@ -489,26 +489,26 @@ class HierarchyCheckType(Enum):
     Members
     -------
     DESCENDANTS_OF
-        Matches concrete (non-abstract) subtypes of the literal, excluding the
-        literal itself unless it is concrete.  Syntax: ``T``.
-    ABSTRACT_DESCENDANTS_OF
-        Matches all subtypes of the literal, whether abstract or concrete,
-        including the literal itself.  Syntax: ``T*``.
+        Matches all subtypes (including abstract) of the literal.
+        Syntax: ``T``.
+    NON_ABSTRACT_DESCENDANTS_OF
+        Matches subtypes of the literal, that are not abstract types,
+        (will exclude the literal itself if it is abstract).  Syntax: ``T*``.
     SELF
         Matches exactly the named concept — no subtypes or supertypes.
         Syntax: ``T.``.
     ASCENDANTS_OF
-        Matches concrete (non-abstract) supertypes of the literal, excluding
-        the literal itself unless it is concrete.  Syntax: ``^T``.
-    ABSTRACT_ASCENDANTS_OF
-        Matches all supertypes of the literal, whether abstract or concrete,
-        including the literal itself.  Syntax: ``^T*``.
+        Matches all supertypes (including abstract) of the literal; always
+        excludes the literal itself.  Syntax: ``^T``.
+    NON_ABSTRACT_ASCENDANTS_OF
+        Matches supertypes of the literal, that are not abstract.
+        Syntax: ``^T*``.
     """
 
     DESCENDANTS_OF = (0,)
-    ABSTRACT_DESCENDANTS_OF = (1,)
+    NON_ABSTRACT_DESCENDANTS_OF = (1,)
     ASCENDANTS_OF = (2,)
-    ABSTRACT_ASCENDANTS_OF = (3,)
+    NON_ABSTRACT_ASCENDANTS_OF = (3,)
     SELF = 4
 
 
@@ -632,7 +632,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
         return (
             self.literal == "Concept"
             and self.literal_template_formulae == ()
-            and self.hierarchy_op == HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+            and self.hierarchy_op == HierarchyCheckType.DESCENDANTS_OF
         )
 
     def change_hierarchy_operator(
@@ -649,16 +649,16 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
                 return TemplateConstraintDescendants(
                     self.literal, self.literal_template_formulae, validator, location_id
                 )
-            case HierarchyCheckType.ABSTRACT_DESCENDANTS_OF:
-                return TemplateConstraintAbstractDescendants(
+            case HierarchyCheckType.NON_ABSTRACT_DESCENDANTS_OF:
+                return TemplateConstraintNonAbstractDescendants(
                     self.literal, self.literal_template_formulae, validator, location_id
                 )
             case HierarchyCheckType.ASCENDANTS_OF:
                 return TemplateConstraintAscendants(
                     self.literal, self.literal_template_formulae, validator, location_id
                 )
-            case HierarchyCheckType.ABSTRACT_ASCENDANTS_OF:
-                return TemplateConstraintAbstractAscendants(
+            case HierarchyCheckType.NON_ABSTRACT_ASCENDANTS_OF:
+                return TemplateConstraintNonAbstractAscendants(
                     self.literal, self.literal_template_formulae, validator, location_id
                 )
             case _:
@@ -676,14 +676,14 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
                 return TemplateConstraintSelf(literal, literal_template_constraints, validator, location_id)
             case HierarchyCheckType.DESCENDANTS_OF:
                 return TemplateConstraintDescendants(literal, literal_template_constraints, validator, location_id)
-            case HierarchyCheckType.ABSTRACT_DESCENDANTS_OF:
-                return TemplateConstraintAbstractDescendants(
+            case HierarchyCheckType.NON_ABSTRACT_DESCENDANTS_OF:
+                return TemplateConstraintNonAbstractDescendants(
                     literal, literal_template_constraints, validator, location_id
                 )
             case HierarchyCheckType.ASCENDANTS_OF:
                 return TemplateConstraintAscendants(literal, literal_template_constraints, validator, location_id)
-            case HierarchyCheckType.ABSTRACT_ASCENDANTS_OF:
-                return TemplateConstraintAbstractAscendants(
+            case HierarchyCheckType.NON_ABSTRACT_ASCENDANTS_OF:
+                return TemplateConstraintNonAbstractAscendants(
                     literal, literal_template_constraints, validator, location_id
                 )
             case _:
@@ -720,7 +720,7 @@ class TemplateConstraintDescendants(TemplateConstraintHierarchyOperator):
         return self.print_literal()
 
 
-class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator):
+class TemplateConstraintNonAbstractDescendants(TemplateConstraintHierarchyOperator):
     """
     Matches *any* descendant of the named concept — concrete or abstract —
     including the literal concept itself.  Written as ``T*``.
@@ -740,7 +740,7 @@ class TemplateConstraintAbstractDescendants(TemplateConstraintHierarchyOperator)
         location_id: LocationId,
     ):
         super().__init__(
-            literal, literal_template_formulae, validator, location_id, HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+            literal, literal_template_formulae, validator, location_id, HierarchyCheckType.NON_ABSTRACT_DESCENDANTS_OF
         )
 
     def __repr__(self):
@@ -798,7 +798,7 @@ class TemplateConstraintAscendants(TemplateConstraintHierarchyOperator):
         return "^" + self.print_literal()
 
 
-class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
+class TemplateConstraintNonAbstractAscendants(TemplateConstraintHierarchyOperator):
     """
     Matches *any* ancestor of the named concept — concrete or abstract —
     including the literal concept itself.  Written as ``^T*``.
@@ -818,7 +818,7 @@ class TemplateConstraintAbstractAscendants(TemplateConstraintHierarchyOperator):
         location_id: LocationId,
     ):
         super().__init__(
-            literal, literal_template_formulae, validator, location_id, HierarchyCheckType.ABSTRACT_ASCENDANTS_OF
+            literal, literal_template_formulae, validator, location_id, HierarchyCheckType.NON_ABSTRACT_ASCENDANTS_OF
         )
 
     def __repr__(self):

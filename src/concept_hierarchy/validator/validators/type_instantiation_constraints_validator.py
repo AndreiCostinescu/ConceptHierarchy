@@ -99,14 +99,14 @@ class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
             case HierarchyCheckType.SELF:
                 include_abstract = True
                 return a_name == b_name and (not a_is_abstract or include_abstract)
-            case HierarchyCheckType.DESCENDANTS_OF | HierarchyCheckType.ABSTRACT_DESCENDANTS_OF:
-                include_abstract = check_type == HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+            case HierarchyCheckType.DESCENDANTS_OF | HierarchyCheckType.NON_ABSTRACT_DESCENDANTS_OF:
+                include_abstract = check_type != HierarchyCheckType.NON_ABSTRACT_DESCENDANTS_OF
                 include_self = True
                 return self.context.ch.is_a_subconcept_of_b(a_name, b_name, include_self=include_self) and (
                     not a_is_abstract or include_abstract
                 )
-            case HierarchyCheckType.ASCENDANTS_OF | HierarchyCheckType.ABSTRACT_ASCENDANTS_OF:
-                include_abstract = check_type == HierarchyCheckType.ABSTRACT_DESCENDANTS_OF
+            case HierarchyCheckType.ASCENDANTS_OF | HierarchyCheckType.NON_ABSTRACT_ASCENDANTS_OF:
+                include_abstract = check_type != HierarchyCheckType.NON_ABSTRACT_DESCENDANTS_OF
                 include_self = False
                 return self.context.ch.is_a_subconcept_of_b(b_name, a_name, include_self=include_self) and (
                     not a_is_abstract or include_abstract

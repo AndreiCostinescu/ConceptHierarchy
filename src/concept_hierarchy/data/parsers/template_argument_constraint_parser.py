@@ -24,14 +24,14 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     StructureConstraintFormula,
     StructureDisjunction,
     StructureNegation,
-    TemplateConstraintAbstractAscendants,
-    TemplateConstraintAbstractDescendants,
     TemplateConstraintAnd,
     TemplateConstraintAscendants,
     TemplateConstraintDescendants,
     TemplateConstraintFormula,
     TemplateConstraintFormulaValidator,
     TemplateConstraintHierarchyOperator,
+    TemplateConstraintNonAbstractAscendants,
+    TemplateConstraintNonAbstractDescendants,
     TemplateConstraintNot,
     TemplateConstraintOr,
     TemplateConstraintSelf,
@@ -309,11 +309,11 @@ class ConstraintParser(StringParser):
         """
         Handles all five hierarchy-operator variants:
 
-            T       ->  TemplateConstraintDescendants          (no abstract)
-            T*      ->  TemplateConstraintAbstractDescendants  (include abstract)
-            T.      ->  TemplateConstraintSelf                 (exact type / abstract ok)
-            ^T      ->  TemplateConstraintAscendants           (no abstract)
-            ^T*     ->  TemplateConstraintAbstractAscendants   (include abstract)
+            T       ->  TemplateConstraintDescendants             (include abstract)
+            T*      ->  TemplateConstraintNonAbstractDescendants  (exclude abstract)
+            T.      ->  TemplateConstraintSelf                    (exact type / abstract ok)
+            ^T      ->  TemplateConstraintAscendants              (include abstract)
+            ^T*     ->  TemplateConstraintNonAbstractAscendants   (exclude abstract)
         """
         is_ascendant = self.try_consume("^")
 
@@ -323,20 +323,20 @@ class ConstraintParser(StringParser):
             if self.peek() == ".":
                 raise CHSyntaxError(
                     '"^{0}." is an invalid constraint formula! Choose either\n\t"^{0}" to mean the ascendants of {0},'
-                    '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants including abstract ones.'
+                    '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants excluding abstract ones.'
                     "".format(ch_type_name),
                     location_id=self.location_id,
                 )
             if self.peek(2) == "*.":
                 raise CHSyntaxError(
                     '"^{0}." is an invalid constraint formula! Choose either\n\t"^{0}" to mean the ascendants of {0},'
-                    '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants including abstract ones.'
+                    '\n\t"{0}." to mean only {0},\n\tor "^{0}*" to mean the ascendants excluding abstract ones.'
                     "".format(ch_type_name),
                     location_id=self.location_id,
                 )
             elif self.peek() == "*":
                 self.pos += 1
-                return TemplateConstraintAbstractAscendants(
+                return TemplateConstraintNonAbstractAscendants(
                     ch_type_name, t_arg_formulae, self.validator, self.location_id
                 )
             else:
@@ -345,13 +345,13 @@ class ConstraintParser(StringParser):
             if self.peek(2) in ["*.", ".*"]:
                 raise CHSyntaxError(
                     '"{0}.*" and "{0}*." are invalid constraint formulae! Choose either\n\t"{0}" to mean the '
-                    'descendants of {0},\n\t"{0}." to mean only {0}, or\n\t"{0}*" to mean the descendants including '
+                    'descendants of {0},\n\t"{0}." to mean only {0}, or\n\t"{0}*" to mean the descendants excluding '
                     "abstract ones.".format(ch_type_name),
                     location_id=self.location_id,
                 )
             elif self.peek() == "*":
                 self.pos += 1
-                return TemplateConstraintAbstractDescendants(
+                return TemplateConstraintNonAbstractDescendants(
                     ch_type_name, t_arg_formulae, self.validator, self.location_id
                 )
             elif self.peek() == ".":
