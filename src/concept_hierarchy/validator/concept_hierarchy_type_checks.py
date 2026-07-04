@@ -29,7 +29,6 @@ from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.parsers.jsonschema_parser import parse_schema
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
-from concept_hierarchy.data.parsers.type_parser import TemplateArgumentParser
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     NonStructureConstraintFormula,
@@ -52,7 +51,6 @@ from concept_hierarchy.data.validators.type_validator import (
     convert_template_argument_to_concept_hierarchy_template_argument,
     parse_convert_type,
     parse_convert_type_in_template_context,
-    validate_template_argument_value,
 )
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
@@ -226,24 +224,20 @@ def check_types_in_hidden_implementation_definition(
             else:
                 location_id = c.location_of(subst_location_key, f"{parent}:{parent_t_arg}")
             try:
-                # Start validation of the syntax of the substitution value:
-                #  1) Convert json object to TemplateArgumentValue
-                parsed_t_arg_value = TemplateArgumentParser(subst_value, location_id).parse()
-                #  2) Validate nr. template args, create variadic groups from var.ids., don't check template constraints
-                validated_t_arg_value = validate_template_argument_value(
-                    parsed_t_arg_value,
+                # Converts the subst_value to a ConceptHierarchyTemplateArgument
+                # using TemplateArgumentValue as an intermediate representation
+                # - validates syntax and semantic rules
+                # - converts variadic identifier type application to canonic variadic group representation
+                ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
+                    subst_value,
                     type_validator,
                     location_id,
                     parent_t_arg in parent_def_data.variadic_template_arguments,
                 )
-                # syntax of the substitution value is validated from now on;
-                # Check the semantic of the value
-                ch_t_arg_value = convert_template_argument_to_concept_hierarchy_template_argument(
-                    validated_t_arg_value, type_validator, location_id
-                )
             except ConceptHierarchyError as e:
                 raise CHSemanticError(
-                    f"Parsing {subst_value!r} into a template argument value for {parent_t_arg} failed:",
+                    f"Parsing {subst_value!r} into a template argument value for {parent}:{parent_t_arg} substitution "
+                    f"in {c.name} failed:",
                     location_id=location_id,
                     causes=[e],
                 )
