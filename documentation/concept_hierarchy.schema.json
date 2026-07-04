@@ -569,7 +569,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "natural": { "ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+        "natural": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
 
         "fromJsonLiteral": {
           "description": "Specifies how to deserialize a JSON literal into this ValueDomain. Either JSON null (no literal deserialization), or a string encoding the literalDeserialization DSL: a '|'-separated list of literal alternatives, where element/value types may be primitives, array, object, or a concept name (upperCaseName).",
