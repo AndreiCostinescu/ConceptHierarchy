@@ -20,8 +20,8 @@ This module is responsible for:
 1. Expanding the two shorthand notations:
 
    * ``"x"`` -> ``{"type": "x"}`` for builtin types, or
-     ``{"type": "x", "referenceType": "NoRef"}`` for a bare custom type name.
-   * ``["MyType", "Reference"|"NoRef"]`` -> ``{"type": "MyType", "referenceType": ...}``
+     ``{"type": "x", "provenance": "Any"}`` for a bare custom type name.
+   * ``["MyType", "Addr"|"Any"]`` -> ``{"type": "MyType", "provenance": ...}``
      (only valid when ``MyType`` is a custom type).
 
 2. Recursively building a :class:`~ch_schema.ast_nodes.CHSchemaNode` tree that mirrors the (expanded) schema,
@@ -31,7 +31,7 @@ This module is responsible for:
 
    * asking the supplied :class:`~ch_schema.context.CHSchemaContext` whether the custom type name is valid
      (-> :class:`CHSemanticError` if not);
-   * validating and extracting the ``referenceType`` extra (default ``"NoRef"``);
+   * validating and extracting the ``provenance`` extra (default ``"Any"``);
    * recording the ``default`` extra *without* validating it (that is a later pass, once all formulae are known);
    * rejecting any other keyword on a custom-type node.
 
@@ -52,7 +52,7 @@ from abc import ABC, abstractmethod
 
 from jsonschema import Draft7Validator
 
-from concept_hierarchy.data.expressions.expression_utils import ValueDomainArgumentReference
+from concept_hierarchy.data.expressions.expression_utils import ValueDomainArgumentProvenance
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode, CustomConceptDataConstraint
 from concept_hierarchy.data.parsers.string_parser import StringParser
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
@@ -71,7 +71,7 @@ BUILTIN_TYPES = {"null", "boolean", "integer", "number", "string", "array", "obj
 
 # Keys allowed on a schema node whose "type" is a single custom type name.
 # "title"/"description"/"$comment" are plain draft-07 annotation keywords and are harmless to allow through.
-CUSTOM_TYPE_EXTRA_KEYS = {"type", "referenceType", "default", "title", "description", "$comment"}
+CUSTOM_TYPE_EXTRA_KEYS = {"type", "provenance", "default", "title", "description", "$comment"}
 
 _REF_PATTERN = re.compile(r"^#/(definitions|\$defs)/([^/]+)$")
 
@@ -91,9 +91,9 @@ class CHSchemaValidator(ABC):
     while a schema is being *defined*.
     """
 
-    argument_reference_types: set[str] = {
-        ValueDomainArgumentReference.NO_REF.value,
-        ValueDomainArgumentReference.REF.value,
+    argument_provenance_types: set[str] = {
+        ValueDomainArgumentProvenance.ANY.value,
+        ValueDomainArgumentProvenance.ADDR.value,
     }
 
     @abstractmethod
@@ -197,8 +197,8 @@ def parse_schema(
 def _expand_string_shorthand(raw: str) -> dict:
     if raw in BUILTIN_TYPES:
         return {"type": raw}
-    # Bare custom type name -> no default, NoRef.
-    return {"type": raw, "referenceType": ValueDomainArgumentReference.NO_REF.value}
+    # Bare custom type name -> no default, ANY.
+    return {"type": raw, "provenance": ValueDomainArgumentProvenance.ANY.value}
 
 
 def _expand_array_shorthand(
@@ -212,7 +212,7 @@ def _expand_array_shorthand(
         len(raw) == 2
         and isinstance(raw[0], str)
         and isinstance(raw[1], str)
-        and raw[1] in validator.argument_reference_types
+        and raw[1] in validator.argument_provenance_types
     )
     if not valid_shape:
         record(
@@ -220,7 +220,7 @@ def _expand_array_shorthand(
             collect_all_errors,
             CHSyntaxError(
                 f"Array shorthand must be of the form [<Concept Hierarchy type name>, "
-                f'"{ValueDomainArgumentReference.REF.value}"|"{ValueDomainArgumentReference.NO_REF.value}"]',
+                f'"{ValueDomainArgumentProvenance.ADDR.value}"|"{ValueDomainArgumentProvenance.ANY.value}"]',
                 location_id,
             ),
         )
@@ -239,20 +239,20 @@ def _expand_array_shorthand(
         # Fall back to "anything goes" so callers can keep walking.
         return True
 
-    type_name, ref_kind = raw
+    type_name, provenance_type = raw
     if type_name in BUILTIN_TYPES:
         record(
             errors,
             collect_all_errors,
             CHSyntaxError(
-                f"A reference kind ({ref_kind!r}) can only be given for Concept Hierarchy types, not for the builtin "
-                f"type {type_name!r}",
+                f"A provenance character ({provenance_type!r}) can only be given for Concept Hierarchy types, not for "
+                f"the builtin type {type_name!r}",
                 location_id,
             ),
         )
         return {"type": type_name}
 
-    return {"type": type_name, "referenceType": ref_kind}
+    return {"type": type_name, "provenance": provenance_type}
 
 
 # ---------------------------------------------------------------------------
@@ -373,19 +373,19 @@ def _finish_custom_type_node(
     except ConceptHierarchyError as e:
         record(errors, collect_all_errors, e)
 
-    ref = ValueDomainArgumentReference(work.get("referenceType", ValueDomainArgumentReference.NO_REF.value))
-    if "referenceType" in work and work["referenceType"] not in validator.argument_reference_types:
+    provenance = ValueDomainArgumentProvenance(work.get("provenance", ValueDomainArgumentProvenance.ANY.value))
+    if "provenance" in work and work["provenance"] not in validator.argument_provenance_types:
         record(
             errors,
             collect_all_errors,
             CHSyntaxError(
-                f'"referenceType" must be "{ValueDomainArgumentReference.REF.value}" or '
-                f'"{ValueDomainArgumentReference.NO_REF.value}", got {work["referenceType"]!r}',
-                location_id=location_id + ["referenceType"],
+                f'"provenance" must be "{ValueDomainArgumentProvenance.ADDR.value}" or '
+                f'"{ValueDomainArgumentProvenance.ANY.value}", got {work["provenance"]!r}',
+                location_id=location_id + ["provenance"],
             ),
         )
-        ref = ValueDomainArgumentReference.NO_REF
-    node.ref = ref
+        provenance = ValueDomainArgumentProvenance.ANY
+    node.provenance = provenance
 
     if "default" in work:
         node.has_default = True
@@ -466,18 +466,18 @@ def _finish_builtin_node(
     errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> CHSchemaNode:
-    if "referenceType" in work:
+    if "provenance" in work:
         record(
             errors,
             collect_all_errors,
             CHSyntaxError(
-                '"referenceType" is only allowed on custom-type schemas (i.e. when "type" is a single Concept Hierarchy'
+                '"provenance" is only allowed on custom-type schemas (i.e. when "type" is a single Concept Hierarchy'
                 " type)",
-                location_id + ["referenceType"],
+                location_id + ["provenance"],
                 part=PathPart.KEY,
             ),
         )
-        work.pop("referenceType", None)
+        work.pop("provenance", None)
     # "default" is a normal draft-07 annotation keyword here; leave it in extra_keywords untouched.
 
     def child(value: object, *suffix: PathSegment) -> CHSchemaNode:

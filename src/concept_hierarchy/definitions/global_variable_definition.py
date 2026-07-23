@@ -76,8 +76,8 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
             # collect the used types in the definition to pass to valueDomains/generationUtils.cpp
             self.value = Expression.process_expression(
                 self.value_type,
-                ExpressionRef.NO_REF,
-                ExpressionMod.GET,
+                ExpressionProvenance.ANY,
+                ExpressionAccess.GET,
                 self.value,
                 GlobalValueDomainInstance.template_context,
                 GlobalValueDomainInstance.global_variable_context,

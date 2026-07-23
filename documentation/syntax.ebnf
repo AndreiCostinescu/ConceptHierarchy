@@ -316,21 +316,21 @@ SimpleFunctionEvaluationInterfaceArgumentDefinition
 FunctionEvaluationArgumentDefinition
         ::= ArgumentReference ':' (
                 TypeAppliedValueDomain |
-                (ws '[' TypeAppliedValueDomain (',' AllModifiers (',' AllReferenceTypes)?)? ']' ws)
+                (ws '[' TypeAppliedValueDomain (',' AllModifiers (',' AllProvenanceTypes)?)? ']' ws)
             )
 FunctionEvaluationResultDefinition
         ::= ws '"res"' ws ':' (
                 TypeAppliedValueDomain |
-                (ws '[' TypeAppliedValueDomain (',' BaseModifiers (',' BaseReferenceTypes)?)? ']' ws)
+                (ws '[' TypeAppliedValueDomain (',' BaseModifiers (',' BaseProvenanceTypes)?)? ']' ws)
             )
 AllModifiers
         ::= ws ('"Get"' | '"Modify"' | '"GetModify"') ws
 BaseModifiers
         ::= ws ('"Get"' | '"Modify"') ws
-AllReferenceTypes
-        ::= ws ('"NoRef"' | '"Reference"' | '"EmptyReference"') ws
-BaseReferenceTypes
-        ::= ws ('"NoRef"' | '"Reference"') ws
+AllProvenanceTypes
+        ::= ws ('"Any"' | '"Addr"' | '"ResetAddr"') ws
+BaseProvenanceTypes
+        ::= ws ('"Any"' | '"Addr"') ws
 DefinitionOfArguments
         ::= ws '"_arguments"' ws ':' (ArgumentList | (ws '[' (ArgumentList (',' ArgumentList)*) ']' ws))
 ArgumentList
@@ -374,10 +374,10 @@ FromJsonLiteralFormula
 literalDeserialization
         ::= literal (' | ' literal)*
 typeAndLiteralDeserialization
-        ::= literalDeserialization | namedType | '(' namedType ', ' ('NoRef' | 'Reference') ')'
+        ::= literalDeserialization | namedType | '(' namedType ', ' ('Any' | 'Addr') ')'
 varTypeAndLiteralDeserialization
         ::= literalDeserialization | (upperCaseName (templateInstantiation | '...')?) |
-            '(' (upperCaseName (templateInstantiation | '...')?) ', ' ('NoRef' | 'Reference') ')'
+            '(' (upperCaseName (templateInstantiation | '...')?) ', ' ('Any' | 'Addr') ')'
 literal
         ::= 'null' | 'boolean' | 'integer' | 'number' | 'string' | arrayLiteral | objectLiteral
 arrayLiteral
@@ -513,7 +513,7 @@ lowerCaseName
         ::= [a-z] ([A-Z] | [a-z] | digit | '_')*
 
 //// Custom JSON Schema (not expanded here)
-CustomJsonSchema ::= ws (boolean | string | ('[' ws string ws ',' BaseReferenceTypes ']') | object) ws
+CustomJsonSchema ::= ws (boolean | string | ('[' ws string ws ',' BaseProvenanceTypes ']') | object) ws
 
 //// JSON Grammar
 Json ::= Element  // with capital letter because it processes whitespaces correctly

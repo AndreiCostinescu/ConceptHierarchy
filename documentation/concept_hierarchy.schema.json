@@ -351,18 +351,18 @@
         },
         "CHSchemaArrayShorthand": {
           "title": "CH array shorthand",
-          "description": "['<custom type name>', 'Reference'|'NoRef'] — valid only when the type name is NOT a draft-07 builtin. Builtin-type array shorthands are rejected at runtime.",
+          "description": "['<custom type name>', 'Addr'|'Any'] — valid only when the type name is NOT a draft-07 builtin. Builtin-type array shorthands are rejected at runtime.",
           "type": "array",
           "items": [
             { "type": "string", "minLength": 1 },
-            { "type": "string", "enum": ["Reference", "NoRef"] }
+            { "type": "string", "enum": ["Addr", "Any"] }
           ],
           "minItems": 2,
           "maxItems": 2
         },
         "CHSchemaObject": {
           "title": "CH schema object",
-          "description": "Full object form. Adds 'ref' (Reference|NoRef) and treats 'default' as an unvalidated expression for custom types. All sub-schema positions accept CHSchema, including the string and array shorthands. additionalProperties:false enforces the keyword allowlist; stricter semantic rules (ref only on custom types, custom type name validity, etc.) are enforced at runtime.",
+          "description": "Full object form. Adds 'provenance' (Addr|Any) and treats 'default' as an unvalidated expression for custom types. All sub-schema positions accept CHSchema, including the string and array shorthands. additionalProperties:false enforces the keyword allowlist; stricter semantic rules (ref only on custom types, custom type name validity, etc.) are enforced at runtime.",
           "type": "object",
           "properties": {
             "$ref": {
@@ -388,9 +388,9 @@
               ]
             },
 
-            "ref": {
+            "provenance": {
               "type": "string",
-              "enum": ["Reference", "NoRef"],
+              "enum": ["Addr", "Any"],
               "description": "CH extension. Only valid when 'type' is a single custom type name; enforced at runtime."
             },
 
@@ -586,7 +586,7 @@
           "description": "A string encoding a literalDeserialization expression: one or more '|'-separated literal alternatives. Element and value types (typeAndLiteralDeserialization) may be any literal type expression OR a bare concept name (upperCaseName starting with uppercase).",
           "type": "string",
           "minLength": 1,
-          "pattern": "^(null|boolean|integer|number|string|array(<(([A-Z][A-Za-z0-9_]*|[^()]+)|(\\(([A-Z][A-Za-z0-9_]*|[^()]+),\\s((NoRef)|(Reference))\\)))>(\\{(([0-9]+,\\s[0-9]+)|(<=?[0-9]+)|([0-9]+<=?)|[0-9]+)\\})?|\\[(([^()]+)|(\\([^()]+,\\s((NoRef)|(Reference))\\)))?\\])?|object(\\{(([^:]+:([^:()}]+|([^:()}]+,\\s((NoRef)|(Reference)))))(,\\s[^:]+:([^:()}]+|([^:()}]+,\\s((NoRef)|(Reference)))))*|(keys[=<]\\{[^}]+(,\\s[^}]+)*\\},\\s)?values=([^()}]+|([^()}]+,\\s((NoRef)|(Reference))))|(keys[=<](props|funcs)((\\+\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))|(\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))?),\\svalues=((x|[A-Z][A-Za-z0-9_<>\\[\\].]*)|((x|[A-Z][A-Za-z0-9_<>\\[\\].]*),\\s((NoRef)|(Reference))))))?\\})?)(\\s\\|\\s(null|boolean|integer|number|string|array(<(([A-Z][A-Za-z0-9_]*|[^()]+)|(\\(([A-Z][A-Za-z0-9_]*|[^()]+),\\s((NoRef)|(Reference))\\)))>(\\{(([0-9]+,\\s[0-9]+)|(<=?[0-9]+)|([0-9]+<=?)|[0-9]+)\\})?|\\[(([^()]+)|(\\([^()]+,\\s((NoRef)|(Reference))\\)))?\\])?|object(\\{(([^:]+:([^:()}]+|([^:()}]+,\\s((NoRef)|(Reference)))))(,\\s[^:]+:([^:()}]+|([^:()}]+,\\s((NoRef)|(Reference)))))*|(keys[=<]\\{[^}]+(,\\s[^}]+)*\\},\\s)?values=([^()}]+|([^()}]+,\\s((NoRef)|(Reference))))|(keys[=<](props|funcs)((\\+\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))|(\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))?),\\svalues=((x|[A-Z][A-Za-z0-9_<>\\[\\].]*)|((x|[A-Z][A-Za-z0-9_<>\\[\\].]*),\\s((NoRef)|(Reference))))))?\\})?))*$"
+          "pattern": "^(null|boolean|integer|number|string|array(<(([A-Z][A-Za-z0-9_]*|[^()]+)|(\\(([A-Z][A-Za-z0-9_]*|[^()]+),\\s((Any)|(Addr))\\)))>(\\{(([0-9]+,\\s[0-9]+)|(<=?[0-9]+)|([0-9]+<=?)|[0-9]+)\\})?|\\[(([^()]+)|(\\([^()]+,\\s((Any)|(Addr))\\)))?\\])?|object(\\{(([^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))(,\\s[^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))*|(keys[=<]\\{[^}]+(,\\s[^}]+)*\\},\\s)?values=([^()}]+|([^()}]+,\\s((Any)|(Addr))))|(keys[=<](props|funcs)((\\+\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))|(\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))?),\\svalues=((x|[A-Z][A-Za-z0-9_<>\\[\\].]*)|((x|[A-Z][A-Za-z0-9_<>\\[\\].]*),\\s((Any)|(Addr))))))?\\})?)(\\s\\|\\s(null|boolean|integer|number|string|array(<(([A-Z][A-Za-z0-9_]*|[^()]+)|(\\(([A-Z][A-Za-z0-9_]*|[^()]+),\\s((Any)|(Addr))\\)))>(\\{(([0-9]+,\\s[0-9]+)|(<=?[0-9]+)|([0-9]+<=?)|[0-9]+)\\})?|\\[(([^()]+)|(\\([^()]+,\\s((Any)|(Addr))\\)))?\\])?|object(\\{(([^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))(,\\s[^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))*|(keys[=<]\\{[^}]+(,\\s[^}]+)*\\},\\s)?values=([^()}]+|([^()}]+,\\s((Any)|(Addr))))|(keys[=<](props|funcs)((\\+\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))|(\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))?),\\svalues=((x|[A-Z][A-Za-z0-9_<>\\[\\].]*)|((x|[A-Z][A-Za-z0-9_<>\\[\\].]*),\\s((Any)|(Addr))))))?\\})?))*$"
         },
 
         "domainConceptProperties": {
@@ -1022,7 +1022,7 @@
               "type": "array",
               "items": [
                 { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
-                { "type": "string", "enum": ["NoRef", "Reference"] }
+                { "type": "string", "enum": ["Any", "Addr"] }
               ],
               "minItems": 1,
               "maxItems": 2
@@ -1039,7 +1039,7 @@
               "items": [
                 { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                 { "type": "string", "enum": ["Get", "Modify", "GetModify"] },
-                { "type": "string", "enum": ["NoRef", "Reference", "EmptyReference"] }
+                { "type": "string", "enum": ["Any", "Addr", "ResetAddr"] }
               ],
               "minItems": 1,
               "maxItems": 3
@@ -1056,7 +1056,7 @@
               "items": [
                 { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
                 { "type": "string", "enum": ["Get", "Modify"] },
-                { "type": "string", "enum": ["NoRef", "Reference"] }
+                { "type": "string", "enum": ["Any", "Addr"] }
               ],
               "minItems": 1,
               "maxItems": 3

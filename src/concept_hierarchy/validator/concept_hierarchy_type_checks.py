@@ -16,12 +16,12 @@ from frozendict import frozendict
 
 from concept_hierarchy.data.concept_hierarchy import (
     DomainConceptData,
-    FunctionArgumentModifier,
-    FunctionArgumentReference,
+    FunctionArgumentAccessor,
+    FunctionArgumentProvenance,
     FunctionData,
-    FunctionResultModifier,
+    FunctionResultAccessor,
     TypeData,
-    ValueDomainArgumentReference,
+    ValueDomainArgumentProvenance,
     ValueDomainData,
 )
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
@@ -368,11 +368,11 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
     #  Because here, the type_instantiation_validator only checks instantiated types, which do not have template vars.
 
     function_evaluation_argument_types: dict[str, InstantiatedType] = {}
-    function_evaluation_argument_modifiers: dict[str, FunctionArgumentModifier] = {}
-    function_evaluation_argument_reference_types: dict[str, FunctionArgumentReference] = {}
+    function_evaluation_argument_access: dict[str, FunctionArgumentAccessor] = {}
+    function_evaluation_argument_provenance: dict[str, FunctionArgumentProvenance] = {}
     for f_eval_arg_name, f_eval_arg_type in c.evaluation_argument_types.items():
-        assert f_eval_arg_name in c.evaluation_argument_modifier_types
-        assert f_eval_arg_name in c.evaluation_argument_reference_types
+        assert f_eval_arg_name in c.evaluation_argument_access_types
+        assert f_eval_arg_name in c.evaluation_argument_provenance_types
         # validate the type of the function evaluation argument!
         assert isinstance(f_eval_arg_type, str)
         location_id = c.location_of(FunctionDefinition.function_interface, f_eval_arg_name)
@@ -388,15 +388,15 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
                 causes=[e],
             )
         function_evaluation_argument_types[f_eval_arg_name] = ch_type
-        function_evaluation_argument_modifiers[f_eval_arg_name] = FunctionArgumentModifier(
-            c.evaluation_argument_modifier_types[f_eval_arg_name]
+        function_evaluation_argument_access[f_eval_arg_name] = FunctionArgumentAccessor(
+            c.evaluation_argument_access_types[f_eval_arg_name]
         )
-        function_evaluation_argument_reference_types[f_eval_arg_name] = FunctionArgumentReference(
-            c.evaluation_argument_reference_types[f_eval_arg_name]
+        function_evaluation_argument_provenance[f_eval_arg_name] = FunctionArgumentProvenance(
+            c.evaluation_argument_provenance_types[f_eval_arg_name]
         )
     datum.evaluation_argument_types = frozendict(function_evaluation_argument_types)
-    datum.evaluation_argument_modifier_type = frozendict(function_evaluation_argument_modifiers)
-    datum.evaluation_argument_reference_type = frozendict(function_evaluation_argument_reference_types)
+    datum.evaluation_argument_access_type = frozendict(function_evaluation_argument_access)
+    datum.evaluation_argument_provenance_type = frozendict(function_evaluation_argument_provenance)
     datum.evaluation_interface = c.evaluation_interface
     # process type of result
     if c.returns_something:
@@ -413,20 +413,18 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
                 causes=[e],
             )
         datum.evaluation_result_type = ch_type
-        datum.evaluation_result_modifier_type = FunctionResultModifier(c.result_modifier_type)
-        datum.evaluation_result_reference_type = ValueDomainArgumentReference(c.result_reference_type)
+        datum.evaluation_result_access_type = FunctionResultAccessor(c.result_access_type)
+        datum.evaluation_result_provenance_type = ValueDomainArgumentProvenance(c.result_provenance_type)
     elif isinstance(c.result_defined_in, str):
         datum.evaluation_result_type = context.model.functions[c.result_defined_in].evaluation_result_type
-        datum.evaluation_result_modifier_type = context.model.functions[
+        datum.evaluation_result_access_type = context.model.functions[c.result_defined_in].evaluation_result_access_type
+        datum.evaluation_result_provenance_type = context.model.functions[
             c.result_defined_in
-        ].evaluation_result_modifier_type
-        datum.evaluation_result_reference_type = context.model.functions[
-            c.result_defined_in
-        ].evaluation_result_reference_type
+        ].evaluation_result_provenance_type
     else:
         datum.evaluation_result_type = None if c.result_defined_in is None else UNINITIALIZED
-        datum.evaluation_result_modifier_type = None
-        datum.evaluation_result_reference_type = None
+        datum.evaluation_result_access_type = None
+        datum.evaluation_result_provenance_type = None
 
     sub_scope_data: dict[str, dict[str, tuple[TypeValue, bool]]] = {}
     for f_arg, new_var_data in c.sub_scopes.items():

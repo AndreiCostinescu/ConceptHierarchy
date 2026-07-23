@@ -37,7 +37,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         value_domain_default_serialization,
     }
     allowed_default_serializations: set[str] = {"null", "boolean", "integer", "number", "string"}
-    argument_reference_types = {"NoRef", "Reference"}
+    argument_provenance_types = {"Any", "Addr"}
 
     def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
         super().__init__(name, definition_data, definition_location_id)
@@ -141,7 +141,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                 if (
                     len(instantiation_data) == 2
                     and all(isinstance(x, str) for x in instantiation_data)
-                    and instantiation_data[1] in ValueDomainDefinition.argument_reference_types
+                    and instantiation_data[1] in ValueDomainDefinition.argument_provenance_types
                 ):
                     self.instantiation = [(tuple("" for _ in self.template_argument_order), instantiation_data)]
                 else:

@@ -20,7 +20,7 @@ A node either:
 
 * is a **boolean schema** (``True``/``False``, as in draft-07) -- a leaf, with no further structure;
 * is a **custom-type node** (``is_custom_type=True``) -- a leaf as far as JSON-Schema structure is concerned
-  (it carries no ``properties``/``items`` etc. of its own), but carries ``custom_type``, ``referenceType`` and an
+  (it carries no ``properties``/``items`` etc. of its own), but carries ``custom_type``, ``provenance`` and an
   optional, *unvalidated* ``default_expr``;
 * is a **builtin/composite node** -- carries the (recursively parsed) draft-07 structure:
   ``properties``, ``items``, ``allOf``/``anyOf``/..., etc., plus any other draft-07 keywords
@@ -36,7 +36,7 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
-from concept_hierarchy.data.expressions.expression_utils import ExpressionRef
+from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import LocationId, PathSegment
@@ -81,7 +81,7 @@ class CHSchemaNode:
     # --- custom types -------------------------------------------------
     is_custom_type: bool = False
     custom_type: TypeValue | None = None
-    ref: ExpressionRef | None = None  # "Reference" | "NoRef", only set if is_custom_type
+    provenance: ExpressionProvenance | None = None  # "Addr" | "Any", only set if is_custom_type
     has_default: bool = False
     default_expr: object = None
     """
@@ -161,8 +161,8 @@ class CHSchemaNode:
         if self.is_custom_type:
             if self.custom_type is not None:
                 non_empty_fields.append(f"type={self.custom_type}")
-            if self.ref is not None:
-                non_empty_fields.append(f"ref={self.ref}")
+            if self.provenance is not None:
+                non_empty_fields.append(f"provenance={self.provenance}")
             if self.has_default:
                 non_empty_fields.append(f"default={self.default_expr}")
         elif self.type_value is not None:
@@ -339,7 +339,7 @@ class CHSchemaNode:
         if self.is_boolean_schema:
             kind = f"bool({self.canonical})"
         elif self.is_custom_type:
-            kind = f"custom:{self.custom_type.full_name} ({self.ref.value})"
+            kind = f"custom:{self.custom_type.full_name} ({self.provenance.value})"
         else:
             kind = f"type={self.type_value!r}" if self.type_value is not None else "composite"
         location_id_str = ", ".join(f'"{x}"' for x in self.location_id)

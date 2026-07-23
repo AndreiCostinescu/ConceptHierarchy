@@ -542,21 +542,21 @@ class ConceptHierarchyChecker:
                                 eval_arg_type_in_first_definition = defining_parent_c.evaluation_argument_types[
                                     eval_arg
                                 ]
-                                eval_arg_mod_in_first_definition = defining_parent_c.evaluation_argument_modifier_types[
-                                    eval_arg
-                                ]
-                                eval_arg_ref_in_first_definition = (
-                                    defining_parent_c.evaluation_argument_reference_types[eval_arg]
+                                eval_arg_access_in_first_definition = (
+                                    defining_parent_c.evaluation_argument_access_types[eval_arg]
+                                )
+                                eval_arg_provenance_in_first_definition = (
+                                    defining_parent_c.evaluation_argument_provenance_types[eval_arg]
                                 )
                                 if (
                                     (c.evaluation_argument_types[eval_arg] != eval_arg_type_in_first_definition)
                                     or (
-                                        c.evaluation_argument_modifier_types[eval_arg]
-                                        != eval_arg_mod_in_first_definition
+                                        c.evaluation_argument_provenance_types[eval_arg]
+                                        != eval_arg_access_in_first_definition
                                     )
                                     or (
-                                        c.evaluation_argument_reference_types[eval_arg]
-                                        != eval_arg_ref_in_first_definition
+                                        c.evaluation_argument_provenance_types[eval_arg]
+                                        != eval_arg_provenance_in_first_definition
                                     )
                                 ):
                                     raise CHSemanticError(

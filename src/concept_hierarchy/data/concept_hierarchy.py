@@ -18,10 +18,10 @@ from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.expressions.expression_utils import (
-    FunctionArgumentModifier,
-    FunctionArgumentReference,
-    FunctionResultModifier,
-    ValueDomainArgumentReference,
+    FunctionArgumentAccessor,
+    FunctionArgumentProvenance,
+    FunctionResultAccessor,
+    ValueDomainArgumentProvenance,
 )
 from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
@@ -88,12 +88,12 @@ class ValueDomainData(TypeData):
 class FunctionData(ValueDomainData):
     evaluation_interface: tuple[str, ...]
     evaluation_argument_types: frozendict[str, TypeValue]
-    evaluation_argument_modifier_type: frozendict[str, FunctionArgumentModifier]
-    evaluation_argument_reference_type: frozendict[str, FunctionArgumentReference]
+    evaluation_argument_access_type: frozendict[str, FunctionArgumentAccessor]
+    evaluation_argument_provenance_type: frozendict[str, FunctionArgumentProvenance]
     evaluation_argument_default_value: frozendict[str, object]  # replace object with Expression
     evaluation_result_type: TypeValue | None | object
-    evaluation_result_modifier_type: FunctionResultModifier | None
-    evaluation_result_reference_type: ValueDomainArgumentReference | None
+    evaluation_result_access_type: FunctionResultAccessor | None
+    evaluation_result_provenance_type: ValueDomainArgumentProvenance | None
 
     procedure: object  # replace object with expression
 

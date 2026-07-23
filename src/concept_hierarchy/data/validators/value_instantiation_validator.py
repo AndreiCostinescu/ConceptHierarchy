@@ -42,7 +42,7 @@ from abc import ABC, abstractmethod
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression import Expression
-from concept_hierarchy.data.expressions.expression_utils import ExpressionRef
+from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
@@ -76,7 +76,7 @@ class CHValueValidator(ABC):
     def parse_custom_type(
         self,
         custom_type: TypeValue,
-        ref: ExpressionRef,
+        provenance: ExpressionProvenance,
         default_expr: object,
         value: object,
         location_id: LocationId,
@@ -90,7 +90,7 @@ class CHValueValidator(ABC):
 
         Args:
             custom_type: The resolved type value from the schema node.
-            ref: Either ``"Reference"`` or ``"NoRef"``.
+            provenance: Either ``"Addr"`` or ``"Any"``.
             default_expr: The raw default-value expression from the schema,
                 or :data:`MISSING` if no default was defined.
             value: The raw JSON value at ``location_id``, or :data:`MISSING`
@@ -107,7 +107,7 @@ class CHValueValidator(ABC):
     def check_value(
         self,
         type_name: TypeValue,
-        ref: ExpressionRef,
+        provenance: ExpressionProvenance,
         default_expr: object,
         value: object,
         location_id: LocationId,
@@ -117,7 +117,7 @@ class CHValueValidator(ABC):
 
         Args:
             type_name: The custom type's name.
-            ref: Either ``"Reference"`` or ``"NoRef"``.
+            provenance: Either ``"Addr"`` or ``"Any"``.
             default_expr: The raw (unvalidated) default-value expression recorded for this node, or :data:`MISSING`
                 if none was given.
             value: The value found at ``location_id``, or :data:`MISSING` if no value was present at all
@@ -128,7 +128,7 @@ class CHValueValidator(ABC):
             ``None`` if ``value`` is acceptable, otherwise a
             :class:`CHSyntaxError` or :class:`CHSemanticError` describing the problem.
         """
-        _, errors = self.parse_custom_type(type_name, ref, default_expr, value, location_id)
+        _, errors = self.parse_custom_type(type_name, provenance, default_expr, value, location_id)
         return errors[0] if errors else None
 
 
@@ -197,7 +197,7 @@ def _validate(
     # --- custom type: delegate to the value context ----------------------
     if node.is_custom_type:
         default_expr = node.default_expr if node.has_default else MISSING
-        err = context.check_value(node.custom_type, node.ref, default_expr, value, value_path)
+        err = context.check_value(node.custom_type, node.provenance, default_expr, value, value_path)
         if err is not None:
             record(errors, collect_all_errors, err)
         return
@@ -308,7 +308,11 @@ def _validate_object(
             if node.property_names.is_custom_type:
                 default_expr = node.property_names.default_expr if node.property_names.has_default else MISSING
                 err = context.check_value(
-                    node.property_names.custom_type, node.property_names.ref, default_expr, key, value_path + [key]
+                    node.property_names.custom_type,
+                    node.property_names.provenance,
+                    default_expr,
+                    key,
+                    value_path + [key],
                 )
                 if err is not None:
                     err.part = PathPart.KEY

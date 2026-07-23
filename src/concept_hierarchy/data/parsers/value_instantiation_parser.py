@@ -214,7 +214,7 @@ def _parse_custom(
     used_default = value is MISSING
     default_expr = node.default_expr if node.has_default else MISSING
 
-    expression, errs = context.parse_custom_type(node.custom_type, node.ref, default_expr, value, location_id)
+    expression, errs = context.parse_custom_type(node.custom_type, node.provenance, default_expr, value, location_id)
     for err in errs:
         local.append(err)
         record(global_errors, collect_all_errors, err)
@@ -224,7 +224,7 @@ def _parse_custom(
         schema_node=node,
         errors=local,
         custom_type=node.custom_type,
-        ref=node.ref,
+        provenance=node.provenance,
         used_default=used_default,
         default_expr=default_expr,
         expression=expression,
@@ -375,7 +375,9 @@ def _parse_object(
         if pn.is_custom_type:
             for key in value:
                 default_expr = pn.default_expr if pn.has_default else MISSING
-                _, errs = context.parse_custom_type(pn.custom_type, pn.ref, default_expr, key, location_id + [key])
+                _, errs = context.parse_custom_type(
+                    pn.custom_type, pn.provenance, default_expr, key, location_id + [key]
+                )
                 for err in errs:
                     err.part = PathPart.KEY
                     rec(err)

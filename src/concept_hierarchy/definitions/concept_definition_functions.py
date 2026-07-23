@@ -43,8 +43,8 @@ class FunctionDefinition(HiddenImplementationDefinition):
         function_sub_scopes,
     }
     evaluation_interface_keywords: set[str] = {function_result, function_default_argument_values}
-    argument_reference_types: list[str] = ["NoRef", "Reference", "EmptyReference"]
-    argument_modifier_types: list[str] = ["Get", "Modify", "GetModify"]
+    argument_provenance_types: list[str] = ["Any", "Addr", "ResetAddr"]
+    argument_access_types: list[str] = ["Get", "Modify", "GetModify"]
     default_function_instantiation_schema = {"type": "object", "maxProperties": 0, "additionalProperties": False}
 
     def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
@@ -83,12 +83,12 @@ class FunctionDefinition(HiddenImplementationDefinition):
 
         self.evaluation_interface: tuple[str, ...] = ()
         self.evaluation_argument_types: dict[str, str] = {}
-        self.evaluation_argument_reference_types: dict[str, str] = {}
-        self.evaluation_argument_modifier_types: dict[str, str] = {}
+        self.evaluation_argument_provenance_types: dict[str, str] = {}
+        self.evaluation_argument_access_types: dict[str, str] = {}
         self.evaluation_argument_default_values: dict[str, object] = {}
         self.result_type: str | None = None
-        self.result_reference_type: str | None = None
-        self.result_modifier_type: str | None = None
+        self.result_provenance_type: str | None = None
+        self.result_access_type: str | None = None
 
     @classmethod
     def from_node(cls, concept_definition: ConceptDefinition):
@@ -106,12 +106,12 @@ class FunctionDefinition(HiddenImplementationDefinition):
 
         domain_concept.evaluation_interface = ()
         domain_concept.evaluation_argument_types = {}
-        domain_concept.evaluation_argument_reference_types = {}
-        domain_concept.evaluation_argument_modifier_types = {}
+        domain_concept.evaluation_argument_provenance_types = {}
+        domain_concept.evaluation_argument_access_types = {}
         domain_concept.evaluation_argument_default_values = {}
         domain_concept.result_type = None
-        domain_concept.result_reference_type = None
-        domain_concept.result_modifier_type = None
+        domain_concept.result_provenance_type = None
+        domain_concept.result_access_type = None
 
         return domain_concept
 
@@ -285,7 +285,7 @@ class FunctionDefinition(HiddenImplementationDefinition):
                 else:
                     new_var_dict_def[new_var_name] = (new_var_def[0], False)
 
-    def process_type_reference_and_modifier_of_argument(self, arg_name, arg_type_def) -> tuple[str, str, str]:
+    def process_type_provenance_and_accessor_of_argument(self, arg_name, arg_type_def) -> tuple[str, str, str]:
         if not isinstance(arg_type_def, (str, list)) or (
             isinstance(arg_type_def, list)
             and (not (1 <= len(arg_type_def) <= 3) or any(not isinstance(x, str) for x in arg_type_def))
@@ -300,41 +300,41 @@ class FunctionDefinition(HiddenImplementationDefinition):
             raise CHSyntaxError(
                 f"{self.definition_type()} argument type definitions must be either a JSON string "
                 f"(defining the argument's type) or an array of at least 1 and at most 3 string items "
-                f"(defining the argument's type, its modifier type, and its reference type)!\n\t"
+                f"(defining the argument's type, its access type, and its provenance type)!\n\t"
                 f"Got {arg_type_def!r}",
                 location_id=self.location_id(FunctionDefinition.function_interface, arg_name),
                 part=PathPart.VALUE,
             )
         elif isinstance(arg_type_def, str):
             arg_type = arg_type_def
-            arg_ref_type = self.argument_reference_types[0]
-            arg_mod_type = self.argument_modifier_types[0]
+            arg_provenance_type = self.argument_provenance_types[0]
+            arg_access_type = self.argument_access_types[0]
         else:
             arg_type = arg_type_def[0]
             if len(arg_type_def) > 1:
-                arg_ref_type = arg_type_def[1]
+                arg_provenance_type = arg_type_def[1]
                 if len(arg_type_def) > 2:
-                    arg_mod_type = arg_type_def[2]
+                    arg_access_type = arg_type_def[2]
                 else:
-                    arg_mod_type = self.argument_modifier_types[0]
+                    arg_access_type = self.argument_access_types[0]
             else:
-                arg_ref_type = self.argument_reference_types[0]
-                arg_mod_type = self.argument_modifier_types[0]
-        if arg_ref_type not in self.argument_reference_types:
+                arg_provenance_type = self.argument_provenance_types[0]
+                arg_access_type = self.argument_access_types[0]
+        if arg_provenance_type not in self.argument_provenance_types:
             raise CHSyntaxError(
-                f"{self.definition_type()} argument reference definitions must be "
-                f"{self.argument_reference_types!r}, not {arg_ref_type}",
+                f"{self.definition_type()} argument provenance definitions must be "
+                f"{self.argument_provenance_types!r}, not {arg_provenance_type}",
                 location_id=self.location_id(FunctionDefinition.function_interface, arg_name),
                 part=PathPart.VALUE,
             )
-        if arg_mod_type not in self.argument_modifier_types:
+        if arg_access_type not in self.argument_access_types:
             raise CHSyntaxError(
-                f"{self.definition_type()} argument modifier definitions must be "
-                f"{self.argument_modifier_types!r}, not {arg_mod_type}",
+                f"{self.definition_type()} argument accessor definitions must be "
+                f"{self.argument_access_types!r}, not {arg_access_type}",
                 location_id=self.location_id(FunctionDefinition.function_interface, arg_name),
                 part=PathPart.VALUE,
             )
-        return arg_type, arg_ref_type, arg_mod_type
+        return arg_type, arg_provenance_type, arg_access_type
 
     def concept_data_check(self):
         super().concept_data_check()
@@ -375,17 +375,17 @@ class FunctionDefinition(HiddenImplementationDefinition):
                         f"Got {arg_name}!",
                         location_id=self.location_id(FunctionDefinition.function_interface, arg_name),
                     )
-                type_def_res = self.process_type_reference_and_modifier_of_argument(arg_name, arg_type_def)
+                type_def_res = self.process_type_provenance_and_accessor_of_argument(arg_name, arg_type_def)
                 self.evaluation_argument_types[arg_name] = type_def_res[0]
-                self.evaluation_argument_reference_types[arg_name] = type_def_res[1]
-                self.evaluation_argument_modifier_types[arg_name] = type_def_res[2]
+                self.evaluation_argument_provenance_types[arg_name] = type_def_res[1]
+                self.evaluation_argument_access_types[arg_name] = type_def_res[2]
             if FunctionDefinition.function_result in self.interface:
-                type_def_res = self.process_type_reference_and_modifier_of_argument(
+                type_def_res = self.process_type_provenance_and_accessor_of_argument(
                     FunctionDefinition.function_result, self.interface[FunctionDefinition.function_result]
                 )
                 self.result_type = type_def_res[0]
-                self.result_reference_type = type_def_res[1]
-                self.result_modifier_type = type_def_res[2]
+                self.result_provenance_type = type_def_res[1]
+                self.result_access_type = type_def_res[2]
             if FunctionDefinition.function_default_argument_values in self.interface:
                 self.evaluation_argument_default_values = self.interface[
                     FunctionDefinition.function_default_argument_values

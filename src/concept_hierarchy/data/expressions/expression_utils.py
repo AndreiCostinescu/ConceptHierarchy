@@ -16,27 +16,27 @@
 from enum import Enum
 
 
-class ValueDomainArgumentReference(Enum):
-    NO_REF = "NoRef"
-    REF = "Reference"
+class ValueDomainArgumentProvenance(Enum):
+    ANY = "Any"
+    ADDR = "Addr"
 
 
-class FunctionResultModifier(Enum):
+class FunctionResultAccessor(Enum):
     GET = "Get"
     MOD = "Modify"
 
 
-ExpressionRef = ValueDomainArgumentReference
-ExpressionMod = FunctionResultModifier
+ExpressionProvenance = ValueDomainArgumentProvenance
+ExpressionAccess = FunctionResultAccessor
 
 
-class FunctionArgumentReference(Enum):
-    NO_REF = "NoRef"
-    REF = "Reference"
-    EMPTY_REF = "EmptyReference"
+class FunctionArgumentProvenance(Enum):
+    ANY = "Any"
+    ADDR = "Addr"
+    RESET_ADDR = "ResetAddr"
 
 
-class FunctionArgumentModifier(Enum):
+class FunctionArgumentAccessor(Enum):
     GET = "Get"
     MOD = "Modify"
     GET_MOD = "GetModify"
@@ -54,10 +54,10 @@ class ExpressionDefinition(Enum):
     """Literal formula: try to interpret data as formula specified in "instantiation"."""
     VALUE_DOMAIN_CAST_INSTANTIATION = 2
     """Subtype creation arguments: { SubType: <instantiation of SubType from "instantiation" data> }"""
-    FUNCTION_RETURN_VALUE_REF = 3
-    """Function evaluation with reference result."""
-    FUNCTION_RETURN_VALUE_NO_REF = 4
-    """Function evaluation with non-reference result."""
+    FUNCTION_RETURN_VALUE_ADDR = 3
+    """Function evaluation with Addr result."""
+    FUNCTION_RETURN_VALUE_NO_ADDR = 4
+    """Function evaluation with non-Addr result."""
     VARIABLE = 5
     """var in variable_context"""
     INSTANCE_PROPERTY = 6
@@ -69,59 +69,59 @@ class ExpressionType(Enum):
     """
     Condenses ExpressionDefinition.VALUE_DOMAIN_INSTANTIATION and ExpressionDefinition.VALUE_DOMAIN_CAST_INSTANTIATION.
     """
-    FUNCTION_EVALUATION_REF = 2
-    """Function evaluation with reference result type"""
-    FUNCTION_EVALUATION_NO_REF = 3
-    """Function evaluation with non-reference result type"""
+    FUNCTION_EVALUATION_ADDR = 2
+    """Function evaluation with Addr result type"""
+    FUNCTION_EVALUATION_NO_ADDR = 3
+    """Function evaluation with not Addr result type"""
     VARIABLE = 4  #
     """Condenses ExpressionDefinition.VARIABLE and ExpressionDefinition.INSTANCE_PROPERTY."""
 
 
-def get_permitted_expression_types_based_on_reference_and_modifier_type(
-    reference_type: ExpressionRef, modifier_type: ExpressionMod, is_strict_subtype: bool
+def get_permitted_expression_types_based_on_provenance_and_access_type(
+    provenance_type: ExpressionProvenance, access_type: ExpressionAccess, is_strict_subtype: bool
 ):
     # Build the set of permitted ExpressionTypes for this combination
-    if reference_type == ExpressionRef.REF:
-        if not modifier_type == ExpressionMod.MOD:
-            # Reference / EmptyReference + Get:
-            # Both exact-type and strict-subtype allow REF functions and variables.
+    if provenance_type == ExpressionProvenance.ADDR:
+        if not access_type == ExpressionAccess.MOD:
+            # Addr / ResetAddr + Get:
+            # Both exact-type and strict-subtype allow Addr functions and variables.
             permitted = {
-                ExpressionType.FUNCTION_EVALUATION_REF,
+                ExpressionType.FUNCTION_EVALUATION_ADDR,
                 ExpressionType.VARIABLE,
             }
         else:
-            # Reference / EmptyReference + Modify|GetModify:
+            # Addr / ResetAddr + Modify|GetModify:
             # Strict subtypes are *not* permitted (cannot write back through a narrowed ref).
             if is_strict_subtype:
                 permitted = set()
             else:
                 permitted = {
-                    ExpressionType.FUNCTION_EVALUATION_REF,
+                    ExpressionType.FUNCTION_EVALUATION_ADDR,
                     ExpressionType.VARIABLE,
                 }
     else:
-        if not modifier_type == ExpressionMod.MOD:
-            # NoRef + Get: everything is permitted regardless of subtype relationship.
+        if not access_type == ExpressionAccess.MOD:
+            # Any + Get: everything is permitted regardless of subtype relationship.
             permitted = {
                 ExpressionType.VALUE_DOMAIN_LITERAL,
-                ExpressionType.FUNCTION_EVALUATION_REF,
-                ExpressionType.FUNCTION_EVALUATION_NO_REF,
+                ExpressionType.FUNCTION_EVALUATION_ADDR,
+                ExpressionType.FUNCTION_EVALUATION_NO_ADDR,
                 ExpressionType.VARIABLE,
             }
         else:
-            # NoRef + Modify|GetModify:
+            # Any + Modify|GetModify:
             if is_strict_subtype:
-                # Only value-producing expressions are safe (no aliasing via ref).
+                # Only value-producing expressions are safe (no aliasing via addr).
                 permitted = {
                     ExpressionType.VALUE_DOMAIN_LITERAL,
-                    ExpressionType.FUNCTION_EVALUATION_NO_REF,
+                    ExpressionType.FUNCTION_EVALUATION_NO_ADDR,
                 }
             else:
-                # Exact type â€“ all expression types permitted.
+                # Exact type -> all expression types permitted.
                 permitted = {
                     ExpressionType.VALUE_DOMAIN_LITERAL,
-                    ExpressionType.FUNCTION_EVALUATION_REF,
-                    ExpressionType.FUNCTION_EVALUATION_NO_REF,
+                    ExpressionType.FUNCTION_EVALUATION_ADDR,
+                    ExpressionType.FUNCTION_EVALUATION_NO_ADDR,
                     ExpressionType.VARIABLE,
                 }
     return permitted

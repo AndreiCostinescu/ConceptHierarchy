@@ -34,6 +34,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from concept_hierarchy.data.expressions.expression import Expression
+from concept_hierarchy.data.expressions.expression_utils import ValueDomainArgumentProvenance
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.errors import ConceptHierarchyError, LocationId, PathSegment
@@ -99,7 +100,7 @@ class ParsedCustomValue(ParsedValue):
     Attributes:
         custom_type: The resolved :class:`~concept_hierarchy_types.TypeValue`
             from the schema node.
-        ref: ``"Reference"`` or ``"NoRef"``.
+        provenance: ``"Addr"`` or ``"Any"``.
         used_default: ``True`` when the value was absent (``MISSING``) and
             the schema's ``default_expr`` was used instead.
         default_expr: The raw default-value expression from the schema, or
@@ -112,7 +113,7 @@ class ParsedCustomValue(ParsedValue):
     schema_node: CHSchemaNode
     errors: list[ConceptHierarchyError]
     custom_type: TypeValue
-    ref: str
+    provenance: ValueDomainArgumentProvenance
     used_default: bool
     default_expr: object  # MISSING sentinel or raw expression
     expression: Expression | None
