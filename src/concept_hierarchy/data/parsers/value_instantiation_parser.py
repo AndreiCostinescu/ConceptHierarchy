@@ -263,9 +263,9 @@ def _parse_structural(
         schema: CHSchemaNode, val: object, child_loc: LocationId
     ) -> tuple[ParsedValue | None, list[ConceptHierarchyError]]:
         """Parse silently — errors do not propagate to global_errors."""
-        silent: list[ConceptHierarchyError] = []
-        result = _parse(schema, val, True, child_loc, context, silent, True)
-        return result, silent
+        silent_errors: list[ConceptHierarchyError] = []
+        result = _parse(schema, val, True, child_loc, context, silent_errors, True)
+        return result, silent_errors
 
     structural = ParsedStructural(location_id=location_id, schema_node=node, errors=local, value=value)
 
@@ -556,11 +556,10 @@ def _parse_if_then_else(
     child_p,
     child_silent,
 ) -> None:
-    """Evaluate if/then/else.  Store the if result as metadata and the taken
-    branch result as a structural child."""
+    """Evaluate if/then/else.  Store the "if" result as metadata and the taken branch result as a structural child."""
     if_result, silent = child_silent(node.if_, value, location_id)
-    # Store the if evaluation result as metadata regardless of whether it
-    # matched — callers can inspect it, but it does not affect is_valid().
+    # Store the "if" evaluation result as metadata regardless of whether it matched —
+    # callers can inspect it, but it does not affect is_valid().
     structural.if_parsed = if_result
 
     if not silent:
