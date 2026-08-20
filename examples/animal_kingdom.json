@@ -161,7 +161,10 @@
                 "instantiation": {
                     "type": "object",
                     "properties": {
-                        "concepts": "List<ConceptValue>",
+                        "concepts": {
+                            "type": "List<ConceptValue>",
+                            "default": []
+                        },
                         "properties": "ConceptParameters",
                         "instanceName": "string"
                     }
@@ -169,7 +172,7 @@
             }
         },
         "Instance": {
-            "directParents": ["ValueDomain"],
+            "directParents": ["InstanceBase"],
             "data": {
                 "templateContext": {
                     "order": ["AcceptConcepts...", "RejectConcepts..."],
