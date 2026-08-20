@@ -1007,8 +1007,11 @@ class DomainConceptDefinition(ConceptDefinition):
                             location_id=self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                             part=PathPart.VALUE,
                         )
-                    # interpret as default value of the static property
-                    self.functions[func_name] = {FunctionDefinition.STATIC: True, FunctionDefinition.DEFAULT: func_data}
+                    # interpret as default value of the non-static function
+                    self.functions[func_name] = {
+                        FunctionDefinition.STATIC: False,
+                        FunctionDefinition.DEFAULT: func_data,
+                    }
                     self.is_shorthand_function_definition.add(func_name)
         self.initialize_domain_concept_specialization_data_from_defined_data(
             ForPropertyOrFunction.FUNCTION,
@@ -1023,7 +1026,7 @@ class DomainConceptDefinition(ConceptDefinition):
             for func_data_def_key, func_data_def_val in func_data.items():
                 assert func_data_def_key in DomainConceptDefinition.function_data_keys
             if func_data == {}:
-                func_data[FunctionDefinition.STATIC] = True
+                func_data[FunctionDefinition.STATIC] = False
                 func_data[FunctionDefinition.DEFAULT] = {}
             if FunctionDefinition.VALUE_DOMAIN not in func_data:
                 func_data[FunctionDefinition.VALUE_DOMAIN] = (
