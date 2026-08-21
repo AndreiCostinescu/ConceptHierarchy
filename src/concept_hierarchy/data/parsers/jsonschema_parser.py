@@ -73,6 +73,51 @@ BUILTIN_TYPES = {"null", "boolean", "integer", "number", "string", "array", "obj
 # "title"/"description"/"$comment" are plain draft-07 annotation keywords and are harmless to allow through.
 CUSTOM_TYPE_EXTRA_KEYS = {"type", "provenance", "default", "title", "description", "$comment"}
 
+BUILTIN_NODE_EXTRA_KEYS = {
+    "type",
+    "const",
+    "enum",
+    "default",
+    "title",
+    "description",
+    "examples",
+    "readOnly",
+    "writeOnly",
+    # number-specific keys
+    "multipleOf",
+    "maximum",
+    "exclusiveMaximum",
+    "minimum",
+    "exclusiveMinimum",
+    # string-specific keys
+    "maxLength",
+    "minLength",
+    "pattern",
+    "format",
+    "constraint",
+    "contentMediaType",
+    "contentEncoding",
+    # array-specific keys
+    "items",
+    "additionalItems",
+    "maxItems",
+    "minItems",
+    "uniqueItems",
+    "contains",
+    # object-specific keys
+    "maxProperties",
+    "minProperties",
+    "required",
+    "properties",
+    "patternProperties",
+    "additionalProperties",
+    "propertyNames",
+    "dependencies",
+    # reference-specific keys
+    "definitions",
+    "$defs",
+}
+
 _REF_PATTERN = re.compile(r"^#/(definitions|\$defs)/([^/]+)$")
 
 _MISSING = object()
@@ -715,6 +760,19 @@ def _finish_builtin_node(
                 errors,
                 collect_all_errors,
                 CHSyntaxError('"$ref" must be a string', location_id + ["$ref"]),
+            )
+
+    for key in work:
+        if key not in BUILTIN_NODE_EXTRA_KEYS:
+            record(
+                errors,
+                collect_all_errors,
+                CHSyntaxError(
+                    f"Key {key!r} is not allowed on a Draft07 schema "
+                    f"(only {sorted(BUILTIN_NODE_EXTRA_KEYS)} are allowed)",
+                    location_id=location_id + [key],
+                    part=PathPart.KEY,
+                ),
             )
 
     # Everything left over (type, enum, const, minimum, pattern, format, title, description, default, ...)
