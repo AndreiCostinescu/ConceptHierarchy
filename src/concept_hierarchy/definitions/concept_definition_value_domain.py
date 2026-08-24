@@ -101,6 +101,15 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     ),
                     part=PathPart.VALUE,
                 )
+            elif self.abstract:
+                raise CHSemanticError(
+                    f'Can not define "{ValueDomainDefinition.value_domain_default_serialization}" for an abstract '
+                    f"{self.definition_type()}: {self.name}",
+                    location_id=self.location_id(
+                        ValueDomainDefinition.value_domain_default_serialization, self.default_serialization
+                    ),
+                    part=PathPart.KEY,
+                )
 
     def check_instantiation(self):
         # check "instantiation"
