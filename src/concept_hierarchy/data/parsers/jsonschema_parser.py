@@ -639,13 +639,16 @@ def _finish_builtin_node(
                         node.custom_concept_data_constraints.append(new_custom_concept_data_constraint)
                     except ConceptHierarchyError as e:
                         record(errors, collect_all_errors, e)
+        elif isinstance(props, str) and props == "args":
+            node.custom_object_properties = props
         else:
             record(
                 errors,
                 collect_all_errors,
                 CHSyntaxError(
-                    f'"properties" must be an object, a 2-elem array specifying concept-related data, or an array of '
-                    f"2-elem arrays that is interpreted as a union of concept-related data!\nGot {props!r}",
+                    f'"properties" must be the "args" string, an object, a 2-elem array specifying concept-related data'
+                    f", or an array of 2-elem arrays that is interpreted as a union of concept-related data!\n"
+                    f"Got {props!r}",
                     location_id=location_id + ["properties"],
                 ),
             )

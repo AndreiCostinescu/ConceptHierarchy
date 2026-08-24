@@ -89,6 +89,9 @@ class CHSchemaNode:
     Validating this expression against the custom type's own schema is a separate, later pass.
     """
 
+    # --- custom keywords -------------------
+    custom_object_properties: str | None = None
+
     # --- "type" keyword (builtin / multi-type only) -------------------
     type_value: str | list[str] | None = None
 
