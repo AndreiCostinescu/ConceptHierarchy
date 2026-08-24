@@ -73,7 +73,7 @@ def check_types_in_domain_concept_definition(
     context.set_template_context(TemplateContext())
     type_validator = context.type_validator
     type_validator.set_identifier_where_types_are_defined(c.name)
-    constraint_validator = context.type_instantiation_constraints_validator
+    constraint_validator = context.type_application_constraints_validator
 
     property_types: dict[str, InstantiatedType] = {}
     value_domain_type: InstantiatedType | None = None
@@ -204,7 +204,7 @@ def check_types_in_hidden_implementation_definition(
     context.set_template_context(datum.template_context)
     type_validator = context.type_validator
     type_validator.set_identifier_where_types_are_defined(datum.name)
-    constraint_validator = context.type_instantiation_constraints_validator
+    constraint_validator = context.type_application_constraints_validator
     constraint_validator.update_existing_template_variables(set(datum.template_context.variables))
 
     substitution_values: dict[tuple[str, str], ConceptHierarchyTemplateArgument] = {}

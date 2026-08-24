@@ -110,7 +110,7 @@ class ConceptHierarchyTypeValidator(TypeValidator):
         self, value: ConceptHierarchyTemplateArgument, location_id: LocationId
     ) -> None:
         errors = validate_instantiation_constraints_in_template_argument_value(
-            value, self.context.type_instantiation_constraints_validator, location_id
+            value, self.context.type_application_constraints_validator, location_id
         )
         if errors:
             raise CHSemanticError(

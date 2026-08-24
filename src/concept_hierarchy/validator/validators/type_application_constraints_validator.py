@@ -61,7 +61,7 @@ def create_exact_match_constraint_from_value(
         return TemplateConstraintSelf(value.clean_name, (), validator, location_id)
 
 
-class TypeInstantiationValidator(TypeTemplateInstantiationValidator):
+class TypeApplicationValidator(TypeTemplateInstantiationValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.allowed_template_variables: set[str] = set()
