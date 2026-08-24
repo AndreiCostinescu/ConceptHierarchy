@@ -477,6 +477,7 @@ class ConceptHierarchyChecker:
                         )
                 if isinstance(c, ValueDomainDefinition):
                     assert self.ch.is_pure_value_domain(c_name)
+                    self.ch.value_domains.add(c_name)
                     for parent_index, parent in enumerate(c.parents):
                         if not self.ch.is_pure_value_domain(parent) and parent != ConceptDefinition.concept_name:
                             raise CHSemanticError(
@@ -499,6 +500,7 @@ class ConceptHierarchyChecker:
                     self.ch.default_serializations[c.default_serialization] = c_name
                 if isinstance(c, FunctionDefinition):
                     assert self.ch.is_function(c_name)
+                    self.ch.functions.add(c_name)
                     # check parent concept and merge the interface!
                     assert len(c.parents) == 1
                     parent_index, parent = 0, c.parents[0]
@@ -605,6 +607,7 @@ class ConceptHierarchyChecker:
                             )
                 if isinstance(c, DomainConceptDefinition):
                     assert self.ch.is_domain_concept(c_name)
+                    self.ch.domain_concepts.add(c_name)
                     for parent_index, parent in enumerate(c.parents):
                         if not self.ch.is_domain_concept(parent):
                             raise CHSemanticError(
