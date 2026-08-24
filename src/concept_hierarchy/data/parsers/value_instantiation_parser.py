@@ -71,7 +71,7 @@ from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, Loc
 def parse_value(
     value: object,
     node: CHSchemaNode,
-    context: CHValueValidator,
+    validator: CHValueValidator,
     location_id: LocationId = None,
     collect_all_errors: bool = True,
 ) -> ParsedValue:
@@ -80,9 +80,8 @@ def parse_value(
     Args:
         value: The Python object to parse (JSON-decoded).
         node: Schema AST from ``parse_schema``.  Should have no schema-level
-            errors (i.e. come from a successful :func:`~jsonschema_parser.parse_schema`
-            call).
-        context: Provides :meth:`~CHValueValidator.parse_custom_type` for
+            errors (i.e. come from a successful :func:`~jsonschema_parser.parse_schema` call).
+        validator: Provides :meth:`~CHValueValidator.parse_value_against_custom_type` for
             custom-type leaves.
         location_id: Starting location in the Concept Hierarchy (``[]`` if
             parsing from the root).
@@ -100,7 +99,7 @@ def parse_value(
     global_errors: list[ConceptHierarchyError] = []
     result: ParsedValue | None = None
     try:
-        result = _parse(node, value, True, location_id, context, global_errors, collect_all_errors)
+        result = _parse(node, value, True, location_id, validator, global_errors, collect_all_errors)
     except StopValidation:
         pass
 
@@ -120,7 +119,7 @@ def _parse(
     value: object,
     present: bool,
     location_id: LocationId,
-    context: CHValueValidator,
+    validator: CHValueValidator,
     global_errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> ParsedValue | None:
@@ -130,11 +129,11 @@ def _parse(
     the property should be omitted from the parent's ``properties_parsed``.
     """
     if not present:
-        return _parse_absent(node, location_id, context, global_errors, collect_all_errors)
+        return _parse_absent(node, location_id, validator, global_errors, collect_all_errors)
 
     # Follow $ref transparently (draft-07: siblings of $ref are ignored).
     if node.ref_resolved is not None:
-        return _parse(node.ref_resolved, value, True, location_id, context, global_errors, collect_all_errors)
+        return _parse(node.ref_resolved, value, True, location_id, validator, global_errors, collect_all_errors)
 
     # Boolean schema.
     if node.is_boolean_schema:
@@ -147,10 +146,10 @@ def _parse(
 
     # Custom-type leaf.
     if node.is_custom_type:
-        return _parse_custom(node, value, location_id, context, global_errors, collect_all_errors)
+        return _parse_custom(node, value, location_id, validator, global_errors, collect_all_errors)
 
     # Builtin / structural / composite.
-    return _parse_structural(node, value, location_id, context, global_errors, collect_all_errors)
+    return _parse_structural(node, value, location_id, validator, global_errors, collect_all_errors)
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +160,7 @@ def _parse(
 def _parse_absent(
     node: CHSchemaNode,
     location_id: LocationId,
-    context: CHValueValidator,
+    validator: CHValueValidator,
     global_errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> ParsedValue | None:
@@ -173,24 +172,24 @@ def _parse_absent(
     Returns ``None`` otherwise — the property is simply omitted.
     """
     if node.ref_resolved is not None:
-        return _parse_absent(node.ref_resolved, location_id, context, global_errors, collect_all_errors)
+        return _parse_absent(node.ref_resolved, location_id, validator, global_errors, collect_all_errors)
 
     # Boolean schemas never carry a default.
     if node.is_boolean_schema:
         return None
 
-    # Custom-type: only call the context when a default is defined.
+    # Custom-type: only call the validator when a default is defined.
     if node.is_custom_type:
         if not node.has_default:
             return None
-        return _parse_custom(node, MISSING, location_id, context, global_errors, collect_all_errors)
+        return _parse_custom(node, MISSING, location_id, validator, global_errors, collect_all_errors)
 
     # Composite node: try each anyOf branch silently for the first one
     # that accepts MISSING (i.e. a custom-type branch with a default).
     if node.any_of:
         for branch in node.any_of:
             silent: list[ConceptHierarchyError] = []
-            result = _parse_absent(branch, location_id, context, silent, True)
+            result = _parse_absent(branch, location_id, validator, silent, True)
             if result is not None and not silent:
                 return result
 
@@ -206,7 +205,7 @@ def _parse_custom(
     node: CHSchemaNode,
     value: object,  # may be MISSING when used_default=True
     location_id: LocationId,
-    context: CHValueValidator,
+    validator: CHValueValidator,
     global_errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> ParsedCustomValue:
@@ -214,7 +213,9 @@ def _parse_custom(
     used_default = value is MISSING
     default_expr = node.default_expr if node.has_default else MISSING
 
-    expression, errs = context.parse_custom_type(node.custom_type, node.provenance, default_expr, value, location_id)
+    expression, errs = validator.parse_value_against_custom_type(
+        node.custom_type, node.provenance, default_expr, value, location_id
+    )
     for err in errs:
         local.append(err)
         record(global_errors, collect_all_errors, err)
@@ -240,7 +241,7 @@ def _parse_structural(
     node: CHSchemaNode,
     value: object,
     location_id: LocationId,
-    context: CHValueValidator,
+    validator: CHValueValidator,
     global_errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> ParsedStructural:
@@ -253,18 +254,18 @@ def _parse_structural(
 
     def child_p(schema: CHSchemaNode, val: object, child_loc: LocationId) -> ParsedValue | None:
         """Parse a *present* value at child_loc."""
-        return _parse(schema, val, True, child_loc, context, global_errors, collect_all_errors)
+        return _parse(schema, val, True, child_loc, validator, global_errors, collect_all_errors)
 
     def child_a(schema: CHSchemaNode, child_loc: LocationId) -> ParsedValue | None:
         """Parse an *absent* value at child_loc (may return None)."""
-        return _parse_absent(schema, child_loc, context, global_errors, collect_all_errors)
+        return _parse_absent(schema, child_loc, validator, global_errors, collect_all_errors)
 
     def child_silent(
         schema: CHSchemaNode, val: object, child_loc: LocationId
     ) -> tuple[ParsedValue | None, list[ConceptHierarchyError]]:
         """Parse silently — errors do not propagate to global_errors."""
         silent_errors: list[ConceptHierarchyError] = []
-        result = _parse(schema, val, True, child_loc, context, silent_errors, True)
+        result = _parse(schema, val, True, child_loc, validator, silent_errors, True)
         return result, silent_errors
 
     structural = ParsedStructural(location_id=location_id, schema_node=node, errors=local, value=value)
@@ -276,7 +277,7 @@ def _parse_structural(
 
     # --- object structure ------------------------------------------------
     if isinstance(value, dict):
-        _parse_object(node, value, location_id, structural, rec, child_p, child_a, context)
+        _parse_object(node, value, location_id, structural, rec, child_p, child_a, validator)
 
     # --- array structure -------------------------------------------------
     if isinstance(value, list):
@@ -284,7 +285,7 @@ def _parse_structural(
 
     # --- allOf (all-or-nothing) ------------------------------------------
     if node.all_of:
-        _parse_all_of(node, value, location_id, structural, rec, context, global_errors, collect_all_errors)
+        _parse_all_of(node, value, location_id, structural, rec, validator, global_errors, collect_all_errors)
 
     # --- anyOf (keep all matching branches) ------------------------------
     if node.any_of:
@@ -320,7 +321,7 @@ def _parse_object(
     rec,
     child_p,
     child_a,
-    context: CHValueValidator,
+    validator: CHValueValidator,
 ) -> None:
     matched_keys: set[str] = set()
 
@@ -375,7 +376,7 @@ def _parse_object(
         if pn.is_custom_type:
             for key in value:
                 default_expr = pn.default_expr if pn.has_default else MISSING
-                _, errs = context.parse_custom_type(
+                _, errs = validator.parse_value_against_custom_type(
                     pn.custom_type, pn.provenance, default_expr, key, location_id + [key]
                 )
                 for err in errs:
@@ -456,7 +457,7 @@ def _parse_all_of(
     location_id: LocationId,
     structural: ParsedStructural,
     rec,
-    context: CHValueValidator,
+    validator: CHValueValidator,
     global_errors: list[ConceptHierarchyError],
     collect_all_errors: bool,
 ) -> None:
@@ -469,7 +470,7 @@ def _parse_all_of(
         temp: list[ConceptHierarchyError] = []
         # Always collect all branch errors regardless of the parent's mode,
         # so we can report them together when the overall allOf fails.
-        result = _parse(branch, value, True, location_id, context, temp, True)
+        result = _parse(branch, value, True, location_id, validator, temp, True)
         if temp or result is None:
             all_valid = False
             failed_errors.extend(temp)

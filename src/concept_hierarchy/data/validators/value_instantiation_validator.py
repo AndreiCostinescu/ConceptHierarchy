@@ -73,7 +73,7 @@ class CHValueValidator(ABC):
     """
 
     @abstractmethod
-    def parse_custom_type(
+    def parse_value_against_custom_type(
         self,
         custom_type: TypeValue,
         provenance: ExpressionProvenance,
@@ -128,7 +128,7 @@ class CHValueValidator(ABC):
             ``None`` if ``value`` is acceptable, otherwise a
             :class:`CHSyntaxError` or :class:`CHSemanticError` describing the problem.
         """
-        _, errors = self.parse_custom_type(type_name, provenance, default_expr, value, location_id)
+        _, errors = self.parse_value_against_custom_type(type_name, provenance, default_expr, value, location_id)
         return errors[0] if errors else None
 
 
@@ -202,8 +202,7 @@ def _validate(
             record(errors, collect_all_errors, err)
         return
 
-    # --- this node's own keywords (type, enum, const, numeric/string/array
-    # size constraints, format, ...) -------------------------------------
+    # --- this node's own keywords (type, enum, const, numeric/string/array/object size constraints, format, ...) ---
     validator = Draft7Validator(node.shallow_canonical)
     for e in validator.iter_errors(value):
         record(errors, collect_all_errors, CHSemanticError(e.message, value_path + list(e.absolute_path)))
