@@ -394,6 +394,21 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         function_evaluation_argument_provenance[f_eval_arg_name] = FunctionArgumentProvenance(
             c.evaluation_argument_provenance_types[f_eval_arg_name]
         )
+    # merge with arguments of parent Function(s) (but don't merge default argument expressions!)
+    for p_name in c.parents:
+        if p_name not in context.ch.functions:
+            continue
+        p = context.ch.concepts[p_name]
+        assert isinstance(p, FunctionDefinition)
+        p_model = context.model.functions[p_name]
+        for f_eval_arg_name in c.evaluation_argument_types:
+            assert f_eval_arg_name not in p_model.evaluation_argument_types, (
+                f"There shouldn't be an argument with a duplicate name {f_eval_arg_name} defined in {c.name}"
+            )
+        function_evaluation_argument_types.update(p_model.evaluation_argument_types)
+        function_evaluation_argument_provenance.update(p_model.evaluation_argument_provenance_type)
+        function_evaluation_argument_access.update(p_model.evaluation_argument_access_type)
+
     datum.evaluation_argument_types = frozendict(function_evaluation_argument_types)
     datum.evaluation_argument_access_type = frozendict(function_evaluation_argument_access)
     datum.evaluation_argument_provenance_type = frozendict(function_evaluation_argument_provenance)
@@ -467,7 +482,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         add_to_existing_scope[new_var_name] = (ch_type, new_var_def_data[1])
     datum.new_vars_in_scope = frozendict(add_to_existing_scope)
 
-    # parse: default_function_instantiation_schema
+    # parse: default_function_instantiation_schema (if the Function is instantiable (not abstract))
     if not datum.instantiable:
         datum.instantiation = ()
     else:
