@@ -17,6 +17,7 @@ from __future__ import annotations
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.template_context import TemplateContext
+from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
@@ -58,7 +59,7 @@ class ConceptData(ConceptHierarchyData):
 class DomainConceptData(ConceptData):
     # all the data is (available) for this concept; this class does not store any data for subconcepts
     property_types: frozendict[str, InstantiatedType]
-    property_constraints: frozendict[str, object]  # replace object with Expression
+    property_constraints: frozendict[str, Expression]
     function_types: frozendict[str, InstantiatedType]
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
@@ -90,12 +91,12 @@ class FunctionData(ValueDomainData):
     evaluation_argument_types: frozendict[str, TypeValue]
     evaluation_argument_access_type: frozendict[str, FunctionArgumentAccessor]
     evaluation_argument_provenance_type: frozendict[str, FunctionArgumentProvenance]
-    evaluation_argument_default_value: frozendict[str, object]  # replace object with Expression
-    evaluation_result_type: TypeValue | None | object
+    evaluation_argument_default_value: frozendict[str, Expression]
+    evaluation_result_type: TypeValue | None
     evaluation_result_access_type: FunctionResultAccessor | None
     evaluation_result_provenance_type: ValueDomainArgumentProvenance | None
 
-    procedure: object  # replace object with expression
+    procedure: Expression
 
     sub_scope_vars: frozendict[str, frozendict[str, TypeValue]]
     """Maps evaluation argument names to new variables available in their scope and their type."""
@@ -118,7 +119,7 @@ class FunctionData(ValueDomainData):
 @lazy_properties
 class GlobalVariableData(ConceptHierarchyData):
     value_type: InstantiatedType
-    value: object  # replace object with Expression
+    value: Expression
 
     def __init__(self, name: str):
         super().__init__(name)
