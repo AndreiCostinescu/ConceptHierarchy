@@ -96,6 +96,12 @@ class FunctionData(ValueDomainData):
     evaluation_result_access_type: FunctionResultAccessor | None
     evaluation_result_provenance_type: ValueDomainArgumentProvenance | None
 
+    default_argument_dependencies: frozendict[str, frozenset[str]]
+    """
+    Maps default argument names to the dependencies on the value of other Function arguments in the default expression.
+    Every default argument name is in the frozendict; if it has no dependencies, its corresponding frozenset is empty. 
+    """
+
     procedure: Expression
 
     sub_scope_vars: frozendict[str, frozendict[str, TypeValue]]
