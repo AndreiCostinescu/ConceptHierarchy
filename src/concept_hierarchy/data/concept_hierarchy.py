@@ -118,11 +118,13 @@ class FunctionData(ValueDomainData):
 
 @lazy_properties
 class GlobalVariableData(ConceptHierarchyData):
+    is_alias: bool
     value_type: InstantiatedType
     value: Expression
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, is_alias: bool):
         super().__init__(name)
+        self.is_alias = is_alias
 
 
 class ConceptHierarchy:
