@@ -59,7 +59,8 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
         )
 
     def check_syntax(self):
-        self.value = self.orig_data
+        if not self.is_reference():
+            self.value = self.definition_data
 
     def check_semantics(self):
         """

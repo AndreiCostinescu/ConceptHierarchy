@@ -245,8 +245,15 @@ class ConceptHierarchyChecker:
         defined_instances: dict[str, GlobalVariableDefinition] = {}
         for variable_name, variable_def in instance_definition.items():  # type: str, object
             variable_definition = GlobalVariableDefinition(variable_name, variable_def, instances_location_id)
+            # An alias/a reference is recognized by specifying a "string" value;
+            # but this value may actually be a "string" expression
+            # -> verify if the referenced value is actually a variable definition; if not, it is an expression!
             if variable_definition.is_reference():
-                instances_referencing_others[variable_name] = variable_definition
+                if variable_definition.is_reference_to in instance_definition:
+                    instances_referencing_others[variable_name] = variable_definition
+                else:
+                    variable_definition.is_reference_to = None
+                    defined_instances[variable_name] = variable_definition
             else:
                 defined_instances[variable_name] = variable_definition
         self.resolve_references(instances_referencing_others, defined_instances, instances_location_id)
