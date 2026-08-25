@@ -726,6 +726,9 @@ class ConceptHierarchyChecker:
             if len(errors) == 1:
                 raise errors[0]
             raise CHSemanticError("Processing concept data failed because of the errors below!", causes=errors)
+        # check global variable data
+        for var_name, var in self.ch.instances.items():
+            var.check_syntax()
 
     def check_specializations(self):
         process_specialization_for_domain_concepts(self.context)

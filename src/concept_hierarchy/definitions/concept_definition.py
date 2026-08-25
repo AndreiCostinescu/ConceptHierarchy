@@ -120,7 +120,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
             self.abstract = False
 
     def check(self):
-        super().check()
+        super()._check_impl()
 
         if not check_ch_name(self.name, must_start_uppercase=True):
             raise CHSyntaxError(

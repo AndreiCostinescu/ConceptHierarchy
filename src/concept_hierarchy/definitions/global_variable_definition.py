@@ -30,7 +30,7 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
         super().__init__(name, definition_data, definition_location_id)
 
     def check(self):
-        super().check()
+        super()._check_impl(check_type_of_data=False)
         if not check_ch_name(self.name, allow_starting_with_underscore=True):
             raise CHSyntaxError(
                 f"Names of global variables must be valid non-digit-starting string names, not {self.name}",

@@ -97,6 +97,9 @@ class ConceptHierarchyDefinition(ABC):
 
     @abstractmethod
     def check(self):
+        pass
+
+    def _check_impl(self, check_type_of_data: bool = True):
         if not isinstance(self.definition_type(), str):
             raise RuntimeError(f"Definition type must be a string, not {self.definition_type()!r}")
         if not isinstance(self.name, str) or not check_ch_name(self.name):
@@ -105,10 +108,10 @@ class ConceptHierarchyDefinition(ABC):
                 location_id=ConceptHierarchyDefinition.definition_location(self) + [self.name],
                 part=PathPart.KEY,
             )
-        if not isinstance(self.definition_data, (dict, str)):
+        if check_type_of_data and not isinstance(self.definition_data, (dict, str)):
             raise CHSyntaxError(
-                f"The concept definition of {self.name} is not a JSON object or a JSON string "
-                f"concept-name reference, but {self.definition_data!r}!",
+                f'The {self.definition_type()} definition of "{self.name}" is not a JSON object or a JSON string '
+                f"{self.definition_type()}-name reference, but {self.definition_data!r}!",
                 location_id=ConceptHierarchyDefinition.definition_location(self) + [self.name],
                 part=PathPart.VALUE,
             )
