@@ -66,6 +66,10 @@ from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural, ParsedValue
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
+from concept_hierarchy.data.type_template_variables.constraint_formula import (
+    NonStructureConstraintFormula,
+    TemplateConstraintFormula,
+)
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
@@ -115,9 +119,23 @@ class ValueInstantiationContext(ABC):
             found, not just the first.
         """
 
+    @abstractmethod
+    def is_concept(self, concept_candidate: str) -> bool:
+        pass
 
-# Deprecated alias for the pre-merge name.  Remove once call sites are updated.
-CHValueValidator = ValueInstantiationContext
+    @abstractmethod
+    def is_type(self, type_candidate: str, location_id: LocationId) -> bool:
+        pass
+
+    @abstractmethod
+    def parse_constraint(self, constraint: str, location_id: LocationId) -> TemplateConstraintFormula:
+        pass
+
+    @abstractmethod
+    def validate_string_constraint(
+        self, constraint: NonStructureConstraintFormula, value: str, location_id: LocationId
+    ) -> bool:
+        pass
 
 
 # ===========================================================================================================
@@ -350,6 +368,9 @@ def _parse_structural(node: CHSchemaNode, value: object, location_id: LocationId
     if isinstance(value, list):
         _parse_array(node, value, location_id, structural, rec, child_p, child_silent)
 
+    if isinstance(value, str):
+        _parse_string(node, value, location_id, rec, state)
+
     # --- allOf (all-or-nothing) ------------------------------------------
     if node.all_of:
         _parse_all_of(node, value, location_id, structural, rec, state)
@@ -506,6 +527,49 @@ def _parse_array(
                 break
         if not found:
             rec(CHSemanticError("Array does not contain any element matching the 'contains' schema", location_id))
+
+
+# ===========================================================================================================
+# String structure
+# ===========================================================================================================
+
+
+def _parse_string(node: CHSchemaNode, value: str, location_id: LocationId, rec, state: _State) -> None:
+    # node.custom_string_format and node.custom_string_constraint must be checked.
+    if node.custom_string_format is not None:
+        assert node.custom_string_format in {"Concept", "Type"}
+        if node.custom_string_format == "Concept":
+            if not state.context.is_concept(value):
+                rec(
+                    CHSemanticError(
+                        f'JSON string value "{value}" is not a concept in this Concept Hierarchy',
+                        location_id=location_id,
+                        part=PathPart.VALUE,
+                    )
+                )
+        else:
+            assert node.custom_string_format == "Type"
+            if not state.context.is_type(value, location_id):
+                rec(
+                    CHSemanticError(
+                        f'JSON string value "{value}" is not a Type in this Concept Hierarchy',
+                        location_id=location_id,
+                        part=PathPart.VALUE,
+                    )
+                )
+        if node.custom_string_constraint is not None:
+            # interpret the constraint with the template argument constraint syntax!
+            string_constraint_formula = state.context.parse_constraint(node.custom_string_constraint, location_id)
+            assert isinstance(string_constraint_formula, NonStructureConstraintFormula)
+            if not state.context.validate_string_constraint(string_constraint_formula, value, location_id):
+                rec(
+                    CHSemanticError(
+                        f'JSON string value "{value}" satisfies the format "{node.custom_string_format}", but does not '
+                        f'satisfy the constraint "{node.custom_string_constraint}"',
+                        location_id=location_id,
+                        part=PathPart.VALUE,
+                    )
+                )
 
 
 # ===========================================================================================================
