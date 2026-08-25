@@ -119,8 +119,9 @@ class TestSemanticValidator:
         model = _model(
             {"Concept": {}, "ValueDomain": {"directParents": ["Concept"], "data": {}}, "Type": "ValueDomain"}
         )
-        with pytest.raises(CHSemanticError, match="Found a domain concept with no data defined: 'Type'"):
-            check_model(model)
+        check_model(model)
+        assert "Type" in model.domain_concepts
+        assert "Type" not in model.value_domains
 
     def test_reference_chain(self):
         model = _model({"Concept": {}, "A": {"directParents": ["Concept"], "data": {"properties": {}}}, "B": "A"})

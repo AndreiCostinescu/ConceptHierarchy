@@ -572,7 +572,7 @@ class TestVariadicExpansion:
 
     def test_expansion_allowed_multiple_in_same_list(self):
         # Each entry is checked separately; first "A..." already triggers the error
-        args = _p1("T<A..., B...>").template_args
+        args = _p1("T<A..., B...>").template_arguments
         assert isinstance(args[0], ParsedType)
         assert args[0].has_variadic_identifier is False
         assert args[0].variadic_group_identifier is None

@@ -75,6 +75,44 @@ model_data = {
             "directParents": ["ValueDomain"],
             "data": {},
         },
+        "InstanceBase": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "concepts": {"type": "List<ConceptValue>", "default": []},
+                        "properties": "ConceptParameters",
+                        "instanceName": "string",
+                    },
+                }
+            },
+        },
+        "List": {
+            "directParents": ["ValueDomain"],
+            "data": {"templateContext": ["T"], "instantiation": {"type": "array", "items": "T"}},
+        },
+        "ConceptValue": {
+            "directParents": ["String"],
+            "data": {"instantiation": {"type": "string", "pattern": "^s:", "format": "Concept"}},
+        },
+        "ConceptParameters": {
+            "directParents": ["ValueDomain"],
+            "data": {"instantiation": {"type": "object", "properties": [["props", "x", True], ["funcs", "x", True]]}},
+        },
+        "FunctionComposition": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "maxProperties": 1,
+                    "propertyNames": {"type": "string", "format": "Type", "constraint": "Function"},
+                    "additionalProperties": {"type": "object", "properties": "args", "additionalProperties": False},
+                }
+            },
+        },
+        "Function": {"directParents": ["ValueDomain"], "abstract": True, "data": {}},
     },
     "instances": {
         "MyAnimal": {"InstanceBase": {"instanceName": "MyAnimal", "concepts": ["Animal"], "properties": {"age": 2}}}

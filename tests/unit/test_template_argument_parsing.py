@@ -103,7 +103,7 @@ class TestTemplateArgumentParsing:
             },
             "Function": {"directParents": ["ValueDomain"], "data": {}, "abstract": True},
             "Instance": {
-                "directParents": ["ValueDomain"],
+                "directParents": ["InstanceBase"],
                 "data": {
                     "templateContext": {
                         "order": ["AcceptConcepts...", "RejectConcepts..."],
@@ -136,6 +136,45 @@ class TestTemplateArgumentParsing:
                     "interface": {"arg1": "T", "arg2": "T", "res": "T"},
                 },
             },
+            "InstanceBase": {
+                "directParents": ["ValueDomain"],
+                "data": {
+                    "instantiation": {
+                        "type": "object",
+                        "properties": {
+                            "concepts": {"type": "List<ConceptValue>", "default": []},
+                            "properties": "ConceptParameters",
+                            "instanceName": "string",
+                        },
+                    }
+                },
+            },
+            "List": {
+                "directParents": ["ValueDomain"],
+                "data": {"templateContext": ["T"], "instantiation": {"type": "array", "items": "T"}},
+            },
+            "ConceptValue": {
+                "directParents": ["String"],
+                "data": {"instantiation": {"type": "string", "pattern": "^s:", "format": "Concept"}},
+            },
+            "ConceptParameters": {
+                "directParents": ["ValueDomain"],
+                "data": {
+                    "instantiation": {"type": "object", "properties": [["props", "x", True], ["funcs", "x", True]]}
+                },
+            },
+            "FunctionComposition": {
+                "directParents": ["ValueDomain"],
+                "data": {
+                    "instantiation": {
+                        "type": "object",
+                        "minProperties": 1,
+                        "maxProperties": 1,
+                        "propertyNames": {"type": "string", "format": "Type", "constraint": "Function"},
+                        "additionalProperties": {"type": "object", "properties": "args", "additionalProperties": False},
+                    }
+                },
+            },
         },
         "instances": {
             "MyAnimal": {"InstanceBase": {"instanceName": "MyAnimal", "concepts": ["Animal"], "properties": {"age": 2}}}
@@ -161,7 +200,7 @@ class TestTemplateArgumentParsing:
             assert isinstance(c, HiddenImplementationDefinition) == model.ch.is_value_domain(c_name)
             if isinstance(c, HiddenImplementationDefinition):
                 if c.is_templatable():
-                    assert c_name in ["ClosedInterval", "Instance", "SubInstance", "FunctionReturning", "Add"]
+                    assert c_name in ["ClosedInterval", "List", "Instance", "SubInstance", "FunctionReturning", "Add"]
 
     def test_parsing_fails(self):
         model_data = self.clone_model()
@@ -238,7 +277,7 @@ class TestTemplateArgumentParsing:
         substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
         substitution_data["AcceptConcepts"] = "[SubInstance<SubAcceptConcepts..., SubRejectConcepts...>]"
         substitution_data["RejectConcepts"] = "[SubInstance<!SubRejectConcepts..., !SubAcceptConcepts...>]"
-        # test should fail, but because Instance is not a DomainConcept, not because the syntax
+        # test should fail because SubInstance is not a DomainConcept
         with pytest.raises(CHSemanticError, match="1234"):
             self.get_model(model_data)
 
