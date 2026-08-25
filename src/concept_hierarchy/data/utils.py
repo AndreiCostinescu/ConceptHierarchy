@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Internal helpers shared by ``jsonschema_parser`` and ``value_instantiation_validator``.
+Internal helpers shared by ``jsonschema_parser`` and ``value_instantiation_parser``.
 
 Not part of the public API.
 """

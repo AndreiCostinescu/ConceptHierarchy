@@ -17,7 +17,7 @@ Each rule corresponds to a `CHSemanticError` raise in the source code.
 
      Last verified against commit e1f2028 (last committed state of the develop branch as of this update), plus uncommitted/staged working-tree
      changes present at verification time in:
-       data/validators/value_instantiation_validator.py, data/validators/template_argument_constraints_validator.py,
+       data/parsers/value_instantiation_parser.py, data/validators/template_argument_constraints_validator.py,
        data/validators/type_validator.py, data/type_template_variables/constraint_formula.py,
        data/type_template_variables/template_substitution.py, data/jsonschema/parsed_schema.py,
        data/parsers/jsonschema_parser.py, data/parsers/template_argument_constraint_parser.py,
@@ -707,66 +707,79 @@ When validating a `TemplateDependentType` (a type whose template arguments still
 
 ---
 
-## 12. Instantiation Value Validation (JSON-Schema-Based)
+## 12. Instantiation Value Parsing (JSON-Schema-Based)
 
-`data/validators/value_instantiation_validator.py` validates a concrete JSON value against a `ValueDomain`'s `instantiation` schema (a JSON-Schema-Draft-07-derived AST). All errors below carry a path into the *value*, not the schema.
+`data/parsers/value_instantiation_parser.py` parses a concrete JSON value against a `ValueDomain`'s `instantiation` schema (a JSON-Schema-Draft-07-derived AST). All errors below carry a path into the *value*, not the schema.
 
 ### 12.1 A value is rejected outright by a `false` boolean schema
 If a schema node's canonical form is the boolean `false`, no value is acceptable at that location.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse`
 
 ### 12.2 A value must satisfy its node's own JSON-Schema keywords
-`type`, `enum`, `const`, numeric/string/array size constraints, `pattern`, `format`, etc. are checked via `Draft7Validator`; any violation is reported at the value's path.
+`type`, `enum`, `const`, numeric/string/array size constraints, `pattern`, `format`, etc. are checked by `Draft7Validator` against the node's `shallow_canonical` form, in which every subschema-bearing keyword has been replaced by `true`; recursion into subschemas is performed by this module instead. Any violation is reported at the value's path, extended by the relative path reported by `jsonschema`.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_structural`
 
 ### 12.3 Required object properties must be present
-Each key listed in a schema node's `required` must be present in the value being validated (checked explicitly so the error points at the missing key itself).
+Each key listed in a schema node's `required` must be present in the value, or must have been materialised from a default (see 12.13); a key filled in from a default satisfies `required`.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
-- **Location:** points at the missing key (`part=KEY`)
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_object`
+- **Location:** points at the containing object (`part=VALUE`)
 
 ### 12.4 Additional object properties are rejected when disallowed
-If a schema node sets `additionalProperties: false`, any value key not matched by `properties`/`patternProperties` is rejected.
+If a schema node sets `additionalProperties: false`, any value key not matched by `properties` or `patternProperties` is rejected.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_object`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_object`
 - **Location:** points at the offending key (`part=KEY`)
 
 ### 12.5 Property names must satisfy `propertyNames`
-If a schema node declares `propertyNames`, every key of the value (as a string) must itself satisfy that sub-schema (or, for a custom type, pass `check_value`).
+If a schema node declares `propertyNames`, every key of the value must itself satisfy that sub-schema. When `propertyNames` is a custom-type node, the key is passed to `ValueInstantiationContext.parse_value_against_custom_type_expression` and every returned error is re-tagged as a key error; the resulting expression is discarded, as property names have no place in the result tree.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_object`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_object`
+- **Location:** points at the offending key (`part=KEY`)
 
 ### 12.6 Additional array items are rejected when disallowed
-If a schema node (using the tuple-validation array form) sets `additionalItems: false`, any item beyond the declared positional items is rejected.
+If a schema node using the tuple-validation array form sets `additionalItems: false`, any item beyond the declared positional items is rejected.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_array`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_array`
+- **Location:** points at the offending item index
 
 ### 12.7 A `contains` schema must match at least one array element
-If a schema node declares `contains`, at least one element of the array value must satisfy that sub-schema.
+If a schema node declares `contains`, at least one element of the array value must satisfy that sub-schema. The first matching element is retained; the failures of non-matching elements are not reported.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_array`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_array`
+- **Location:** points at the array itself
 
 ### 12.8 A value must not match a `not` schema
 If a schema node declares `not`, the value is rejected if it *does* satisfy that sub-schema.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_structural`
 
 ### 12.9 A value must match at least one branch of `anyOf`
-If every branch of an `anyOf` schema fails, the value is rejected (with each branch's failures attached as causes).
+If every branch of an `anyOf` schema fails, the value is rejected, with each branch's failures attached as causes. When at least one branch matches, *all* matching branches are retained in the result tree.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_any_of`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_any_of`
 
 ### 12.10 A value must match exactly one branch of `oneOf`
-Matching zero branches, or matching more than one, is rejected.
+Matching zero branches, or matching more than one, is rejected. The failures of non-matching branches are attached as causes.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate_one_of`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_one_of`
 
-### 12.11 A custom-typed schema node's value must satisfy the value context's check
-Values at a custom-type node (e.g. an `InstanceBase` or `Reference` type) are delegated to `CHValueValidator.check_value`, which may itself return a `CHSemanticError`.
+### 12.11 A custom-typed schema node's value must satisfy the value context's parse
+Values at a custom-type node are delegated to `ValueInstantiationContext.parse_value_against_custom_type_expression`, which returns the parsed `Expression` together with *every* error it found. This is the point at which the value parser re-enters the expression parser, which in turn re-enters `parse_value` on `Inst` and `Narrow` expressions.
 
-- **Source:** `data/validators/value_instantiation_validator.py` — `_validate`
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_custom`
+
+### 12.12 A value must match every branch of `allOf`
+`allOf` is all-or-nothing: if any branch fails, the errors of all failing branches are reported on the parent node and no branch result is retained. Branch errors are collected in full irrespective of the caller's `collect_all_errors` setting, so that they can be reported together.
+
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_all_of`
+
+### 12.13 An applied default expression must itself be valid
+When an optional property is absent and its schema node — or, for a composite node, the first accepting `anyOf` branch — is a custom-type node carrying `default`, the default expression is parsed and independently validated in the property's place. Any error it produces is reported at the absent property's location. Absent properties with no applicable default produce no error here and are omitted from the result tree; whether their absence is itself an error is decided by 12.3.
+
+- **Source:** `data/parsers/value_instantiation_parser.py` — `_parse_absent`, `_parse_custom`
 
 ---
 

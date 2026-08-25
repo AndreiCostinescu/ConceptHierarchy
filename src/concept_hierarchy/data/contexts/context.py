@@ -19,13 +19,13 @@ from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.parsers.expression_parser import ExpressionParserValidator
 from concept_hierarchy.data.parsers.jsonschema_parser import CHSchemaValidator
+from concept_hierarchy.data.parsers.value_instantiation_parser import ValueInstantiationContext
 from concept_hierarchy.data.type_template_variables.constraint_formula import TemplateConstraintFormulaValidator
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
     TypeTemplateInstantiationValidator,
 )
 from concept_hierarchy.data.validators.type_validator import TypeValidator
-from concept_hierarchy.data.validators.value_instantiation_validator import CHValueValidator
 from concept_hierarchy.errors import LocationId
 from concept_hierarchy.models import ConceptHierarchyModel
 
@@ -46,7 +46,7 @@ class ConceptHierarchyContext:
         # then value domain instantiation schemas must be parsed & validated
         self.instantiation_schema_validator: CHSchemaValidator | None = None
         # then value domain instantiation values must be parsed and validated
-        self.instantiation_values_validator: CHValueValidator | None = None
+        self.instantiation_values_validator: ValueInstantiationContext | None = None
         # and, finally, full expressions can be validated
         self.expression_parser_validator: ExpressionParserValidator | None = None
 
