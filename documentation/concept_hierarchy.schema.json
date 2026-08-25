@@ -122,7 +122,7 @@
                 "maxInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
                 "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" }
               },
-              "required": ["directParents", "data"],
+              "required": ["directParents"],
               "additionalProperties": false
             }
           ]

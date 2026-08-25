@@ -81,10 +81,8 @@ class TestSemanticValidator:
             check_model(_model({"Base": {"data": {}}, "Child": {"directParents": ["Base"]}}))
         with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"]}}))
-        with pytest.raises(CHSemanticError, match="Found a domain concept with no data defined: 'Child'"):
-            check_model(
-                _model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {}}})
-            )
+        # Concepts without any defined data are allowed; the below should not raise
+        check_model(_model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {}}}))
         model = _model(
             {"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {"properties": {}}}}
         )
