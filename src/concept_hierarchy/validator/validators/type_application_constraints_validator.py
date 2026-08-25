@@ -64,7 +64,6 @@ def create_exact_match_constraint_from_value(
 class TypeApplicationValidator(TypeTemplateInstantiationValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
-        self.allowed_template_variables: set[str] = set()
 
     def is_concept(self, name: str) -> bool:
         return self.context.ch.is_concept(name)
