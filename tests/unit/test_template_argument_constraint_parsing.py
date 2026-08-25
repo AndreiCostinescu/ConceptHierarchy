@@ -102,13 +102,13 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     StructureConstraintFormula,
     StructureDisjunction,
     StructureNegation,
-    TemplateConstraintAbstractAscendants,
-    TemplateConstraintAbstractDescendants,
     TemplateConstraintAnd,
     TemplateConstraintAscendants,
     TemplateConstraintDescendants,
     TemplateConstraintFormula,
     TemplateConstraintFormulaValidator,
+    TemplateConstraintNonAbstractAscendants,
+    TemplateConstraintNonAbstractDescendants,
     TemplateConstraintNot,
     TemplateConstraintOr,
     TemplateConstraintSelf,
@@ -415,12 +415,12 @@ class TestHierarchyLiterals:
 
     def test_abstract_descendants_concept(self, V, loc):
         r = _parse("Animal*", V, loc)
-        assert isinstance(r, TemplateConstraintAbstractDescendants)
+        assert isinstance(r, TemplateConstraintNonAbstractDescendants)
         assert r.literal == "Animal"
 
     def test_abstract_descendants_template_variable(self, V, loc):
         r = _parse("t*", V, loc)
-        assert isinstance(r, TemplateConstraintAbstractDescendants)
+        assert isinstance(r, TemplateConstraintNonAbstractDescendants)
         assert r.literal == "t"
 
     def test_abstract_descendants_repr(self, V, loc):
@@ -458,12 +458,12 @@ class TestHierarchyLiterals:
 
     def test_abstract_ascendants_concept(self, V, loc):
         r = _parse("^Animal*", V, loc)
-        assert isinstance(r, TemplateConstraintAbstractAscendants)
+        assert isinstance(r, TemplateConstraintNonAbstractAscendants)
         assert r.literal == "Animal"
 
     def test_abstract_ascendants_template_variable(self, V, loc):
         r = _parse("^t*", V, loc)
-        assert isinstance(r, TemplateConstraintAbstractAscendants)
+        assert isinstance(r, TemplateConstraintNonAbstractAscendants)
 
     def test_abstract_ascendants_repr(self, V, loc):
         assert repr(_parse("^Animal*", V, loc)) == "^Animal*"
@@ -570,7 +570,7 @@ class TestBooleanOperators:
 
     def test_and_with_abstract_descendant(self, V, loc):
         r = _parse("And(Animal*, Plant)", V, loc)
-        assert isinstance(r.sub_formulae[0], TemplateConstraintAbstractDescendants)
+        assert isinstance(r.sub_formulae[0], TemplateConstraintNonAbstractDescendants)
 
     def test_and_with_ascendant(self, V, loc):
         r = _parse("And(Animal, ^Plant)", V, loc)
@@ -738,7 +738,7 @@ class TestTemplateArguments:
 
     def test_arg_abstract_descendant(self, V, loc):
         args = _parse("Vector<Animal*>", V, loc).literal_template_formulae
-        assert isinstance(args[0], TemplateConstraintAbstractDescendants)
+        assert isinstance(args[0], TemplateConstraintNonAbstractDescendants)
 
     def test_arg_self(self, V, loc):
         args = _parse("Vector<Animal.>", V, loc).literal_template_formulae
@@ -746,7 +746,7 @@ class TestTemplateArguments:
 
     def test_arg_abstract_ascendant(self, V, loc):
         args = _parse("Vector<^Animal*>", V, loc).literal_template_formulae
-        assert isinstance(args[0], TemplateConstraintAbstractAscendants)
+        assert isinstance(args[0], TemplateConstraintNonAbstractAscendants)
 
     def test_arg_and_operator(self, V, loc):
         args = _parse("Vector<And(A, B)>", V, loc).literal_template_formulae
@@ -785,7 +785,7 @@ class TestTemplateArguments:
 
     def test_abstract_descendant_with_arg(self, V, loc):
         r = _parse("Vector<Animal>*", V, loc)
-        assert isinstance(r, TemplateConstraintAbstractDescendants)
+        assert isinstance(r, TemplateConstraintNonAbstractDescendants)
         assert len(r.literal_template_formulae) == 1
 
     def test_self_with_arg(self, V, loc):
@@ -798,7 +798,7 @@ class TestTemplateArguments:
 
     def test_abstract_ascendant_with_arg(self, V, loc):
         r = _parse("^Vector<Animal>*", V, loc)
-        assert isinstance(r, TemplateConstraintAbstractAscendants)
+        assert isinstance(r, TemplateConstraintNonAbstractAscendants)
 
     # --- validator-enforced count errors ---
 
@@ -862,7 +862,7 @@ class TestConstraintGroup:
 
     def test_single_abstract_descendant(self, V, loc):
         r = _parse("<Animal*>", V, loc)
-        assert isinstance(r.group_constraints[0], TemplateConstraintAbstractDescendants)
+        assert isinstance(r.group_constraints[0], TemplateConstraintNonAbstractDescendants)
 
     def test_single_ascendant(self, V, loc):
         r = _parse("<^Animal>", V, loc)
@@ -901,7 +901,7 @@ class TestConstraintGroup:
         assert len(r.group_constraints) == 3
         assert isinstance(r.group_constraints[0], TemplateConstraintDescendants)
         assert isinstance(r.group_constraints[1], NonTypeTemplateConstraintFormula)
-        assert isinstance(r.group_constraints[2], TemplateConstraintAbstractDescendants)
+        assert isinstance(r.group_constraints[2], TemplateConstraintNonAbstractDescendants)
 
     def test_repr_multiple(self, V, loc):
         assert repr(_parse("<Animal, Plant>", V, loc)) == "<Animal, Plant>"
@@ -955,10 +955,10 @@ class TestConstraintGroup:
         r_asc = _parse("^Vector<>", V, loc, allow_unconstrained=True)
         r_aAsc = _parse("^Vector<>*", V, loc, allow_unconstrained=True)
         assert isinstance(r_desc, TemplateConstraintDescendants)
-        assert isinstance(r_aDesc, TemplateConstraintAbstractDescendants)
+        assert isinstance(r_aDesc, TemplateConstraintNonAbstractDescendants)
         assert isinstance(r_self, TemplateConstraintSelf)
         assert isinstance(r_asc, TemplateConstraintAscendants)
-        assert isinstance(r_aAsc, TemplateConstraintAbstractAscendants)
+        assert isinstance(r_aAsc, TemplateConstraintNonAbstractAscendants)
         for r in [r_desc, r_aDesc, r_self, r_asc, r_aAsc]:
             assert len(r.literal_template_formulae) == 1
             assert isinstance(r.literal_template_formulae[0], Unconstrained)
@@ -1377,7 +1377,7 @@ class TestComplexCombinations:
     def test_not_inside_constraint_group(self, V, loc):
         r = _parse("<Not(Animal), Plant*>", V, loc)
         assert isinstance(r.group_constraints[0], TemplateConstraintNot)
-        assert isinstance(r.group_constraints[1], TemplateConstraintAbstractDescendants)
+        assert isinstance(r.group_constraints[1], TemplateConstraintNonAbstractDescendants)
 
     def test_conj_groups_with_complex_elements(self, V, loc):
         """Conj(<And(A, B)>, <^C*>) — boolean operator inside each group."""
@@ -1386,7 +1386,7 @@ class TestComplexCombinations:
         g0 = r.structure_constraints[0]
         g1 = r.structure_constraints[1]
         assert isinstance(g0.group_constraints[0], TemplateConstraintAnd)
-        assert isinstance(g1.group_constraints[0], TemplateConstraintAbstractAscendants)
+        assert isinstance(g1.group_constraints[0], TemplateConstraintNonAbstractAscendants)
 
     def test_deeply_nested_boolean_in_structure(self, V, loc):
         """Neg(<Or(A, Not(B))>) — Not wraps an Or which contains a Not."""
@@ -1433,7 +1433,7 @@ class TestComplexCombinations:
         r = _parse("Conj(<^Animal*, Not(Plant)>, Neg(<Fungus>))", V, loc)
         assert isinstance(r, StructureConjunction)
         g = r.structure_constraints[0]
-        assert isinstance(g.group_constraints[0], TemplateConstraintAbstractAscendants)
+        assert isinstance(g.group_constraints[0], TemplateConstraintNonAbstractAscendants)
         assert isinstance(g.group_constraints[1], TemplateConstraintNot)
 
     def test_template_variable_in_group_and_structure(self, V, loc):
@@ -1443,7 +1443,7 @@ class TestComplexCombinations:
         assert g0.group_constraints[0].literal == "animal"
         assert g0.group_constraints[1].literal == "plant"
         g1 = r.structure_constraints[1]
-        assert isinstance(g1.group_constraints[0], TemplateConstraintAbstractAscendants)
+        assert isinstance(g1.group_constraints[0], TemplateConstraintNonAbstractAscendants)
         assert g1.group_constraints[0].literal == "fungus"
 
     def test_repr_round_trip_simple(self, V, loc):
