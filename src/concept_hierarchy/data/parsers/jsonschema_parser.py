@@ -69,6 +69,8 @@ from concept_hierarchy.errors import (
 
 BUILTIN_TYPES = {"null", "boolean", "integer", "number", "string", "array", "object"}
 
+JSONSCHEMA_STRUCTURE_KEYS = {"allOf", "anyOf", "oneOf", "not", "if", "then", "else"}
+
 # Keys allowed on a schema node whose "type" is a single custom type name.
 # "title"/"description"/"$comment" are plain draft-07 annotation keywords and are harmless to allow through.
 CUSTOM_TYPE_EXTRA_KEYS = {"type", "provenance", "default", "title", "description", "$comment"}
@@ -94,7 +96,6 @@ BUILTIN_NODE_EXTRA_KEYS = {
     "minLength",
     "pattern",
     "format",
-    "constraint",
     "contentMediaType",
     "contentEncoding",
     # array-specific keys
@@ -721,6 +722,13 @@ def _finish_builtin_node(
 
     if "contains" in work:
         node.contains = child(work.pop("contains"), "contains")
+
+    # --- string structure -----------------------------------------------
+    if "constraint" in work:
+        node.custom_string_constraint = work.pop("constraint")
+
+    if "format" in work and isinstance(work["format"], str) and work["format"] in {"Concept", "Type"}:
+        node.custom_string_format = work.pop("format")
 
     # --- composition -------------------------------------------------
     for keyword, attr in (("allOf", "all_of"), ("anyOf", "any_of"), ("oneOf", "one_of")):

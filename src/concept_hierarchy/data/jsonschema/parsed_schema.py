@@ -90,6 +90,8 @@ class CHSchemaNode:
     """
 
     # --- custom keywords -------------------
+    custom_string_format: str | None = None
+    custom_string_constraint: str | None = None
     custom_object_properties: str | None = None
 
     # --- "type" keyword (builtin / multi-type only) -------------------
