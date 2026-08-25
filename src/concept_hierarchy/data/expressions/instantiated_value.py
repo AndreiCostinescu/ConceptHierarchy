@@ -249,7 +249,7 @@ class ParsedStructural(ParsedValue):
                 yield ("anyOf", i) + expr_location, expr
         if self.one_of_parsed is not None:
             for expr_location, expr in self.one_of_parsed.iter_expressions():
-                yield ("onfOf",) + expr_location, expr
+                yield ("oneOf",) + expr_location, expr
         if self.then_else_parsed is not None:
             for expr_location, expr in self.then_else_parsed.iter_expressions():
                 yield ("then_else",) + expr_location, expr
