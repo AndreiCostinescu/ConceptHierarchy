@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.data.contexts.template_context import TemplateContext
-from concept_hierarchy.data.contexts.variable_context import VariableContext
+from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.parsers.expression_parser import ExpressionParserValidator
 from concept_hierarchy.data.parsers.jsonschema_parser import CHSchemaValidator
 from concept_hierarchy.data.type_template_variables.constraint_formula import TemplateConstraintFormulaValidator
@@ -95,6 +95,12 @@ class ConceptHierarchyContext:
 
     def add_new_variables(self, variables: dict[str, TypeValue | dict]):
         self.set_variable_context(self.variable_context.add_variables(variables))
+
+    def push_new_variable_stack_frame(self, variables: VariableStackFrame):
+        self.variable_context.push_variable_context(variables)
+
+    def pop_last_variable_stack_frame(self):
+        self.variable_context.pop_variable_context()
 
     def add_variable_context(self, variable_context: VariableContext):
         self.set_variable_context(self.variable_context.add_context(variable_context))
