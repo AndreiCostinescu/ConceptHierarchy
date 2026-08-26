@@ -182,13 +182,22 @@ class ConceptDefinition(ConceptHierarchyDefinition):
 
         self.non_root_data_specified_check()
         self._data_def = self.definition_data.get(ConceptDefinition.concept_definition_data, None)
+        traversed_external_files: list[str] = []
         while self._check_data_content(self._data_location_id):
             if self.external_data_resolver is None:
                 raise RuntimeError(
                     f"Need to read external data for concept {self.name}, but the external data reader is None!"
                 )
+            if self._data_def in traversed_external_files:
+                raise CHSemanticError(
+                    f"Found cycle in external data definition files: {self._data_def} already traversed!\n"
+                    f"Traversed files: {traversed_external_files}!",
+                    location_id=self.location_id(*self._data_location_id),
+                    part=PathPart.VALUE,
+                )
             try:
                 self._data_location_id.append("ext:" + self._data_def)
+                traversed_external_files.append(self._data_def)
                 self._data_def = self.external_data_resolver(self.name, self._data_def)
             except RuntimeError as e:
                 if str(e).startswith("Could not find external data file"):
