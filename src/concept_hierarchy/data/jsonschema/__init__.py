@@ -16,7 +16,7 @@
 
 Typical usage::
 
-    from ch_schema import parse_schema, validate_value, CHSchemaContext, CHValueValidator
+    from ch_schema import parse_schema, validate_value, CHSchemaContext
 
     node, errors = parse_schema(my_schema, my_schema_context)
     if not errors:
