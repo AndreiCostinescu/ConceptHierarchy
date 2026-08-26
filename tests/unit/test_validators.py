@@ -16,7 +16,7 @@
 
 import pytest
 
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, CHWarning
 from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.validator.checker import check_model
 
@@ -82,7 +82,10 @@ class TestSemanticValidator:
         with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"]}}))
         # Concepts without any defined data are allowed; the below should not raise
-        check_model(_model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {}}}))
+        with pytest.warns(CHWarning, match="Found a domain concept with no data defined: 'Child'"):
+            check_model(
+                _model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {}}})
+            )
         model = _model(
             {"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {"properties": {}}}}
         )
@@ -119,7 +122,8 @@ class TestSemanticValidator:
         model = _model(
             {"Concept": {}, "ValueDomain": {"directParents": ["Concept"], "data": {}}, "Type": "ValueDomain"}
         )
-        check_model(model)
+        with pytest.warns(CHWarning, match="Found a domain concept with no data defined: 'Type'"):
+            check_model(model)
         assert "Type" in model.domain_concepts
         assert "Type" not in model.value_domains
 
