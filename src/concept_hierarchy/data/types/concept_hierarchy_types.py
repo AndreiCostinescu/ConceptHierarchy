@@ -238,7 +238,7 @@ class ExpandedVariadicTemplateVariable(VariadicTemplateVariable):
     @property
     def full_name(self) -> str:
         if self._full_name is None:
-            self._full_name = self.clean_name + "..."
+            self._full_name = super().full_name + "..."
         return self._full_name
 
     @property
