@@ -277,8 +277,29 @@ class TestTemplateArgumentParsing:
         substitution_data = model_data["concepts"]["SubInstance"]["data"]["templateContext"]["substitution"]
         substitution_data["AcceptConcepts"] = "[SubInstance<SubAcceptConcepts..., SubRejectConcepts...>]"
         substitution_data["RejectConcepts"] = "[SubInstance<!SubRejectConcepts..., !SubAcceptConcepts...>]"
-        # test should fail because SubInstance is not a DomainConcept
-        with pytest.raises(CHSemanticError, match="1234"):
+        # test should fail because SubInstance is not a DomainConcept: it violates the constraint "Not(ValueDomain)"
+        with pytest.raises(
+            CHSemanticError,
+            match=r"Substitution values for parent Instance defined in SubInstance does not satisfy its constraints\n"
+            r"[\s\S]*\[\"concepts\": \"SubInstance\": \"data\": \"templateContext\": \"substitution\": "
+            r"\"Not\(ValueDomain\) <-> \[SubInstance<\[SubInstance:SubAcceptConcepts..., "
+            r"SubInstance:SubRejectConcepts...\], \[\]>\]\": "
+            r"\"Not\(ValueDomain\) <-> SubInstance<\[SubInstance:SubAcceptConcepts..., "
+            r"SubInstance:SubRejectConcepts...\], \[\]>\"\] \n"
+            r"[\s\S]*Sub formula ValueDomain passed without constraints on template arguments "
+            r"TemplateContext\(vars: \('SubAcceptConcepts', 'SubRejectConcepts'\), "
+            r"variadic: \['SubAcceptConcepts', 'SubRejectConcepts'\], "
+            r"constraint: <Not\(ValueDomain\), Not\(ValueDomain\)>\) => negation fails\n"
+            r"[\s\S]*\[\"concepts\": \"SubInstance\": \"data\": \"templateContext\": \"substitution\": "
+            r"\"Not\(ValueDomain\) <-> \[SubInstance<\[\], \[SubInstance:SubRejectConcepts..., "
+            r"SubInstance:SubAcceptConcepts...\]>\]\": "
+            r"\"Not\(ValueDomain\) <-> SubInstance<\[\], \[SubInstance:SubRejectConcepts..., "
+            r"SubInstance:SubAcceptConcepts...\]>\"\] \n"
+            r"[\s\S]*Sub formula ValueDomain passed without constraints on template arguments "
+            r"TemplateContext\(vars: \('SubAcceptConcepts', 'SubRejectConcepts'\), "
+            r"variadic: \['SubAcceptConcepts', 'SubRejectConcepts'\], "
+            r"constraint: <Not\(ValueDomain\), Not\(ValueDomain\)>\) => negation fails",
+        ):
             self.get_model(model_data)
 
     def test_specify_variadic_argument_in_constraints(self):
