@@ -26,11 +26,12 @@ from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId,
 def verify_specializations(
     c: DomainConceptDefinition,
     for_either_properties_or_functions: ForPropertyOrFunction,
-    verify_for_subconcepts: bool,
+    subconcepts_spec_data: dict[str, set[str]] | None,
     available_parent_data: dict[str, dict[str, list[DomainConceptDefinition]]],
     location_id: LocationId,
     verbose: bool = False,
-):
+) -> dict[str, set[str]]:
+    verify_for_subconcepts = subconcepts_spec_data is None
     if for_either_properties_or_functions.value:
         data_type, data_type_plural, available_data = "property", "properties", c.available_property_data
         specialization_keys, concept_data = PropertyDefinition.SPECIALIZATION_KEYWORDS, c.properties
@@ -48,8 +49,10 @@ def verify_specializations(
             specialization_content = c.function_specializations_for_this
         check_valid_types_at_specialization = DomainConceptDefinition.check_function_data_types
 
-    # { name: { def_keys } } contains all the def_keys for prop/func name which was SET, GET, or CANCELLED
+    # { name: { def_keys } } contains all the def_keys for prop/func name which was SET, GET_FROM_PARENT, or CANCELLED
     specialized_data: dict[str, set[str]] = {}
+    data_not_from_subconcepts_specialization: set[tuple[str, str]] = set()
+    # `name` is the name of the DomainConcept property or function
     for name, spec_data in specialization_content.items():
         if name not in concept_data and name not in available_parent_data:
             raise CHSemanticError(
@@ -87,6 +90,18 @@ def verify_specializations(
                     # CANCEL
                     cancelled_keys.append(def_key)
                     specialized_data[name].add(def_key)
+                    continue
+                if def_data == INHERIT_FROM_KEYWORD + "parents":
+                    # this keyword is only allowed in a "_forThis" specialization
+                    if verify_for_subconcepts:
+                        raise CHSemanticError(
+                            f'The "{INHERIT_FROM_KEYWORD}parents" specialization value is only available under the '
+                            f'"_forThis" specialization data!\nThis value is how the onlyForSubconcepts specialization '
+                            f"mode is implemented.",
+                            location_id=location_id + [name, def_key],
+                            part=PathPart.VALUE,
+                        )
+                    data_not_from_subconcepts_specialization.add((name, def_key))
                     continue
                 # GET VALUE FROM PARENT disambiguation
                 res = def_data.split(INHERIT_FROM_KEYWORD)
@@ -139,13 +154,22 @@ def verify_specializations(
         for def_key, parents_defining in available_parent_data_at_name.items():
             if name in specialized_data and def_key in specialized_data[name]:
                 continue
+            if (
+                not verify_for_subconcepts
+                and (name, def_key) not in data_not_from_subconcepts_specialization
+                and name in subconcepts_spec_data
+                and def_key in subconcepts_spec_data[name]
+            ):
+                continue
             if len(parents_defining) > 1:
                 raise CHSemanticError(
-                    f"A disambiguation from multiple inherited values is needed in specialization of {data_type} {name}"
-                    f" at definition key {def_key}!",
+                    f"A disambiguation from multiple inherited values is needed in specialization of {data_type} "
+                    f'"{name}" at definition key "{def_key}"!',
                     location_id=location_id,
                     part=PathPart.VALUE,
                 )
+
+    return specialized_data
 
 
 def process_specialization_for_domain_concepts(context: ConceptHierarchyContext):
@@ -334,31 +358,31 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
                             collection[name][available_parent_def_key] = []
                         collection[name][available_parent_def_key].append(parent_c)
 
-        verify_specializations(
+        prop_spec_data = verify_specializations(
             c,
             ForPropertyOrFunction.PROPERTY,
-            True,
+            None,
             available_parent_data_for_properties,
             location_id=property_location,
         )
         verify_specializations(
             c,
             ForPropertyOrFunction.PROPERTY,
-            False,
+            prop_spec_data,
             available_parent_data_for_properties,
             location_id=property_location + [DomainConceptDefinition.domain_concept_specialization_for_this],
         )
-        verify_specializations(
+        func_spec_data = verify_specializations(
             c,
             ForPropertyOrFunction.FUNCTION,
-            True,
+            None,
             available_parent_data_for_functions,
             location_id=function_location,
         )
         verify_specializations(
             c,
             ForPropertyOrFunction.FUNCTION,
-            False,
+            func_spec_data,
             available_parent_data_for_functions,
             location_id=function_location + [DomainConceptDefinition.domain_concept_specialization_for_this],
         )

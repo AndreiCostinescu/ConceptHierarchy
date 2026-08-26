@@ -1240,7 +1240,7 @@
 
         "inheritedValueDisambiguation": {
           "type": "string",
-          "pattern": "^inheritFrom:([A-Z][A-Za-z0-9_]*)?$"
+          "pattern": "^inheritFrom:([A-Z][A-Za-z0-9_]*|parents)?$"
         },
 
         "anyValue": {

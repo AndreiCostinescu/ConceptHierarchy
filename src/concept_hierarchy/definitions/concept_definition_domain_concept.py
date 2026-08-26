@@ -635,7 +635,7 @@ class DomainConceptDefinition(ConceptDefinition):
                     raise CHSemanticError(
                         f"{c.definition_type()} property definition keyword {def_key} is not specializable!"
                         f"\nPlease remove it from the specialization specification!",
-                        location_id=location_id,
+                        location_id=location_id + [def_key],
                         part=PathPart.KEY,
                     )
         else:
