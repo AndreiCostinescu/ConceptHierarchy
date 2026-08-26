@@ -35,6 +35,7 @@ def verify_specializations(
     if for_either_properties_or_functions.value:
         data_type, data_type_plural, available_data = "property", "properties", c.available_property_data
         specialization_keys, concept_data = PropertyDefinition.SPECIALIZATION_KEYWORDS, c.properties
+        conjunctive_specialization_keys = PropertyDefinition.CONJUNCTIVE_SPECIALIZATION_KEYWORDS
         if verify_for_subconcepts:
             specialization_content = c.property_specializations_for_sub
         else:
@@ -43,6 +44,7 @@ def verify_specializations(
     else:
         data_type, data_type_plural, available_data = "function", "functions", c.available_function_data
         specialization_keys, concept_data = FunctionDefinition.SPECIALIZATION_KEYWORDS, c.functions
+        conjunctive_specialization_keys = FunctionDefinition.CONJUNCTIVE_SPECIALIZATION_KEYWORDS
         if verify_for_subconcepts:
             specialization_content = c.function_specializations_for_sub
         else:
@@ -87,6 +89,13 @@ def verify_specializations(
                 if def_data == INHERIT_FROM_KEYWORD:
                     if verbose:
                         print("CANCEL", name, def_key, "at", c.name, def_data)
+                    if def_key in conjunctive_specialization_keys:
+                        raise CHSemanticError(
+                            f"Conjunctive ({data_type}) definition keywords can not be cancelled in specializations! "
+                            f'Change the specialization value of "{def_key}"',
+                            location_id=location_id + [name, def_key],
+                            part=PathPart.VALUE,
+                        )
                     # CANCEL
                     cancelled_keys.append(def_key)
                     specialized_data[name].add(def_key)
