@@ -92,6 +92,78 @@
             }
         },
         "DogClone": "Dog",
+        "Pug": {
+            "directParents": ["DogClone"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "breed": {
+                            "default": "s:Pug"
+                        }
+                    }
+                },
+                "functions": {
+                    "_specializations": {
+                        "f1": "inheritFrom:",
+                        "_forThis": {
+                            "f1": "inheritFrom:parents"
+                        }
+                    }
+                }
+            }
+        },
+        "TestSpecialization_Parent": {
+            "directParents": ["Concept"],
+            "data": {
+                "properties": {
+                    "prop": "String"
+                }
+            }
+        },
+        "TestSpecialization_Spec1": {
+            "directParents": ["TestSpecialization_Parent"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "prop": {
+                            "default": "s:test"
+                        }
+                    }
+                }
+            }
+        },
+        "TestSpecialization_Spec2": {
+            "directParents": ["TestSpecialization_Parent"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "prop": {
+                            "default": "s:test",
+                            "confidenceHalfDecayTime": [1, "d"]
+                        }
+                    }
+                }
+            }
+        },
+        "TestSpecialization_Diamond": {
+            "directParents": ["TestSpecialization_Spec1", "TestSpecialization_Spec2"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "prop": {
+                            "default": "s:Test",
+                            "confidenceHalfDecayTime": [0.5, "d"],
+                            "constraint": { "Equals<String>": { "arg1": "constraint", "arg2": "s:Test" } }
+                        },
+                        "_forThis": {
+                            "prop": {
+                                "confidenceHalfDecayTime": "inheritFrom:parents"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "ValueDomain": {
             "directParents": ["Concept"],
             "data": { },
