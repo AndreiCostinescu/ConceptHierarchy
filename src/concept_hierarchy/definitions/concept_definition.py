@@ -59,7 +59,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
     ):
         self.parents: tuple[str, ...] = ()
         self.description: str | None = None
-        self.fixed_children: tuple[str, ...] = ()
+        self.fixed_children: tuple[str, ...] | None = None
         self.min_instances: int = 0
         self.max_instances: int | None = None
         self.distinct_from: tuple[str, ...] = ()
@@ -69,6 +69,9 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         An abstract concept (DomainConcept, ValueDomain, Function) can not be instantiated. 
         An abstract Function can not be instantiated and does not have to define its interface (but it can)!
         """
+
+        self.all_concepts_distinct_from_this: tuple[str, ...] = ()
+        """Contains the union of this concept's distinctFrom and the parents' distinctGroup."""
 
         self.data: dict[str, object] = {}
         self._data_def: object = None
@@ -250,26 +253,79 @@ class ConceptDefinition(ConceptHierarchyDefinition):
                 part=PathPart.VALUE,
             )
 
-        if ConceptDefinition.concept_distinct_from in self.data:
-            self.distinct_from = self.data[ConceptDefinition.concept_distinct_from]
+        if ConceptDefinition.concept_direct_children in self.definition_data:
+            self.fixed_children = self.definition_data[ConceptDefinition.concept_direct_children]
+            if not isinstance(self.fixed_children, list) or not all(isinstance(x, str) for x in self.fixed_children):
+                raise CHSyntaxError(
+                    f'The definition of "{ConceptDefinition.concept_direct_children}" must be a JSON array of strings, '
+                    f"not {self.fixed_children!r} for {self.name}.",
+                    location_id=self.location_id(ConceptDefinition.concept_direct_children),
+                    part=PathPart.VALUE,
+                )
+            if len(set(self.fixed_children)) != len(self.fixed_children):
+                raise CHSemanticError(
+                    f"The exhaustive enumeration of concept children {self.fixed_children!r} contains duplicates! "
+                    f"Please remove them!",
+                    location_id=self.location_id(ConceptDefinition.concept_direct_children),
+                    part=PathPart.VALUE,
+                )
+        # missing checks:
+        #  - all concepts in "directChildren" must be direct children!
+        #  - "directChildren" must be exhaustive
+        #   STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
+
+        if ConceptDefinition.concept_distinct_group in self.definition_data:
+            self.distinct_group = self.definition_data[ConceptDefinition.concept_distinct_group]
+            if not isinstance(self.distinct_group, list) or not all(isinstance(x, str) for x in self.distinct_group):
+                raise CHSyntaxError(
+                    f'The definition of "{ConceptDefinition.concept_distinct_group}" must be a JSON array of strings, '
+                    f"not {self.distinct_group!r} for {self.name}.",
+                    location_id=self.location_id(ConceptDefinition.concept_distinct_group),
+                    part=PathPart.VALUE,
+                )
+            if len(set(self.distinct_group)) != len(self.distinct_group):
+                raise CHSemanticError(
+                    f"The definition of a distinct group among children concepts {self.distinct_group!r} contains "
+                    f"duplicates! Please remove them!",
+                    location_id=self.location_id(ConceptDefinition.concept_distinct_group),
+                    part=PathPart.VALUE,
+                )
+            if len(self.distinct_group) < 2:
+                raise CHSyntaxError(
+                    f"The definition of a distinct group must contain at least two elements; got "
+                    f"{self.distinct_group!r} at concept {self.name}!",
+                    location_id=self.location_id(ConceptDefinition.concept_distinct_group),
+                    part=PathPart.VALUE,
+                )
+        # missing checks:
+        #  - all concepts in "distinctGroup" must be direct children!
+        #   STRUCTURE CHECK
+        #       - done in checker.py - check_after_parsing_concepts
+
+        if ConceptDefinition.concept_distinct_from in self.definition_data:
+            self.distinct_from = self.definition_data[ConceptDefinition.concept_distinct_from]
             if not isinstance(self.distinct_from, list) or not all(isinstance(x, str) for x in self.distinct_from):
                 raise CHSyntaxError(
-                    f'The definition of domain concept "{ConceptDefinition.concept_distinct_from}" distinct group must '
-                    f"be a JSON array of strings, not {self.distinct_from!r}",
+                    f'The definition of "{ConceptDefinition.concept_distinct_from}" must be a JSON array of strings, '
+                    f"not {self.distinct_from!r} for {self.name}.",
                     location_id=self.location_id(ConceptDefinition.concept_distinct_from),
                     part=PathPart.VALUE,
                 )
             if len(set(self.distinct_from)) != len(self.distinct_from):
                 raise CHSemanticError(
-                    f"The definition of distinct group {self.distinct_from!r} contains duplicates! Please remove them",
+                    f"The definition of distinct concepts {self.distinct_from!r} contains duplicates! "
+                    f"Please remove them!",
                     location_id=self.location_id(ConceptDefinition.concept_distinct_from),
                     part=PathPart.VALUE,
                 )
+            self.all_concepts_distinct_from_this = self.distinct_from
         # missing checks:
         #  - check that all concept names in distinct_from are:
         #   1) concepts,
         #   2) different from this concept, and
         #   3) not parents of this concept
+        #  - check that the hierarchy contains no subconcept of two distinct concepts
         #   STRUCTURE CHECK
         #       - done in checker.py - check_after_parsing_concepts
 

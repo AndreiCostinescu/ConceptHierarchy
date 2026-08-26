@@ -93,6 +93,9 @@ class ConceptHierarchyModel:
         self.all_concept_parents: dict[str, set[str]] = {}  # does not include the concept itself
         self.topo_sort_concept_parents: dict[str, list[str]] = {}  # does not include the concept itself
         self.concept_topo_sort: list[str] = []
+        self.defined_direct_children: dict[str, set[str]] = {}  # this is the inverse "directParents" relation
+        self.all_declared_distinct_pairs: set[tuple[str, str]] = set()
+        """Entries are sorted (alphabetically) to eliminate the reflexivity of the "distinct" relation."""
 
         self.all_domain_concept_properties: dict[str, str] = {}  # prop_name -> defining concept
         self.all_domain_concept_functions: dict[str, str] = {}  # func_name -> defining concept
@@ -152,3 +155,9 @@ class ConceptHierarchyModel:
 
     def instance_names(self) -> list[str]:
         return [c for c in self.instances]
+
+    def add_distinct_pair(self, concept_name_1: str, concept_name_2: str):
+        if concept_name_1 < concept_name_2:
+            self.all_declared_distinct_pairs.add((concept_name_1, concept_name_2))
+        else:
+            self.all_declared_distinct_pairs.add((concept_name_2, concept_name_1))

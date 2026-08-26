@@ -264,6 +264,7 @@ class ConceptHierarchyChecker:
         #    EXPRESSION CHECK
 
         # perform topological sort of concepts and instances
+        inverse_direct_parents: dict[str, set[str]] = {}
         concept_parent_mapping = {c_name: c.parents for c_name, c in defined_concepts.items()}
         for c_name, parents in concept_parent_mapping.items():
             for index, p_name in enumerate(parents):
@@ -272,6 +273,9 @@ class ConceptHierarchyChecker:
                         f"The parent {p_name!r} of concept {c_name!r} is not defined in the hierarchy.",
                         location_id=concept_location_id + [c_name, ConceptDefinition.concept_direct_parents, index],
                     )
+                if p_name not in inverse_direct_parents:
+                    inverse_direct_parents[p_name] = set()
+                inverse_direct_parents[p_name].add(c_name)
         try:
             self.ch.concept_topo_sort, roots = topological_sort(concept_parent_mapping)
             if self.ch.root_concept_name in roots and len(roots) != 1:
@@ -281,8 +285,11 @@ class ConceptHierarchyChecker:
                     part=PathPart.VALUE,
                 )
             elif self.ch.root_concept_name not in roots:
+                assert self.ch.root_concept_name not in inverse_direct_parents
+                inverse_direct_parents[self.ch.root_concept_name] = set()
                 for root in roots:
                     defined_concepts[root].update_parents((self.ch.root_concept_name,))
+                    inverse_direct_parents[self.ch.root_concept_name].add(root)
                 self.ch.concept_topo_sort = [self.ch.root_concept_name] + self.ch.concept_topo_sort
                 defined_concepts[self.ch.root_concept_name] = ConceptDefinition(
                     self.ch.root_concept_name, {}, concept_location_id
@@ -319,6 +326,7 @@ class ConceptHierarchyChecker:
             all_concept_topo_sort_parents[concept_name] = sorted(ancestors, key=topo_index.__getitem__)
         self.ch.all_concept_parents = all_ancestors
         self.ch.topo_sort_concept_parents = all_concept_topo_sort_parents
+        self.ch.defined_direct_children = inverse_direct_parents
 
         self.ch.concepts = defined_concepts
 
@@ -722,8 +730,79 @@ class ConceptHierarchyChecker:
                             f'keyword in the concept definition to "true"!',
                             location_id=c.location_of(ConceptDefinition.concept_distinct_from) + [index],
                         )
+                    self.ch.add_distinct_pair(c_name, distinct_from_concept)
+                for index, distinct_group_entry in enumerate(c.distinct_group):
+                    if not self.ch.is_concept(distinct_group_entry):
+                        raise CHSemanticError(
+                            f"{ConceptDefinition.concept_distinct_group} entry {index} of {c.name} "
+                            f'("{distinct_group_entry}") is not a concept!',
+                            location_id=c.location_of(ConceptDefinition.concept_distinct_group) + [index],
+                        )
+                    # check that the child is a *direct* child, not just some concept
+                    entry_concept = self.ch.concepts[distinct_group_entry]
+                    if c.name not in entry_concept.parents:
+                        raise CHSemanticError(
+                            f"The {ConceptDefinition.concept_distinct_group} entry {distinct_group_entry} of {c.name} "
+                            f"is not a direct child of {c.name}!",
+                            location_id=c.location_of(ConceptDefinition.concept_distinct_group) + [index],
+                        )
+                    # append the data from the group to the distinctFrom of the concepts in the distinctGroup
+                    for other_entry_in_distinct_group in c.distinct_group:
+                        if (
+                            other_entry_in_distinct_group == distinct_group_entry
+                            or other_entry_in_distinct_group in entry_concept.all_concepts_distinct_from_this
+                        ):
+                            continue
+                        entry_concept.all_concepts_distinct_from_this += (other_entry_in_distinct_group,)
+                        self.ch.add_distinct_pair(distinct_group_entry, other_entry_in_distinct_group)
+                if c.fixed_children is not None:
+                    for index, fixed_child in enumerate(c.fixed_children or []):
+                        if not self.ch.is_concept(fixed_child):
+                            raise CHSemanticError(
+                                f"{ConceptDefinition.concept_direct_children} entry {index} of {c.name} "
+                                f'("{fixed_child}") is not a concept! Either remove it from the list or ',
+                                location_id=c.location_of(ConceptDefinition.concept_direct_children) + [index],
+                            )
+                        # check that the child is a *direct* child, not just some concept
+                        child_concept = self.ch.concepts[fixed_child]
+                        if c.name not in child_concept.parents:
+                            raise CHSemanticError(
+                                f"The {ConceptDefinition.concept_direct_children} entry {fixed_child} of {c.name} is "
+                                f"not a direct child of {c.name}!",
+                                location_id=c.location_of(ConceptDefinition.concept_direct_children) + [index],
+                            )
+                    # Verify that there are no other children of this concept except the ones defined there
+                    defined_children = set()
+                    if c_name in self.ch.defined_direct_children:
+                        defined_children = self.ch.defined_direct_children[c_name]
+                    assert len(set(c.fixed_children) - defined_children) == 0
+                    extra_children = defined_children - set(c.fixed_children)
+                    if len(extra_children) != 0:
+                        raise CHSemanticError(
+                            f'The definition of "{ConceptDefinition.concept_direct_children}" for a domain concept '
+                            f"should exhaustively enumerate ALL direct children concepts.\n{c_name} has the following "
+                            f'children not listed in "{ConceptDefinition.concept_direct_children}": '
+                            f"{sorted(extra_children)}",
+                            location_id=c.location_of(ConceptDefinition.concept_direct_children),
+                            part=PathPart.VALUE,
+                        )
             except ConceptHierarchyError as e:
                 errors.append(e)
+        # check distinctness of hierarchy only after all concepts' distinctFrom and distinctGroup entries were processed
+        for c_name, c in self.ch.concepts.items():
+            if len(c.parents) < 2:
+                continue
+            all_parents_of_c = self.ch.all_concept_parents[c_name]
+            for distinct_pair in self.ch.all_declared_distinct_pairs:
+                if distinct_pair[0] in all_parents_of_c and distinct_pair[1] in all_parents_of_c:
+                    errors.append(
+                        CHSemanticError(
+                            f"The concept {c_name} is a subconcept of two distinct concepts {distinct_pair[0]} and "
+                            f"{distinct_pair[1]}! Fix the hierarchy!",
+                            location_id=c.location_of(ConceptDefinition.concept_direct_parents),
+                            part=PathPart.VALUE,
+                        )
+                    )
         if errors:
             if len(errors) == 1:
                 raise errors[0]
