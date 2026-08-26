@@ -125,6 +125,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
             )
         instantiation_data = self.data.get(ValueDomainDefinition.value_domain_instantiation, None)
         if instantiation_data is not None:
+            fallback_instantiation_constraint = tuple("" for _ in self.template_argument_order)
             if not isinstance(instantiation_data, (bool, dict, list, str)):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s instantiation deserialization structure must be:\n"
@@ -138,7 +139,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                 )
             elif not isinstance(instantiation_data, list):
                 # if there are no template arguments, template_argument_order is an empty tuple
-                self.instantiation = [(tuple("" for _ in self.template_argument_order), instantiation_data)]
+                self.instantiation = [(fallback_instantiation_constraint, instantiation_data)]
             elif isinstance(instantiation_data, list) and len(instantiation_data) == 0:
                 raise CHSyntaxError(
                     f"Can not specify an empty list of {self.definition_type()} instantiations for {self.name!r}!",
@@ -152,10 +153,11 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                     and all(isinstance(x, str) for x in instantiation_data)
                     and instantiation_data[1] in ValueDomainDefinition.argument_provenance_types
                 ):
-                    self.instantiation = [(tuple("" for _ in self.template_argument_order), instantiation_data)]
+                    self.instantiation = [(fallback_instantiation_constraint, instantiation_data)]
                 else:
                     already_defined_specializations: set[tuple[str, ...]] = set()
                     self.instantiation = []
+                    found_fallback_instantiation = False
                     for entry_index, instantiation_entry in enumerate(instantiation_data):
                         if len(instantiation_entry) != 2:
                             raise CHSyntaxError(
@@ -226,7 +228,17 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                             )
                         # add data to ordered instantiation list
                         already_defined_specializations.add(instantiation_specialization_key)
+                        found_fallback_instantiation |= (
+                            instantiation_specialization_key == fallback_instantiation_constraint
+                        )
                         self.instantiation.append((instantiation_specialization_key, instantiation_entry[1]))
+                    if not found_fallback_instantiation:
+                        raise CHSemanticError(
+                            f"Template-dependent instantiation schemas must define a fallback instantiation schema!\n"
+                            f'For {self.name}, this fallback schema must be "{fallback_instantiation_constraint}"."',
+                            location_id=self.location_id(ValueDomainDefinition.value_domain_instantiation),
+                            part=PathPart.VALUE,
+                        )
             assert (
                 isinstance(self.instantiation, list)
                 and all(isinstance(x, tuple) for x in self.instantiation)
