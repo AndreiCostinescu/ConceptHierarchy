@@ -564,9 +564,10 @@ def _check_instantiation_schema(
 ) -> ParsedValue | None:
     instantiation_schema = validator.get_if_has_instantiation_schema(expr_type)
     if instantiation_schema is None or len(instantiation_schema) == 0:
-        raise RuntimeError(
-            f"It can't be that there is no instantiation schema defined for a non-abstract ValueDomain {expr_type}!"
+        assert validator.is_type_abstract(expr_type), (
+            f'It can\'t be that there is no instantiation schema defined for a non-abstract ValueDomain "{expr_type}"!'
         )
+        return None
     if len(instantiation_schema) > 1:
         raise NotImplementedError
     type_application_constraint, schema_to_match = instantiation_schema[0]
