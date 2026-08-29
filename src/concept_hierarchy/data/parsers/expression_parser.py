@@ -16,6 +16,7 @@
 
 from abc import ABC, abstractmethod
 from collections import deque
+from copy import copy
 from typing import Callable
 
 from frozendict import frozendict
@@ -45,7 +46,10 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     NonTypeTemplateConstraintFormula,
 )
-from concept_hierarchy.data.type_template_variables.template_substitution import substitute
+from concept_hierarchy.data.type_template_variables.template_substitution import (
+    substitute,
+    substitute_template_variables_in_value,
+)
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     TYPE_VALUE_IS_INSTANCE_CHECK,
     ConceptHierarchyTemplateArgument,
@@ -187,6 +191,45 @@ class ExpressionParserValidator(ABC):
     @abstractmethod
     def get_type_template_instantiation_validator(self) -> TypeTemplateInstantiationValidator:
         pass
+
+
+def substitute_schema(
+    instantiation_schema: CHSchemaNode,
+    template_context_of_concept: TemplateContext,
+    expr_type: TypeValue,
+    constraint_validator: TypeTemplateInstantiationValidator,
+    location_id: LocationId,
+) -> CHSchemaNode:
+    template_substitution = {
+        t_arg_name: t_arg_value
+        for t_arg_name, t_arg_value in zip(template_context_of_concept.variables, expr_type.template_arguments)
+    }
+    if not template_substitution:
+        return instantiation_schema
+
+    def _parse_and_substitute(node: CHSchemaNode) -> CHSchemaNode:
+        if node.is_boolean_schema:
+            return node
+        if not node.is_custom_type:
+            return node.apply(_parse_and_substitute)
+        assert node.custom_type is not None
+        res = copy(node)
+        # substitute
+        subst_res = substitute_template_variables_in_value(
+            node.custom_type,
+            template_substitution,
+            template_context_of_concept,
+            TemplateContext(),
+            constraint_validator,
+            location_id + node.location_id,
+        )
+        assert isinstance(subst_res, TYPE_VALUE_IS_INSTANCE_CHECK)
+
+        res.custom_type = subst_res
+        assert res.custom_type is not None
+        return res
+
+    return instantiation_schema.apply(_parse_and_substitute)
 
 
 def parse_expression(
@@ -577,18 +620,28 @@ def _check_instantiation_schema(
         )
         return None
     for i, (type_application_constraint, schema_to_match) in enumerate(instantiation_schema):
+        type_template_instantiation_validator = validator.get_type_template_instantiation_validator()
         found_matching_schema = type_application_constraint is None
         if not found_matching_schema:
             errors = validate_type_against_constraint_formula(
                 type_application_constraint,
                 expr_type,
                 TemplateContextDeterminator(expr_template_context),
-                validator.get_type_template_instantiation_validator(),
+                type_template_instantiation_validator,
                 location_id,
             )
             found_matching_schema = len(errors) == 0
         if found_matching_schema:
-            return validator.validate_value_against_schema(schema_to_match, expr_value, location_id)
+            # substitute schema's template arguments
+            expr_type_template_context = validator.get_template_context(expr_type.clean_name)
+            substituted_schema_to_match = substitute_schema(
+                schema_to_match,
+                expr_type_template_context,
+                expr_type,
+                type_template_instantiation_validator,
+                location_id,
+            )
+            return validator.validate_value_against_schema(substituted_schema_to_match, expr_value, location_id)
     raise RuntimeError(f"There should always be a fallback matching schema... This was not reached at {expr_type}!")
 
 
