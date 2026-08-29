@@ -25,10 +25,7 @@ from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import FunctionArgumentAccessor, FunctionArgumentProvenance
 from concept_hierarchy.data.expressions.subexpressions import IllFormedExpression
 from concept_hierarchy.data.parsers.expression_parser import get_expression_type, parse_expression
-from concept_hierarchy.data.types.concept_hierarchy_types import (
-    TypeValue,
-    frozendict,
-)
+from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, frozendict
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
@@ -163,6 +160,10 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         assert isinstance(c_def, FunctionDefinition)
 
         all_default_argument_values: dict[str, Expression] = {}
+
+        # add the other Function arguments as variables to the variable context!
+        for arg_name, arg_type in c.evaluation_argument_types.items():
+            context.add_new_variable(arg_name, arg_type)
 
         # process the default argument expressions of this concept
         if c_def.has_location_of(FunctionDefinition.function_default_argument_values):
