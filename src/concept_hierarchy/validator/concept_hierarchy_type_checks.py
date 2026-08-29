@@ -315,9 +315,23 @@ def check_types_in_value_domain_definition(
     """
     Just parse the types of the json schema; don't validate the default value.
     """
-    if c.instantiation is None:
+    if c.abstract:
+        assert c.instantiation is None
         datum.instantiation = ()
         return
+    if c.instantiation is None:
+        # No defined instantiation does not mean that the ValueDomain is abstract
+        # It just means that there is no way of checking that the value is correct =>
+        # => this is equivalent to an instantiation schema definition of `"instantiation": true`
+        location_id = c.location_id()
+        all_instantiations = [(location_id, (c.create_fallback_instantiation_constraint(), True))]
+    else:
+        location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
+        if c.was_template_dependent_instantiation_defined:
+            all_instantiations = zip((location_id + [index] for index in range(len(c.instantiation))), c.instantiation)
+        else:
+            assert len(c.instantiation) == 1
+            all_instantiations = [(location_id, c.instantiation[0])]
 
     context.set_template_context(datum.template_context)
     constraint_validator = context.template_constraint_formula_validator
@@ -326,9 +340,7 @@ def check_types_in_value_domain_definition(
 
     location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
     parsed_instantiations: list[tuple[ConstraintGroup, CHSchemaNode]] = []
-    for instantiation_index, (instantiation_constraints, instantiation_schema) in enumerate(c.instantiation):
-        # FIXME: the instantiation index is not 0 for a non-template-dependent instantiation definition
-        instantiation_location_id = location_id + [instantiation_index]
+    for instantiation_location_id, (instantiation_constraints, instantiation_schema) in all_instantiations:
         parsed_instantiation_schema, errors = parse_schema(
             instantiation_schema, context.instantiation_schema_validator, instantiation_location_id
         )

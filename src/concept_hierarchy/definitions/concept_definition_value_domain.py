@@ -22,7 +22,7 @@ from concept_hierarchy.definitions.definition import LocationOfCheckData
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
 # the instantiation value is either a string value or a JSON object representing a json-schema-definition
-InstantiationDefinition: TypeAlias = str | dict
+InstantiationDefinition: TypeAlias = bool | str | list | dict
 # the instantiation definition can differ depending on the template arguments
 # the string value in the template-order-tuple is a template-constraint formula!
 TemplateDependentInstantiationDefinition: TypeAlias = list[tuple[tuple[str, ...], InstantiationDefinition]]
@@ -45,12 +45,14 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         self.default_serialization: str | None = None
         # if the ValueDomain has no template arguments, the list entry's tuple's first element will be empty: ()
         self.instantiation: TemplateDependentInstantiationDefinition | None = None
+        self.was_template_dependent_instantiation_defined: bool = False
 
     @classmethod
     def from_node(cls, concept_definition: ConceptDefinition):
         domain_concept = super().from_node(concept_definition)
         domain_concept.default_serialization = None
         domain_concept.instantiation = None
+        domain_concept.was_template_dependent_instantiation_defined = False
         return domain_concept
 
     def definition_type(self) -> str:
@@ -125,7 +127,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
             )
         instantiation_data = self.data.get(ValueDomainDefinition.value_domain_instantiation, None)
         if instantiation_data is not None:
-            fallback_instantiation_constraint = tuple("" for _ in self.template_argument_order)
+            fallback_instantiation_constraint = self.create_fallback_instantiation_constraint()
             if not isinstance(instantiation_data, (bool, dict, list, str)):
                 raise CHSyntaxError(
                     f"The definition of a {self.definition_type()}'s instantiation deserialization structure must be:\n"
@@ -157,6 +159,7 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
                 else:
                     already_defined_specializations: set[tuple[str, ...]] = set()
                     self.instantiation = []
+                    self.was_template_dependent_instantiation_defined = True
                     found_fallback_instantiation = False
                     for entry_index, instantiation_entry in enumerate(instantiation_data):
                         if len(instantiation_entry) != 2:
@@ -262,3 +265,6 @@ class ValueDomainDefinition(HiddenImplementationDefinition):
         #    REQUIRES: all concept data initialized
         #    STRUCTURE CHECK
         #       - done in checker.py - check_after_parsing_concepts
+
+    def create_fallback_instantiation_constraint(self) -> tuple[str, ...]:
+        return tuple("" for _ in self.template_argument_order)

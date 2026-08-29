@@ -59,7 +59,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
 )
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId, PathPart
+from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 from concept_hierarchy.utils import get_items_of_single_entry_dict
 
 
@@ -570,11 +570,8 @@ def _check_instantiation_schema(
 ) -> ParsedValue | None:
     instantiation_schema = validator.get_if_has_instantiation_schema(expr_type)
     if instantiation_schema is None or len(instantiation_schema) == 0:
-        return None
-        raise CHSyntaxError(
-            f"Can't parse the expression {expr_value!r} of type {expr_type} because the concept does not define "
-            f"an instantiation schema!",
-            location_id=location_id,
+        raise RuntimeError(
+            f"It can't be that there is no instantiation schema defined for a non-abstract ValueDomain {expr_type}!"
         )
     if len(instantiation_schema) > 1:
         raise NotImplementedError
