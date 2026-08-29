@@ -51,7 +51,9 @@ class ValueValidator(ValueInstantiationContext):
         expr = parse_expression(
             value,
             custom_type,
-            FunctionArgumentProvenance(provenance),
+            FunctionArgumentProvenance.ADDR
+            if provenance == ExpressionProvenance.ADDR
+            else FunctionArgumentProvenance.ANY,
             FunctionArgumentAccessor.GET,
             self.context.template_context,
             self.context.expression_parser_validator,
