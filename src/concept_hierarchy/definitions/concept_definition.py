@@ -60,10 +60,17 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self.parents: tuple[str, ...] = ()
         self.description: str | None = None
         self.fixed_children: tuple[str, ...] | None = None
+        """
+        Exhaustive enumeration of all direct children of this concept. 
+        The empty tuple means something different from None.
+        The former means this concept has no children and the latter means that directChildren is not specified.
+        """
         self.min_instances: int = 0
         self.max_instances: int | None = None
         self.distinct_from: tuple[str, ...] = ()
+        """Is a list of concepts (not necessarily sibling concepts) that are distinct from this concept."""
         self.distinct_group: tuple[str, ...] = ()
+        """Is a list of names of direct children that are pairwise distinct. Not exhaustive."""
         self.abstract: bool | None = None
         """
         An abstract concept (DomainConcept, ValueDomain, Function) can not be instantiated. 
