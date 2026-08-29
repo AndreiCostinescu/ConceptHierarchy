@@ -214,6 +214,21 @@ class CHSchemaNode:
         joined = ", ".join(non_empty_fields)
         return f"CHSchemaNode({joined})"
 
+    def __copy__(self):
+        """Shallow copy: containers (dict, list) are copied, but their elements are not."""
+        cls = self.__class__
+        result = cls.__new__(cls)
+
+        for field_name, field_value in self.__dict__.items():
+            if isinstance(field_value, (dict, list)):
+                # Copy the container, but elements remain references
+                setattr(result, field_name, field_value.copy())
+            else:
+                # Everything else: just copy the reference
+                setattr(result, field_name, field_value)
+
+        return result
+
     @property
     def is_boolean_schema(self) -> bool:
         return isinstance(self.canonical, bool)
@@ -298,45 +313,46 @@ class CHSchemaNode:
         if self.is_boolean_schema:
             return self
 
-        res = copy(self)
+        res = copy(self)  # this copies the containers as well; but not their contents!
 
-        for key, child in self.properties.items():
+        for key, child in res.properties.items():
             res.properties[key] = f(child)
-        for key, child in self.pattern_properties.items():
+        for key, child in res.pattern_properties.items():
             res.pattern_properties[key] = f(child)
-        if isinstance(self.additional_properties, CHSchemaNode):
-            res.additional_properties = f(self.additional_properties)
-        if self.property_names is not None:
-            res.property_names = f(self.property_names)
+        if isinstance(res.additional_properties, CHSchemaNode):
+            res.additional_properties = f(res.additional_properties)
+        if res.property_names is not None:
+            res.property_names = f(res.property_names)
 
-        if isinstance(self.items, list):
-            for i, child in enumerate(self.items):
+        if isinstance(res.items, list):
+            for i, child in enumerate(res.items):
                 res.items[i] = f(child)
-        elif isinstance(self.items, CHSchemaNode):
-            res.items = f(self.items)
-        if isinstance(self.additional_items, CHSchemaNode):
-            res.additional_items = f(self.additional_items)
-        if self.contains is not None:
-            res.contains = f(self.contains)
+        elif isinstance(res.items, CHSchemaNode):
+            res.items = f(res.items)
+        if isinstance(res.additional_items, CHSchemaNode):
+            res.additional_items = f(res.additional_items)
+        if res.contains is not None:
+            res.contains = f(res.contains)
 
-        for res_list, branches in ((res.all_of, self.all_of), (res.any_of, self.any_of), (res.one_of, self.one_of)):
-            for i, child in enumerate(branches):
+        for res_list in (res.all_of, res.any_of, res.one_of):
+            for i, child in enumerate(res_list):
                 res_list[i] = f(child)
-        if self.not_ is not None:
-            res.not_ = f(self.not_)
-        if self.if_ is not None:
-            res.if_ = f(self.if_)
-        if self.then_ is not None:
-            res.then_ = f(self.then_)
-        if self.else_ is not None:
-            res.else_ = f(self.else_)
+        if res.not_ is not None:
+            res.not_ = f(res.not_)
+        if res.if_ is not None:
+            res.if_ = f(res.if_)
+        if res.then_ is not None:
+            res.then_ = f(res.then_)
+        if res.else_ is not None:
+            res.else_ = f(res.else_)
 
-        for key, child in self.definitions.items():
+        for key, child in res.definitions.items():
             res.definitions[key] = f(child)
-        for key, child in self.dependent_schemas.items():
+        for key, child in res.dependent_schemas.items():
             res.dependent_schemas[key] = f(child)
 
-        for index, custom_concept_data_constraint in enumerate(self.custom_concept_data_constraints):
+        for index, custom_concept_data_constraint in enumerate(res.custom_concept_data_constraints):
+            res.custom_concept_data_constraints[index] = copy(custom_concept_data_constraint)
             res.custom_concept_data_constraints[index].value = f(custom_concept_data_constraint.value)
         return res
 
