@@ -16,6 +16,7 @@
 
 from abc import ABC, abstractmethod
 from collections import deque
+from typing import Callable
 
 from frozendict import frozendict
 
@@ -58,7 +59,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
 )
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId, PathPart
 from concept_hierarchy.utils import get_items_of_single_entry_dict
 
 
@@ -265,19 +266,62 @@ def _parse_syntax_of_expression(
         #             defined, but signal that there are instantiation schemas that do not match the expected type
         # TODO: validate literal formula; if formula is not validated -> raise CHSemanticError
 
-    function_composition_type = validator.create_instantiated_type("FunctionComposition", location_id)
-    function_type = validator.create_instantiated_type("Function", location_id)
-
     is_function_evaluation, is_function_evaluation_present, len_content_keys = True, False, None
-    # compute the amount of content keys in the JSON object
+    # compute the amount of **content keys** in the JSON object
     if isinstance(json_value, dict):
         len_content_keys = len(json_value)
         is_function_evaluation_present = "isFunctionEvaluation" in json_value
         if is_function_evaluation_present:
             len_content_keys -= 1
-            is_function_evaluation = json_value.pop("isFunctionEvaluation")
+            # remove the `"isFunctionEvaluation"` key from `json_value` ONLY in a Narrow/FEval expression type!
+            is_function_evaluation = json_value["isFunctionEvaluation"]
+
+    def ensure_unmodified_json_value(
+        _value: object, _is_function_evaluation_present: bool, _is_function_evaluation_value: bool
+    ) -> None:
+        if isinstance(_value, dict) and _is_function_evaluation_present and "isFunctionEvaluation" not in _value:
+            _value["isFunctionEvaluation"] = _is_function_evaluation_value
+
+    try:
+        expr_value_res = _parse_syntax_of_expression_with_instantiated_type(
+            json_value,
+            expr_type,
+            expr_template_context,
+            validator,
+            location_id,
+            recursively_parse,
+            is_function_evaluation,
+            is_function_evaluation_present,
+            len_content_keys,
+            ensure_unmodified_json_value,
+        )
+        ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
+        return expr_value_res
+    except ConceptHierarchyError as e:
+        ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
+        raise e
+
+
+def _parse_syntax_of_expression_with_instantiated_type(
+    json_value: object,
+    expr_type: TypeValue,
+    expr_template_context: TemplateContext,
+    validator: ExpressionParserValidator,
+    location_id: LocationId,
+    recursively_parse: bool,
+    is_function_evaluation: bool,
+    is_function_evaluation_present: bool,
+    len_content_keys: int,
+    ensure_unmodified_json_value: Callable[[object, bool, bool], None],
+) -> ExpressionValue:
+    function_composition_type = validator.create_instantiated_type("FunctionComposition", location_id)
+    function_type = validator.create_instantiated_type("Function", location_id)
+
     # check Narrow and FEval expressions
-    if isinstance(json_value, dict) and len_content_keys == 1:
+    if len_content_keys == 1:
+        assert isinstance(json_value, dict)
+        if is_function_evaluation_present:
+            json_value.pop("isFunctionEvaluation")
         function_evaluation = (
             not validator.is_a_subtype_of_b(expr_type, function_composition_type, location_id)
             and is_function_evaluation
@@ -413,6 +457,7 @@ def _parse_syntax_of_expression(
                 narrow_res = _check_instantiation_schema(value, key_type, validator, location_id)
             if not recursively_parse or (narrow_res is not None and narrow_res.is_valid()):
                 return NarrowExpression(narrow_res, key_type, key_type != expr_type)
+        ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
     # check Var expression
     if isinstance(json_value, str):
         # Prioritize variables over template variables if there is a name clash!
