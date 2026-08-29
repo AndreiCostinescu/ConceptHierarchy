@@ -289,7 +289,8 @@ def _parse_syntax_of_expression(
                 location_id=location_id + [key],
                 part=PathPart.KEY,
             )
-        if function_evaluation and validator.is_a_subtype_of_b(key_type, function_type, location_id):
+        is_function_subtype = validator.is_a_subtype_of_b(key_type, function_type, location_id)
+        if function_evaluation and is_function_subtype:
             function_return = validator.get_function_return_interface(key_type.clean_name)
             if function_return is None:
                 raise CHSemanticError(
@@ -397,6 +398,12 @@ def _parse_syntax_of_expression(
                     f"Function result type {function_return_type} is not a subtype of {expr_type}"
                 )
         elif validator.is_a_subtype_of_b(key_type, expr_type, location_id):
+            if is_function_evaluation_present and not is_function_subtype:
+                raise CHSemanticError(
+                    f'Invalid use of the "isFunctionEvaluation" keyword at single-content-key object "{key_type}"!',
+                    location_id=location_id + ["isFunctionEvaluation"],
+                    part=PathPart.KEY,
+                )
             if not recursively_parse:
                 narrow_res = None
             else:
