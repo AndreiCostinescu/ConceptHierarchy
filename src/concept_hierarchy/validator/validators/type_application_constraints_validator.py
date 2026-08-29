@@ -202,8 +202,5 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
         )
         return subst_formula
 
-    def update_existing_template_variables(self, new_template_variables: set[str]):
-        self.context.template_constraint_formula_validator.update_existing_template_variables(new_template_variables)
-
     def get_template_context(self) -> TemplateContext:
         return self.context.template_context

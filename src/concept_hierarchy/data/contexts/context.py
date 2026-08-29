@@ -68,8 +68,14 @@ class ConceptHierarchyContext:
 
     def set_template_context(self, template_context: TemplateContext) -> None:
         self.template_context = template_context
+        if self.template_constraint_formula_validator is not None:
+            self.template_constraint_formula_validator.update_existing_template_variables(
+                set(self.template_context.variables)
+            )
 
     def reset_template_context(self) -> None:
+        if self.template_constraint_formula_validator is not None:
+            self.template_constraint_formula_validator.update_existing_template_variables(set())
         self.template_context = None
 
     def set_variable_context(self, variable_context: VariableContext) -> None:

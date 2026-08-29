@@ -115,10 +115,6 @@ class TypeTemplateInstantiationValidator(ABC):
         pass
 
     @abstractmethod
-    def update_existing_template_variables(self, new_template_variables: set[str]):
-        pass
-
-    @abstractmethod
     def get_template_context(self) -> TemplateContext:
         pass
 

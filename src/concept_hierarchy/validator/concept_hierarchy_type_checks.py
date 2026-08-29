@@ -205,7 +205,6 @@ def check_types_in_hidden_implementation_definition(
     type_validator = context.type_validator
     type_validator.set_identifier_where_types_are_defined(datum.name)
     constraint_validator = context.type_application_constraints_validator
-    constraint_validator.update_existing_template_variables(set(datum.template_context.variables))
 
     substitution_values: dict[tuple[str, str], ConceptHierarchyTemplateArgument] = {}
     subst_location_key = HiddenImplementationDefinition.hidden_template_arguments_substitutions
@@ -304,7 +303,6 @@ def check_types_in_hidden_implementation_definition(
 
     datum.parent_template_variable_substitution = frozendict(substitution_values)
 
-    constraint_validator.update_existing_template_variables(set())
     type_validator.clear_identifier_where_types_are_defined()
     context.reset_template_context()
 
@@ -333,9 +331,8 @@ def check_types_in_value_domain_definition(
             assert len(c.instantiation) == 1
             all_instantiations = [(location_id, c.instantiation[0])]
 
-    context.set_template_context(datum.template_context)
     constraint_validator = context.template_constraint_formula_validator
-    constraint_validator.update_existing_template_variables(set(context.template_context.variables))
+    context.set_template_context(datum.template_context)
     context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
 
     location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
@@ -361,7 +358,6 @@ def check_types_in_value_domain_definition(
     datum.instantiation = tuple(parsed_instantiations)
 
     context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
-    constraint_validator.update_existing_template_variables(set())
     context.reset_template_context()
 
 

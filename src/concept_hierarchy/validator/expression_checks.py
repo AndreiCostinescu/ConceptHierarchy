@@ -151,8 +151,6 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
     #   future expressions!
     for c_name, c in context.model.functions.items():
         context.set_template_context(c.template_context)
-        constraint_validator = context.template_constraint_formula_validator
-        constraint_validator.update_existing_template_variables(set(context.template_context.variables))
         context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
         context.push_new_variable_stack_frame(VariableStackFrame())
 
@@ -208,15 +206,12 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         c.evaluation_argument_default_value = frozendict(all_default_argument_values)
 
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
-        constraint_validator.update_existing_template_variables(set())
         context.reset_template_context()
         context.pop_last_variable_stack_frame()
 
     # First process all default_expressions in the instantiation
     for c_name, c in context.model.value_domains.items():
         context.set_template_context(c.template_context)
-        constraint_validator = context.template_constraint_formula_validator
-        constraint_validator.update_existing_template_variables(set(context.template_context.variables))
         context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
 
         # ``c.instantiation`` is a tuple, so if something is modified here, the whole tuple should be modified...
@@ -254,7 +249,6 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                 schema_node.default_expr = parsed_default_value_expr
 
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
-        constraint_validator.update_existing_template_variables(set())
         context.reset_template_context()
 
     # Second, process template types
