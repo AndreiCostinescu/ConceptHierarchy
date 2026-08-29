@@ -46,6 +46,10 @@ class TemplateDependentExpression(ExpressionValue):
     def is_template_dependent(self) -> bool:
         return True
 
+    def get_subexpressions(self):
+        """this is not a parsed expression... on its own, it does not contain subexpressions"""
+        yield from []
+
 
 class LiteralTemplateVariableValue(TemplateDependentExpression):
     """The value of the expression is a TemplateVariable with a literal constraint."""
@@ -64,6 +68,10 @@ class LiteralTemplateVariableValue(TemplateDependentExpression):
     def is_fully_parsed(self) -> bool:
         return True
 
+    def get_subexpressions(self):
+        """This does not contain subexpressions."""
+        yield from []
+
 
 class Variable(ExpressionValue):
     def __init__(self, variable_name: str, variable_type: TypeValue, is_strict_subtype: bool | None = None):
@@ -81,6 +89,10 @@ class Variable(ExpressionValue):
     @property
     def is_fully_parsed(self) -> bool:
         return True
+
+    def get_subexpressions(self):
+        """This does not contain subexpressions."""
+        yield from []
 
 
 class VariableWithTemplateType(Variable, TemplateDependentExpression):
@@ -146,6 +158,10 @@ class FunctionEvaluation(ExpressionValue):
             arg.is_value_template_dependent for arg in self.arguments.values()
         )
 
+    def get_subexpressions(self):
+        """The argument values are the sub-expressions."""
+        yield from self.arguments.values()
+
 
 class InstExpression(ExpressionValue):
     def __init__(
@@ -174,6 +190,13 @@ class InstExpression(ExpressionValue):
                     return False
         return True
 
+    def get_subexpressions(self):
+        """Check the self.value ParsedValue type for subexpressions"""
+        if self.value is None:
+            yield from []
+        else:
+            yield from (expr for _, expr in self.value.iter_expressions())
+
 
 class NarrowExpression(InstExpression):
     def __init__(self, value: ParsedValue, value_type: TypeValue | None = None, is_strict_subtype: bool | None = None):
@@ -196,3 +219,7 @@ class IllFormedExpression(ExpressionValue):
     @property
     def is_valid(self):
         return False
+
+    def get_subexpressions(self):
+        """This is not a (completely) parsed expression... It does not contain subexpressions"""
+        yield from []

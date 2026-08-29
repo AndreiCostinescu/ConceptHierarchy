@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Callable, Iterator, Type
 
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
@@ -48,6 +49,10 @@ class ExpressionValue(ABC):
     @property
     def is_valid(self) -> bool:
         return True
+
+    @abstractmethod
+    def get_subexpressions(self):
+        pass
 
 
 class Expression:
@@ -99,3 +104,19 @@ class Expression:
     @property
     def is_valid(self) -> bool:
         return self.value.is_valid
+
+    def all_subexpressions(
+        self, filter_f: Type[ExpressionValue] | Callable[[Expression], bool] | None = None
+    ) -> Iterator[Expression]:
+        """Recursively yield all sub-expressions."""
+        if isinstance(filter_f, type):
+            filter_type = filter_f
+
+            def filter_f(x: Expression) -> bool:
+                return isinstance(x.value, filter_type)
+
+        if filter_f is None or filter_f(self):
+            yield self
+
+        for sub_expr in self.value.get_subexpressions():
+            yield from sub_expr.all_subexpressions(filter_f)
