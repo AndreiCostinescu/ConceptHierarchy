@@ -69,7 +69,10 @@ class Variable(ExpressionValue):
     def __init__(self, variable_name: str, variable_type: TypeValue, is_strict_subtype: bool | None = None):
         super().__init__(value_type=variable_type, is_strict_subtype=is_strict_subtype)
         self.variable_name = variable_name
-        self.variable_type = variable_type
+
+    @property
+    def variable_type(self) -> TypeValue:
+        return self.value_type
 
     @property
     def is_template_dependent(self) -> bool:
@@ -78,6 +81,19 @@ class Variable(ExpressionValue):
     @property
     def is_fully_parsed(self) -> bool:
         return True
+
+
+class VariableWithTemplateType(Variable, TemplateDependentExpression):
+    def __init__(self, variable_name: str, variable_type: TypeValue):
+        super().__init__(variable_name, variable_type)
+
+    @property
+    def is_template_dependent(self) -> bool:
+        return True
+
+    @property
+    def is_fully_parsed(self) -> bool:
+        return False
 
 
 class InstancePropertyChain(Variable):

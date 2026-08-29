@@ -37,6 +37,7 @@ from concept_hierarchy.data.expressions.subexpressions import (
     NarrowExpression,
     TemplateDependentExpression,
     Variable,
+    VariableWithTemplateType,
 )
 from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
@@ -51,6 +52,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     ExpandedVariadicTemplateVariable,
     InstantiatedType,
     LiteralValue,
+    TemplateDependent,
     TemplateDependentType,
     TypeValue,
 )
@@ -421,6 +423,9 @@ def _parse_syntax_of_expression(
                     f"expression {json_value!r}"
                 )
             var_type = validator.get_variable_type(json_value)
+            if isinstance(var_type, TemplateDependent):
+                return VariableWithTemplateType(json_value, var_type)
+            assert isinstance(var_type, InstantiatedType), f"{var_type} of type {str(type(var_type))}"
             if validator.is_a_subtype_of_b(var_type, expr_type, location_id):
                 return Variable(json_value, var_type, var_type != expr_type)
             else:
