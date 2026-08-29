@@ -362,87 +362,81 @@ def _parse_syntax_of_expression_with_instantiated_type(
                 location_id,
             )
             assert isinstance(function_return_type, TYPE_VALUE_IS_INSTANCE_CHECK)
-            if validator.is_a_subtype_of_b(function_return_type, expr_type, location_id):
-                f_args: dict[str, Expression] = {}
-                if recursively_parse:
-                    # verify sub-expressions + make sure that the Function arguments are actually correct ones
-                    all_arguments = validator.get_function_arguments(key_type.clean_name)
-                    for f_arg_name, f_arg_expr_val in value.items():
-                        if not validator.is_function_argument(key_type.clean_name, f_arg_name):
-                            raise CHSemanticError(
-                                f'Function {key} does not have the argument "{f_arg_name}"; only {all_arguments}',
-                                location_id=location_id,
-                                part=PathPart.KEY,
-                            )
-                        f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(
-                            key_type.clean_name, f_arg_name
-                        )
-                        # substitute `f_arg_type` with template instantiation of Function
-                        f_arg_type, _ = substitute(
-                            f_arg_type,
-                            f_substitution_mapping,
-                            expr_template_context,
-                            f_template_context,
-                            validator.get_type_template_instantiation_validator(),
-                            location_id,
-                        )
-                        assert isinstance(f_arg_type, TYPE_VALUE_IS_INSTANCE_CHECK)
-                        arg_expr = parse_expression(
-                            f_arg_expr_val,
-                            f_arg_type,
-                            f_arg_prov,
-                            f_arg_access,
-                            expr_template_context,
-                            validator,
-                            location_id + [key, f_arg_name],
-                        )
-                        if not arg_expr.is_valid:
-                            assert isinstance(arg_expr.value, IllFormedExpression)
-                            return IllFormedExpression(
-                                f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid: "
-                                f"{arg_expr.value.reason}"
-                            )
-                        f_args[f_arg_name] = arg_expr
-                    # verify required arguments are present
-                    missing_arguments: set[str] = set()
-                    required_arguments: set[str] = validator.get_required_function_arguments(key_type.clean_name)
-                    for required_arg in required_arguments:
-                        if required_arg not in f_args:
-                            missing_arguments.add(required_arg)
-                    if missing_arguments:
-                        raise CHSemanticError(
-                            f"Argument(s) {missing_arguments} are missing from the Function evaluation interface of "
-                            f"{key}!",
-                            location_id=location_id + [key],
-                            part=PathPart.VALUE,
-                        )
-                    # verify that the dependencies between the remaining default arguments are not cyclic
-                    supplied_arguments = set(f_args)
-                    unsupplied_arguments: set[str] = all_arguments - supplied_arguments
-                    default_argument_dependencies = validator.get_default_argument_dependencies(key_type.clean_name)
-                    if (
-                        default_argument_dependencies is not None
-                        and not _validate_acyclic_default_argument_dependencies(
-                            default_argument_dependencies, supplied_arguments
-                        )
-                    ):
-                        raise CHSemanticError(
-                            f"The dependency graph between the remaining default arguments {unsupplied_arguments} of "
-                            f"the Function evaluation of {key} is not acyclic!",
-                            location_id=location_id + [key],
-                            part=PathPart.VALUE,
-                        )
-                return FunctionEvaluation(
-                    key_type,
-                    function_return_type,
-                    f_args,
-                    is_result_addressable,
-                    function_return_type != expr_type,
-                )
-            else:
+            if not validator.is_a_subtype_of_b(function_return_type, expr_type, location_id):
                 return IllFormedExpression(
                     f"Function result type {function_return_type} is not a subtype of {expr_type}"
                 )
+            f_args: dict[str, Expression] = {}
+            if recursively_parse:
+                # verify sub-expressions + make sure that the Function arguments are actually correct ones
+                all_arguments = validator.get_function_arguments(key_type.clean_name)
+                for f_arg_name, f_arg_expr_val in value.items():
+                    if not validator.is_function_argument(key_type.clean_name, f_arg_name):
+                        raise CHSemanticError(
+                            f'Function {key} does not have the argument "{f_arg_name}"; only {all_arguments}',
+                            location_id=location_id,
+                            part=PathPart.KEY,
+                        )
+                    f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(
+                        key_type.clean_name, f_arg_name
+                    )
+                    # substitute `f_arg_type` with template instantiation of Function
+                    f_arg_type, _ = substitute(
+                        f_arg_type,
+                        f_substitution_mapping,
+                        expr_template_context,
+                        f_template_context,
+                        validator.get_type_template_instantiation_validator(),
+                        location_id,
+                    )
+                    assert isinstance(f_arg_type, TYPE_VALUE_IS_INSTANCE_CHECK)
+                    arg_expr = parse_expression(
+                        f_arg_expr_val,
+                        f_arg_type,
+                        f_arg_prov,
+                        f_arg_access,
+                        expr_template_context,
+                        validator,
+                        location_id + [key, f_arg_name],
+                    )
+                    if not arg_expr.is_valid:
+                        assert isinstance(arg_expr.value, IllFormedExpression)
+                        return IllFormedExpression(
+                            f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid: {arg_expr.value.reason}"
+                        )
+                    f_args[f_arg_name] = arg_expr
+                # verify required arguments are present
+                missing_arguments: set[str] = set()
+                required_arguments: set[str] = validator.get_required_function_arguments(key_type.clean_name)
+                for required_arg in required_arguments:
+                    if required_arg not in f_args:
+                        missing_arguments.add(required_arg)
+                if missing_arguments:
+                    raise CHSemanticError(
+                        f"Argument(s) {missing_arguments} are missing from the Function evaluation interface of {key}!",
+                        location_id=location_id + [key],
+                        part=PathPart.VALUE,
+                    )
+                # verify that the dependencies between the remaining default arguments are not cyclic
+                supplied_arguments = set(f_args)
+                unsupplied_arguments: set[str] = all_arguments - supplied_arguments
+                default_argument_dependencies = validator.get_default_argument_dependencies(key_type.clean_name)
+                if default_argument_dependencies is not None and not _validate_acyclic_default_argument_dependencies(
+                    default_argument_dependencies, supplied_arguments
+                ):
+                    raise CHSemanticError(
+                        f"The dependency graph between the remaining default arguments {unsupplied_arguments} of "
+                        f"the Function evaluation of {key} is not acyclic!",
+                        location_id=location_id + [key],
+                        part=PathPart.VALUE,
+                    )
+            return FunctionEvaluation(
+                key_type,
+                function_return_type,
+                f_args,
+                is_result_addressable,
+                function_return_type != expr_type,
+            )
         elif validator.is_a_subtype_of_b(key_type, expr_type, location_id):
             if is_function_evaluation_present and not is_function_subtype:
                 raise CHSemanticError(
