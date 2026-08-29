@@ -57,7 +57,11 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TemplateDependentType,
     TypeValue,
 )
-from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
+from concept_hierarchy.data.validators.template_argument_constraints_validator import (
+    TemplateContextDeterminator,
+    TypeTemplateInstantiationValidator,
+    validate_type_against_constraint_formula,
+)
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 from concept_hierarchy.utils import get_items_of_single_entry_dict
@@ -448,7 +452,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
                 narrow_res = None
             else:
                 # abstract Types do not have instantiation schemas
-                narrow_res = _check_instantiation_schema(value, key_type, validator, location_id)
+                narrow_res = _check_instantiation_schema(value, key_type, expr_template_context, validator, location_id)
             if not recursively_parse or (narrow_res is not None and narrow_res.is_valid()):
                 return NarrowExpression(narrow_res, key_type, key_type != expr_type)
         ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
@@ -526,7 +530,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
                     )
 
     # check Inst expression (abstract Types do not have instantiation schemas)
-    inst_res = _check_instantiation_schema(json_value, expr_type, validator, location_id)
+    inst_res = _check_instantiation_schema(json_value, expr_type, expr_template_context, validator, location_id)
     if inst_res is not None and inst_res.is_valid():
         return InstExpression(inst_res, expr_type, True)
     # check DS (default serialization) expression (abstract Types do not have a defaultSerialization)
@@ -560,7 +564,11 @@ def _parse_syntax_of_expression_with_instantiated_type(
 
 
 def _check_instantiation_schema(
-    expr_value: object, expr_type: InstantiatedType, validator: ExpressionParserValidator, location_id: LocationId
+    expr_value: object,
+    expr_type: InstantiatedType,
+    expr_template_context: TemplateContext,
+    validator: ExpressionParserValidator,
+    location_id: LocationId,
 ) -> ParsedValue | None:
     instantiation_schema = validator.get_if_has_instantiation_schema(expr_type)
     if instantiation_schema is None or len(instantiation_schema) == 0:
@@ -568,11 +576,20 @@ def _check_instantiation_schema(
             f'It can\'t be that there is no instantiation schema defined for a non-abstract ValueDomain "{expr_type}"!'
         )
         return None
-    if len(instantiation_schema) > 1:
-        raise NotImplementedError
-    type_application_constraint, schema_to_match = instantiation_schema[0]
-    # TODO: check type_application_constraint (check that the type application satisfies the instantiation constraints)
-    return validator.validate_value_against_schema(schema_to_match, expr_value, location_id)
+    for i, (type_application_constraint, schema_to_match) in enumerate(instantiation_schema):
+        found_matching_schema = type_application_constraint is None
+        if not found_matching_schema:
+            errors = validate_type_against_constraint_formula(
+                type_application_constraint,
+                expr_type,
+                TemplateContextDeterminator(expr_template_context),
+                validator.get_type_template_instantiation_validator(),
+                location_id,
+            )
+            found_matching_schema = len(errors) == 0
+        if found_matching_schema:
+            return validator.validate_value_against_schema(schema_to_match, expr_value, location_id)
+    raise RuntimeError(f"There should always be a fallback matching schema... This was not reached at {expr_type}!")
 
 
 def _validate_acyclic_default_argument_dependencies(

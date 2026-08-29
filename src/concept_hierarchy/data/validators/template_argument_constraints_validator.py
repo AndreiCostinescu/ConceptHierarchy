@@ -276,6 +276,18 @@ def validate_complete_instantiation_of_concept(
     )
 
 
+def validate_type_against_constraint_formula(
+    formula: StructureConstraintFormula,
+    type_instantiation: InstantiatedType,
+    template_context: TemplateContextDeterminator,
+    validator: TypeTemplateInstantiationValidator,
+    location_id: LocationId = None,
+) -> list[ConceptHierarchyError]:
+    t_arg_names = validator.get_template_argument_names_of(type_instantiation.clean_name)
+    t_args = tuple((name, t_arg) for name, t_arg in zip(t_arg_names, type_instantiation.template_arguments))
+    return validate_complete_instantiation_of_type(formula, t_args, template_context, validator, location_id)
+
+
 def validate_complete_instantiation_of_type(
     formula: StructureConstraintFormula,
     complete_instantiation: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...],
