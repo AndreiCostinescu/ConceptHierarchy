@@ -90,20 +90,25 @@ git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
 
 # Install dev dependencies and register all git hooks
-make setup
+make setup LANGS="python"
 
 # Verify your identity is configured
 git config user.name   # should be "Your Name"
 git config user.email  # should be "you@example.com"
 ```
 
-`make setup` does the following:
+`make setup LANGS="python"` does the following (via the shared
+[DevTools](https://github.com/AndreiCostinescu/DevTools) submodule at
+`.devtools`):
 
-1. Unsets `core.hooksPath` if previously configured (pre-commit requires this).
-2. `pip install -e ".[dev]"` — installs the package in editable mode with all
+1. `git submodule update --init --recursive` — fetches `.devtools` (and any
+   other submodules) on a fresh clone.
+2. Unsets `core.hooksPath` if previously configured (pre-commit requires this).
+3. `pip install -e ".[dev]"` — installs the package in editable mode with all
    dev dependencies.
-3. `pre-commit install` — registers the pre-commit framework for both hook 
+4. `pre-commit install` — registers the pre-commit framework for both hook
    stages in `.git/hooks/`.
+5. Syncs `ruff.toml` from `.devtools/config/` into the repo root.
 
 After setup, every `git commit` automatically runs:
 
@@ -147,7 +152,7 @@ PRs require:
 ## 5. Coding standards
 
 - **Style:** follow PEP 8.  `ruff` and `pre-commit` handle code formatting, 
-  so make sure you run `make setup` once after cloning the repository.
+  so make sure you run `make setup LANGS="python"` once after cloning the repository.
 - **Type hints:** use them on all public functions.  Stay compatible with
   Python 3.10.
 - **License headers:** every new `.py` file must begin with the Apache 2.0
@@ -167,7 +172,7 @@ All commands below should be run from the **repository root** (the directory tha
 ```bash
 git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
-make setup
+make setup LANGS="python"
 ```
 
 2. Run the test suite:

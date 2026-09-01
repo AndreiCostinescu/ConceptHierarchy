@@ -10,19 +10,9 @@ repos:
         verbose: true
         stages: [pre-commit]
 
-  - repo: local
+  - repo: https://github.com/AndreiCostinescu/DevTools
+    rev: b0b747598e766e885d51c4f48ee19a27bae9bfe4
     hooks:
-      - id: license-header-check
-        name: Apache 2.0 license header check
-        entry: .githooks/check-license-header
-        language: script
-        types: [python]
-        pass_filenames: false
+      - id: license-header-check-python
         stages: [pre-commit]
-
       - id: dco-check
-        name: DCO sign-off check
-        entry: .githooks/commit-msg
-        language: script
-        stages: [commit-msg]
-        always_run: true
