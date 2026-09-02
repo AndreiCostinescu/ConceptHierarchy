@@ -109,7 +109,7 @@ class ExpressionParserValidator(ABC):
         pass
 
     @abstractmethod
-    def create_possibly_template_dependent_type(self, type_name: str) -> TypeValue:
+    def create_possibly_template_dependent_type(self, type_name: str, location_id: LocationId) -> TypeValue:
         pass
 
     @abstractmethod

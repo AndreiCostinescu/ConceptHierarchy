@@ -29,7 +29,7 @@ from concept_hierarchy.data.parsers.value_instantiation_parser import parse_valu
 from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
 from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType, TemplateDependentType, TypeValue
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
-from concept_hierarchy.data.validators.type_validator import parse_convert_type
+from concept_hierarchy.data.validators.type_validator import parse_convert_type, parse_convert_type_in_template_context
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.errors import LocationId
 
@@ -38,6 +38,7 @@ class ExpressionValidator(ExpressionParserValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.instantiated_types: dict[str, InstantiatedType] = {}
+        self.parsed_types: dict[str, TypeValue] = {}
 
     def is_concept(self, candidate_concept_name: str) -> bool:
         return self.context.ch.is_concept(candidate_concept_name)
@@ -69,10 +70,18 @@ class ExpressionValidator(ExpressionParserValidator):
             self.instantiated_types[instantiated_type_name] = parse_convert_type(
                 instantiated_type_name, self.context.type_validator, location_id
             )
+            self.parsed_types[instantiated_type_name] = self.instantiated_types[instantiated_type_name]
         return self.instantiated_types[instantiated_type_name]
 
-    def create_possibly_template_dependent_type(self, type_name: str) -> TypeValue:
-        raise NotImplementedError
+    def create_possibly_template_dependent_type(self, type_name: str, location_id: LocationId) -> TypeValue:
+        if type_name not in self.parsed_types:
+            # FixMe: parse_convert_type does not check if the instantiation's template arguments fulfill the constraints
+            self.parsed_types[type_name] = parse_convert_type_in_template_context(
+                type_name, self.context.type_validator, location_id
+            )
+            if isinstance(self.parsed_types[type_name], InstantiatedType):
+                self.instantiated_types[type_name] = self.parsed_types[type_name]
+        return self.parsed_types[type_name]
 
     def get_substituted_value_domain_instantiation_schema(
         self, type_name: InstantiatedType | TemplateDependentType
