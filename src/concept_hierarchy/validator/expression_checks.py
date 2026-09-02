@@ -23,7 +23,7 @@ from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, Tem
 from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import FunctionArgumentAccessor, FunctionArgumentProvenance
-from concept_hierarchy.data.expressions.subexpressions import IllFormedExpression
+from concept_hierarchy.data.expressions.subexpressions import IllFormedExpression, Variable
 from concept_hierarchy.data.parsers.expression_parser import get_expression_type, parse_expression
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, frozendict
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
@@ -164,12 +164,14 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
             context.add_new_variable(arg_name, arg_type)
 
         # process the default argument expressions of this concept
+        default_argument_dependencies: dict[str, set[str]] = {}
         if c_def.has_location_of(FunctionDefinition.function_default_argument_values):
             default_args_location_id = c_def.location_id(FunctionDefinition.function_default_argument_values)
             for default_arg_name, default_arg_expr_value in c_def.evaluation_argument_default_values.items():
                 print(
-                    f"Parsing Function default argument expression (at {c_name} {default_arg_name}):",
-                    default_args_location_id,
+                    f"Parsing Function default argument expression (at {c_name} {default_arg_name} "
+                    f"of type {c.evaluation_argument_types[default_arg_name]}):",
+                    default_args_location_id + [default_arg_name],
                     default_arg_expr_value,
                     sep="\n",
                 )
@@ -180,7 +182,8 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                     FunctionArgumentAccessor.GET,
                     c.template_context,
                     context.expression_parser_validator,
-                    default_args_location_id,
+                    default_args_location_id + [default_arg_name],
+                    parse_template_expressions_without_type_checks=True,
                 )
                 if not parsed_default_value_expr.is_valid:
                     assert isinstance(parsed_default_value_expr.value, IllFormedExpression)
@@ -190,9 +193,15 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                         f"{parsed_default_value_expr.required_access_type};"
                         f"\n\tgot {parsed_default_value_expr.unparsed}!"
                         f"\n\t\tReason: {parsed_default_value_expr.value.reason}",
-                        location_id=default_args_location_id,
+                        location_id=default_args_location_id + [default_arg_name],
                         part=PathPart.VALUE,
                     )
+                assert default_arg_name not in default_argument_dependencies
+                default_argument_dependencies[default_arg_name] = set()
+                for expr in parsed_default_value_expr.all_subexpressions(Variable):
+                    assert isinstance(expr.value, Variable)
+                    if expr.value.variable_name in c.evaluation_argument_types:
+                        default_argument_dependencies[default_arg_name].add(expr.value.variable_name)
                 all_default_argument_values[default_arg_name] = parsed_default_value_expr
 
         # collect default arguments of parents as well and set them in the model's Function data!
@@ -203,7 +212,14 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
             for default_arg_name, default_arg_expr in p_model.evaluation_argument_default_value.items():
                 if default_arg_name not in all_default_argument_values:
                     all_default_argument_values[default_arg_name] = default_arg_expr
+                    assert default_arg_name not in default_argument_dependencies
+                    default_argument_dependencies[default_arg_name] = p_model.default_argument_dependencies.get(
+                        default_arg_name, set()
+                    )
         c.evaluation_argument_default_value = frozendict(all_default_argument_values)
+        c.default_argument_dependencies = frozendict(
+            {x: frozenset(y) for x, y in default_argument_dependencies.items()}
+        )
 
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
         context.reset_template_context()
