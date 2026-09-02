@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from frozendict import frozendict
+
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    CANCELLED,
     INHERIT_FROM_KEYWORD,
     DomainConceptDefinition,
     ForPropertyOrFunction,
@@ -27,7 +30,7 @@ def verify_specializations(
     c: DomainConceptDefinition,
     for_either_properties_or_functions: ForPropertyOrFunction,
     subconcepts_spec_data: dict[str, set[str]] | None,
-    available_parent_data: dict[str, dict[str, list[DomainConceptDefinition]]],
+    available_parent_data: dict[str, dict[str, list[str]]],
     location_id: LocationId,
     verbose: bool = False,
 ) -> dict[str, set[str]]:
@@ -99,6 +102,10 @@ def verify_specializations(
                     # CANCEL
                     cancelled_keys.append(def_key)
                     specialized_data[name].add(def_key)
+                    # Record the cancellation so that it is visible to the subconcepts.
+                    # Without it, the keyword simply stays absent here, and the value inherited from further up survives
+                    # the cancel when this concept's available data is passed down.
+                    available_data.setdefault(name, {})[def_key] = CANCELLED
                     continue
                 if def_data == INHERIT_FROM_KEYWORD + "parents":
                     # this keyword is only allowed in a "_forThis" specialization
@@ -155,8 +162,10 @@ def verify_specializations(
                     available_data[name] = {}
                 available_data[name][def_key] = c.name
                 specialized_data[name].add(def_key)
-        for cancelled_key in cancelled_keys:
-            spec_data.pop(cancelled_key)
+        # A cancelled keyword is deliberately left in place here:
+        # the concept definition keeps describing what its JSON says.
+        # The cancellation is recorded as CANCELLED in the available-data map instead,
+        # which is what the concepts below read -- so nothing needs the definition data to be edited.
 
     # check that there is no data in available_parent_data that has two parents and is not set or disambiguated
     for name, available_parent_data_at_name in available_parent_data.items():
@@ -179,6 +188,37 @@ def verify_specializations(
                 )
 
     return specialized_data
+
+
+def _merge_available_data(
+    inherited_data: dict[str, dict[str, list[str]]], own_data: dict[str, dict[str, str]]
+) -> frozendict[str, frozendict[str, str]]:
+    """
+    Combine what a concept inherits with what its own definition provides, into the derived per-concept view.
+
+    The entries are per definition keyword, and each names the concept the *value of that keyword* comes
+    from -- not the single concept that defines the property. One property routinely spans several: a
+    concept can define ``prop`` while a subconcept sets its ``default``. Keeping it per keyword is what lets
+    ``verify_specializations`` tell "two parents provide different defaults" from "one value, two paths".
+    For a ``inheritFrom:<Parent>`` the recorded concept is that named direct parent, by design, even when
+    the parent itself only inherited the value.
+
+    What the concept provides itself always wins. Where only the parents provide a keyword there is normally
+    exactly one provider -- ``verify_specializations`` has already rejected any unresolved ambiguity -- but
+    the ``_forThis`` slot has exemptions that let several through, and the first is kept for those.
+    """
+    merged: dict[str, dict[str, str]] = {}
+    for name, inherited_data_at_name in inherited_data.items():
+        merged[name] = {def_key: providers[0] for def_key, providers in inherited_data_at_name.items()}
+    for name, own_data_at_name in own_data.items():
+        merged_at_name = merged.setdefault(name, {})
+        for def_key, provider in own_data_at_name.items():
+            if provider is CANCELLED:
+                # NO VALUE: the concept removed the keyword, so nothing is available to pass on
+                merged_at_name.pop(def_key, None)
+            else:
+                merged_at_name[def_key] = provider
+    return frozendict({name: frozendict(data) for name, data in merged.items()})
 
 
 def process_specialization_for_domain_concepts(context: ConceptHierarchyContext):
@@ -345,27 +385,33 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
         if not context.ch.is_domain_concept(c_name):
             continue
         c = context.ch.concepts[c_name]
+        c_model = context.model.domain_concepts[c_name]
         assert isinstance(c, DomainConceptDefinition)
         concept_location = c.location_id()
         property_location = concept_location + [c.domain_concept_properties, c.domain_concept_specialization]
         function_location = concept_location + [c.domain_concept_functions, c.domain_concept_specialization]
-        # compile available data from parents: { name: { def key: [ name of parent that defines ] } }
-        available_parent_data_for_properties: dict[str, dict[str, list[DomainConceptDefinition]]] = {}
-        available_parent_data_for_functions: dict[str, dict[str, list[DomainConceptDefinition]]] = {}
+        # Compile the data available from parents: { name: { def key: [ direct parent concept setting the value ] } }.
+        # This reads each parent's *model* data, which already carries everything that parent inherited, so a
+        # property is available all the way down instead of only one generation below where it is defined.
+        # The concept definitions are not consulted here: those describe only what their own JSON declares.
+        # Entries record the providing concept rather than the parent it was reached through, so that one
+        # value inherited along several paths is recognised as one value and not as an ambiguity.
+        available_parent_data_for_properties: dict[str, dict[str, list[str]]] = {}
+        available_parent_data_for_functions: dict[str, dict[str, list[str]]] = {}
         for parent_name in c.parents:
-            parent_c = context.ch.concepts[parent_name]
-            assert isinstance(parent_c, DomainConceptDefinition)
+            parent_datum = context.model.domain_concepts[parent_name]
             for collection, parent_data in [
-                (available_parent_data_for_properties, parent_c.available_property_data),
-                (available_parent_data_for_functions, parent_c.available_function_data),
+                (available_parent_data_for_properties, parent_datum.available_property_data),
+                (available_parent_data_for_functions, parent_datum.available_function_data),
             ]:
                 for name, available_parent_data in parent_data.items():
                     if name not in collection:
                         collection[name] = {}
-                    for available_parent_def_key, available_parent_def_data in available_parent_data.items():
+                    for available_parent_def_key, providing_concept in available_parent_data.items():
                         if available_parent_def_key not in collection[name]:
                             collection[name][available_parent_def_key] = []
-                        collection[name][available_parent_def_key].append(parent_c)
+                        if providing_concept not in collection[name][available_parent_def_key]:
+                            collection[name][available_parent_def_key].append(providing_concept)
 
         prop_spec_data = verify_specializations(
             c,
@@ -394,4 +440,14 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
             func_spec_data,
             available_parent_data_for_functions,
             location_id=function_location + [DomainConceptDefinition.domain_concept_specialization_for_this],
+        )
+
+        # Record the derived view on the model: everything inherited from the parents, overlaid with what
+        # this concept's own definition provides (`verify_specializations` has just finished filling that in).
+        # Subconcepts read this, so the data keeps flowing down through concepts that say nothing themselves.
+        c_model.available_property_data = _merge_available_data(
+            available_parent_data_for_properties, c.available_property_data
+        )
+        c_model.available_function_data = _merge_available_data(
+            available_parent_data_for_functions, c.available_function_data
         )

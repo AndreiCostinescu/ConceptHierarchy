@@ -62,6 +62,17 @@ class DomainConceptData(ConceptData):
     property_constraints: frozendict[str, Expression]
     function_types: frozendict[str, InstantiatedType]
 
+    available_property_data: frozendict[str, frozendict[str, str]]
+    """
+    Every property available to this concept -- defined here or inherited -- mapped to, per definition
+    keyword, the concept that provides that keyword's value.
+
+    This is the *derived* view. The same-named field on ``DomainConceptDefinition`` is the view of what the
+    concept's own JSON declares and specializes, and does not include anything inherited.
+    """
+    available_function_data: frozendict[str, frozendict[str, str]]
+    """As :attr:`available_property_data`, for the concept's ``functions`` members."""
+
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
         super().__init__(name, parents)
 

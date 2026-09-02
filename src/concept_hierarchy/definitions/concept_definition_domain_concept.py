@@ -38,6 +38,15 @@ class MultipleSpecializationException(Exception):
 
 INHERIT_FROM_KEYWORD = "inheritFrom:"
 
+CANCELLED = object()
+"""
+Marks a definition keyword that a concept removed with ``"inheritFrom:"`` (the NO VALUE state).
+
+It is recorded in ``available_property_data`` / ``available_function_data`` in place of a providing concept
+name, so that a cancellation is visible to the concepts below instead of leaving no trace at all -- without
+it, the value inherited from further up survives the cancel when the available data is passed down.
+"""
+
 
 class PropertyDefinition:
     VALUE_DOMAIN = "valueDomain"
@@ -128,9 +137,10 @@ class DomainConceptDefinition(ConceptDefinition):
         self.property_specializations_for_this: dict[str, dict[str, tuple[str | object, bool]]] = {}
         self.function_specializations_for_this: dict[str, dict[str, tuple[str | object, bool]]] = {}
         # keys are (property name -> property definition keyword) / (function name -> function definition keyword)
-        # value is the name of the concept in which the value of the property definition keyword is defined
-        self.available_property_data: dict[str, dict[str, str]] = {}
-        self.available_function_data: dict[str, dict[str, str]] = {}
+        # value is the name of the concept in which the value of the property definition keyword is defined,
+        # or CANCELLED when this concept removed the inherited value with the "inheritFrom:" keyword
+        self.available_property_data: dict[str, dict[str, str | object]] = {}
+        self.available_function_data: dict[str, dict[str, str | object]] = {}
 
         self.is_shorthand_property_definition: set[str] = set()  # set of property names who use a shorthand definition
         self.is_shorthand_function_definition: set[str] = set()  # set of function names who use a shorthand definition
@@ -1082,12 +1092,6 @@ class DomainConceptDefinition(ConceptDefinition):
         #  - "consolidation" is a valid FunctionComposition expression (with variable context "instance")
         #    EXPRESSION CHECK
 
-    def is_property_available(self, prop_name: str):
-        return prop_name in self.available_property_data
-
-    def is_function_available(self, func_name: str):
-        return func_name in self.available_function_data
-
     def get_specialized_data_for_subconcepts(
         self, for_either_properties_or_functions: ForPropertyOrFunction, name: str, def_key: str
     ) -> object:
@@ -1145,6 +1149,9 @@ class DomainConceptDefinition(ConceptDefinition):
         for def_key_for_this, (def_data_for_this, set_or_inherited) in specialization_container[name].items():
             if not set_or_inherited:
                 # inherited data (do not include)
+                continue
+            if def_data_for_this == INHERIT_FROM_KEYWORD:
+                # NO VALUE: the keyword was cancelled here, so there is no data to report for it
                 continue
             data[def_key_for_this] = def_data_for_this
         return data
