@@ -580,6 +580,8 @@ def _validate_type(
 ):
     # process the case where the formula is a reference to a previous template argument's value!
     formula_is_template_argument = formula.literal in state.type_application
+    # process the case where the formula names a template variable of the *surrounding* context!
+    formula_names_context_template_variable = False
     if formula_is_template_argument:
         # Create new formula from the substitution value!
         # The formula will have all template arguments (and all template arguments thereof and so on) marked with a '.'
@@ -590,6 +592,14 @@ def _validate_type(
             formula.hierarchy_op,
             state.template_context.original,
         )
+    elif state.template_context.original.has_template_variable(formula.literal):
+        # The formula names a template variable of the *surrounding* context
+        # (the template parameters of the ValueDomain/Function that the expression lies in),
+        # not one of the enclosing concept's own template arguments.
+        # Nothing can be decided here; this is the mirror image of the `t_arg is a TemplateVariable` case below,
+        # so constrain that variable by `t_arg` instead of checking it.
+        formula_names_context_template_variable = True
+        check_formula = formula
     elif not state.validator.is_concept(formula.literal):
         raise RuntimeError(
             f"Literal value {formula.literal!r} from formula {formula!r} is not a template-variable and not a concept! "
@@ -632,6 +642,9 @@ def _validate_type(
             )
         return
     assert isinstance(t_arg, ConceptHierarchyType)
+    if formula_names_context_template_variable:
+        _constrain_context_template_variable(formula, t_arg, sub_location_id, state)
+        return
     if not state.validator.concept_check(t_arg, check_formula.literal, check_formula.hierarchy_op):
         if state.collect_all_errors:
             err = CHSemanticError(
@@ -690,6 +703,45 @@ def _validate_type(
             state.template_context.determined = sub_template_context.determined
         else:
             state.template_context.determined.merge_in_place(sub_template_context.determined, sub_location_id)
+
+
+def _constrain_context_template_variable(
+    formula: TemplateConstraintHierarchyOperator,
+    t_arg: ConceptHierarchyType,
+    sub_location_id: LocationId,
+    state: _State,
+) -> None:
+    """
+    The constraint formula requires the template variable ``formula.literal`` -- a template parameter of the
+    ValueDomain/Function surrounding the expression -- to stand in a hierarchy relation to the concrete type
+    ``t_arg``. That can not be decided while the variable is uninstantiated, so record the requirement as a
+    constraint on the variable instead (mirroring what is done when the *value* is the template variable).
+    """
+    var_name = formula.literal
+    if formula.hierarchy_op != HierarchyCheckType.SELF:
+        # Any other operator would have to be inverted:
+        # `t_arg` descends from the variable means the variable is an ascendant-or-equal of `t_arg`:
+        #   => constraint would be Or(Self, Ascendants).
+        # Template arguments are matched invariantly, so only the exact-match operator can currently occur here.
+        raise RuntimeError(
+            "[Feature-Request] Only exact-match constraints on a surrounding template variable are supported; "
+            f"got {formula!r} against {t_arg.full_name}."
+        )
+    required = state.validator.create_type_constraint_from_value(
+        t_arg, sub_location_id, HierarchyCheckType.SELF, state.template_context.original
+    )
+    if state.template_context.determined is None:
+        state.template_context.determined = TemplateContext(
+            state.template_context.original.variables,
+            state.template_context.original.variadic_variables,
+            state.template_context.original.create_unconstrained_except_with_constraint_at_name(
+                sub_location_id, var_name, required
+            ),
+        )
+    else:
+        state.template_context.determined.set_constraint(
+            state.template_context.determined.add_and_constraint_to(var_name, required, sub_location_id)
+        )
 
 
 def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: TemplateArgumentLiteral) -> bool:
