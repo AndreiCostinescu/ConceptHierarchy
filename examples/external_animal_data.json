@@ -10,7 +10,7 @@
             "description": "Test property",
             "hooks": {},
             "confidenceHalfDecayTime": [2, "d"],
-            "nameDefaultInstanceValuesWithThisInstanceName": true
+            "nameDefaultInstanceValuesWithThisInstanceName": false
         },
         "_specializations": {
             "_forThis": {
@@ -23,7 +23,7 @@
                     }
                 },
                 "description": {
-                    "nameDefaultInstanceValuesWithThisInstanceName": false
+                    "nameDefaultInstanceValuesWithThisInstanceName": true
                 }
             }
         }

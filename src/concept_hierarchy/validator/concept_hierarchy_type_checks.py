@@ -144,7 +144,7 @@ def check_types_in_domain_concept_definition(
                     ):
                         found_instance_subtype = True
                         break
-                if found_instance_subtype:
+                if not found_instance_subtype:
                     raise CHSemanticError(
                         f'Can not set "{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" for a property whose type does '
                         f"not contain any instance type: {prop_type.full_name!r}!",
