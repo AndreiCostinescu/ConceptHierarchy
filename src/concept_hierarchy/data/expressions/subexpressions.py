@@ -235,19 +235,35 @@ class InstExpression(ExpressionValue):
     @property
     def is_template_dependent(self) -> bool:
         """
-        for value_node in self.value.walk():
-            if isinstance(value_node, ParsedCustomValue):
-                if value_node.expression is not None and not value_node.expression.is_value_template_dependent:
-                    return False
-        return True
+        The value is template dependent if its own content is, or if any of its subexpressions is.
+
+        The content itself is template dependent when a custom-type leaf of the value was parsed against a
+        type that still mentions a template variable (``Box<T>`` rather than ``Box<Integer>``); such a leaf
+        contributes even when no expression could be parsed at it.
+
+        Values that *denote* a type -- a TypeValue or a ConceptValue -- are deliberately not inspected: the
+        schema does not substitute those, so a template variable written there is not a template argument
+        of this value.
+
+        A value of None (a default-serialization expression) carries no content and no subexpressions, and
+        so never depends on templates.
         """
         if self.value is None:
             return False
-        # FIXME: this is not correct because it only checks the value's subexpressions, not the content of value itself!
-        return all(x[1].is_value_template_dependent for x in self.value.iter_expressions())
+        content_is_template_dependent = any(
+            value_node.custom_type.depends_on_templates
+            for value_node in self.value.walk()
+            if isinstance(value_node, ParsedCustomValue)
+        )
+        return content_is_template_dependent or any(
+            expression.is_value_template_dependent for _, expression in self.value.iter_expressions()
+        )
 
     @property
     def is_fully_parsed(self) -> bool:
+        """A value of None (a default-serialization expression) has nothing left to parse."""
+        if self.value is None:
+            return True
         for value_node in self.value.walk():
             if isinstance(value_node, ParsedCustomValue):
                 if value_node.expression is not None and not value_node.expression.is_fully_parsed:
