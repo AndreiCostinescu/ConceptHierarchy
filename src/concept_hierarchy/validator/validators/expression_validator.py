@@ -47,7 +47,7 @@ class ExpressionValidator(ExpressionParserValidator):
         return self.context.template_context.has_template_variable(candidate_template_variable_name)
 
     def is_literal_template_variable(self, candidate_literal_template_variable_name: str) -> bool:
-        raise NotImplementedError
+        return self.context.template_context.is_literal_template_variable(candidate_literal_template_variable_name)
 
     def get_literal_template_var_constraint(self, literal_template_variable_name: str) -> str:
         raise NotImplementedError
