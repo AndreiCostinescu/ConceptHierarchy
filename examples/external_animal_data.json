@@ -23,7 +23,7 @@
                     }
                 },
                 "description": {
-                    "nameDefaultInstanceValuesWithThisInstanceName": true
+                    "confidenceHalfDecayTime": [1, "y"]
                 }
             }
         }

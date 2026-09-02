@@ -62,6 +62,112 @@ from concept_hierarchy.definitions.concept_definition_value_domain import ValueD
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId, PathPart
 
 
+def check_default_instance_naming(
+    context: ConceptHierarchyContext, prop_type: InstantiatedType | None, location_id: LocationId
+) -> None:
+    """
+    Verify one use of ``nameDefaultInstanceValuesWithThisInstanceName``.
+
+    The keyword names the default *instance* values of a property after the instance holding it, so it is
+    only meaningful when the property's type contains an instance type. It may be written at a property's
+    definition site or in a specialization of it, and both are checked here.
+
+    :param context: the Concept Hierarchy to check
+    :param prop_type: the resolved type of the property, or None when it could not be resolved (in which
+        case only the presence of the InstanceBase concept is checked).
+    :param location_id: where the keyword was written, for the error.
+    """
+    if not context.ch.is_concept("InstanceBase"):
+        raise CHSemanticError(
+            f"The InstanceBase concept is not defined in the Concept Hierarchy => can not use "
+            f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}".\nPlease define the "InstanceBase" concept as '
+            f"a subconcept of ValueDomain (and as a parent concept of Instance, if defined) or remove the "
+            f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" keyword from all property definitions and '
+            f"specializations!",
+            location_id=location_id,
+            part=PathPart.KEY,
+        )
+    if prop_type is None:
+        return
+    instance_base_type = parse_convert_type("InstanceBase", context.type_validator, LocationId())
+    for subtype in prop_type.iterate_subtypes(do_not_expand_instantiated_types=False):
+        if not isinstance(subtype, InstantiatedType):
+            continue
+        if context.type_application_constraints_validator.is_a_subtype_of_b(subtype, instance_base_type, location_id):
+            return
+    raise CHSemanticError(
+        f'Can not set "{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" for a property whose type does '
+        f"not contain any instance type: {prop_type.full_name!r}!",
+        location_id=location_id,
+        part=PathPart.VALUE,
+    )
+
+
+def resolve_property_type(
+    context: ConceptHierarchyContext, concept_name: str, prop_name: str
+) -> InstantiatedType | None:
+    """
+    The resolved type of ``prop_name`` as seen by ``concept_name``: from the concept itself if it defines
+    the property, otherwise from the nearest ancestor that does.
+
+    Relies on ``check_types_in_concept_hierarchy`` traversing concepts in topological order, so that every
+    ancestor's ``property_types`` is already resolved by the time a concept is checked.
+
+    Returns None when no ancestor defines the property with a type -- the specialization checks then have
+    nothing to verify against, and the specialization regime has already reported an unavailable property.
+    """
+    datum = context.model.domain_concepts.get(concept_name)
+    if datum is not None and prop_name in datum.property_types:
+        return datum.property_types[prop_name]
+    # `topo_sort_concept_parents` holds every ancestor, nearest last, so the closest definition wins
+    for ancestor_name in reversed(context.ch.topo_sort_concept_parents.get(concept_name, [])):
+        datum = context.model.domain_concepts.get(ancestor_name)
+        if datum is not None and prop_name in datum.property_types:
+            return datum.property_types[prop_name]
+    return None
+
+
+def check_default_instance_naming_in_specializations(
+    c: DomainConceptDefinition, context: ConceptHierarchyContext
+) -> None:
+    """
+    Check ``nameDefaultInstanceValuesWithThisInstanceName`` where it is switched on by a *specialization*
+    rather than at a property's definition site.
+
+    A specialization usually applies to an inherited property, whose type lives on an ancestor; the
+    topological traversal guarantees that ancestor has already been checked, so its type is available here.
+    """
+    specialization_location = c.location_id() + [
+        DomainConceptDefinition.domain_concept_properties,
+        DomainConceptDefinition.domain_concept_specialization,
+    ]
+    for specializations, is_for_this in (
+        (c.property_specializations_for_sub, False),
+        (c.property_specializations_for_this, True),
+    ):
+        for prop_name, specialization_data in specializations.items():
+            if (
+                not isinstance(specialization_data, dict)
+                or PropertyDefinition.DEFAULT_INSTANCE_NAMING not in specialization_data
+            ):
+                continue
+            value = specialization_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING]
+            if is_for_this:
+                # the "_forThis" slot stores (value, is_inherited_from_the_for-subconcepts slot)
+                assert isinstance(value, tuple)
+                value = value[0]
+            if value is not True:
+                continue
+            location_id = specialization_location
+            if is_for_this:
+                location_id = location_id + [DomainConceptDefinition.domain_concept_specialization_for_this]
+            check_default_instance_naming(
+                context,
+                resolve_property_type(context, c.name, prop_name),
+                location_id + [prop_name, PropertyDefinition.DEFAULT_INSTANCE_NAMING],
+            )
+
+
 def check_types_in_domain_concept_definition(
     c: DomainConceptDefinition, datum: DomainConceptData, context: ConceptHierarchyContext
 ):
@@ -77,7 +183,6 @@ def check_types_in_domain_concept_definition(
 
     property_types: dict[str, InstantiatedType] = {}
     value_domain_type: InstantiatedType | None = None
-    instance_base_type: InstantiatedType | None = None
     domain_concept_function_type: InstantiatedType | None = None
     for prop_name, prop_def_data in c.properties.items():
         if PropertyDefinition.VALUE_DOMAIN in prop_def_data:
@@ -115,43 +220,17 @@ def check_types_in_domain_concept_definition(
             PropertyDefinition.DEFAULT_INSTANCE_NAMING in prop_def_data
             and prop_def_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING] is True
         ):
-            default_instance_naming_location_id = c.location_of(
-                DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.DEFAULT_INSTANCE_NAMING
+            check_default_instance_naming(
+                context,
+                property_types.get(prop_name),
+                c.location_of(
+                    DomainConceptDefinition.domain_concept_properties,
+                    prop_name,
+                    PropertyDefinition.DEFAULT_INSTANCE_NAMING,
+                ),
             )
-            # check whether DEFAULT NAMING OF INSTANCES is true but there is no Instance type in the property's type
-            if not context.ch.is_concept("InstanceBase"):
-                raise CHSemanticError(
-                    f"The InstanceBase concept is not defined in the Concept Hierarchy => can not use "
-                    f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}".\nPlease define the "InstanceBase" concept as '
-                    f"a subconcept of ValueDomain (and as a parent concept of Instance, if defined) or remove the "
-                    f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" keyword from all property definitions and '
-                    f"specializations!",
-                    location_id=default_instance_naming_location_id,
-                    part=PathPart.KEY,
-                )
-            if prop_name in property_types:
-                prop_type = property_types[prop_name]
-                if instance_base_type is None:
-                    instance_base_type = parse_convert_type("InstanceBase", type_validator, LocationId())
-                found_instance_subtype = False
-                for subtype in prop_type.iterate_subtypes(do_not_expand_instantiated_types=False):
-                    if not isinstance(subtype, InstantiatedType):
-                        continue
-                    if constraint_validator.is_a_subtype_of_b(
-                        subtype,
-                        instance_base_type,
-                        default_instance_naming_location_id,
-                    ):
-                        found_instance_subtype = True
-                        break
-                if not found_instance_subtype:
-                    raise CHSemanticError(
-                        f'Can not set "{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" for a property whose type does '
-                        f"not contain any instance type: {prop_type.full_name!r}!",
-                        location_id=default_instance_naming_location_id,
-                        part=PathPart.VALUE,
-                    )
     datum.property_types = frozendict(property_types)
+    check_default_instance_naming_in_specializations(c, context)
     function_types: dict[str, InstantiatedType] = {}
     for func_name, func_def_data in c.functions.items():
         location_id = c.location_of(
@@ -527,8 +606,11 @@ def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):
         context.model.concepts[c_name].instantiable = not c.abstract
         if isinstance(c, HiddenImplementationDefinition):
             check_types_in_hidden_implementation_definition(c, context.model.value_domains[c_name], context)
-    # Then check types in the Concept Hierarchy (property types, Function argument types, etc.)
-    for c_name, c in context.ch.concepts.items():
+    # Then check types in the Concept Hierarchy (property types, Function argument types, etc.).
+    # This traverses in topological order so that a concept's parents are always checked before it, which
+    # lets a check consult data that was resolved on an ancestor -- inherited property types, for instance.
+    for c_name in context.ch.concept_topo_sort:
+        c = context.ch.concepts[c_name]
         if isinstance(c, DomainConceptDefinition):
             check_types_in_domain_concept_definition(c, context.model.domain_concepts[c_name], context)
         if isinstance(c, ValueDomainDefinition):
