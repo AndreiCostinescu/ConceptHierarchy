@@ -39,7 +39,7 @@ class TemplateContext:
     def create_from(context: TemplateContext) -> TemplateContext:
         new_variadic_variables: set[str] = set()
         new_variadic_variables.update(context.variadic_variables)
-        return TemplateContext(context.variables, new_variadic_variables, context.constraint)
+        return TemplateContext(context.variables, new_variadic_variables, context._constraint)
 
     def __init__(
         self,
@@ -340,7 +340,7 @@ class TemplateContext:
             if (
                 (self.variables != sub_template_context.variables)
                 or (self.variadic_variables != sub_template_context.variadic_variables)
-                or ((self._constraint is None) != (sub_template_context.constraint is None))
+                or ((self._constraint is None) != (sub_template_context._constraint is None))
             ):
                 raise RuntimeError(f"Can not merge unrelated template contexts: {self!r} and {sub_template_context!r}")
 
