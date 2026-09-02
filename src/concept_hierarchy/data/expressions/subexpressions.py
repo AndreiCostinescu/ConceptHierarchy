@@ -14,11 +14,11 @@
 
 from __future__ import annotations
 
+from typing import Iterator
+
 from concept_hierarchy.data.expressions.expression import Expression, ExpressionValue
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedValue
-from concept_hierarchy.data.type_template_variables.constraint_formula import (
-    ConstraintGroup,
-)
+from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
 from concept_hierarchy.data.types.concept_hierarchy_types import ConceptHierarchyType, InstantiatedType, TypeValue
 
 
@@ -46,9 +46,51 @@ class TemplateDependentExpression(ExpressionValue):
     def is_template_dependent(self) -> bool:
         return True
 
-    def get_subexpressions(self):
+    def get_subexpressions(self) -> Iterator[Expression]:
         """this is not a parsed expression... on its own, it does not contain subexpressions"""
         yield from []
+
+
+class VerifiedTemplateDependentExpression(TemplateDependentExpression):
+    """
+    Represents an expression whose type and/or value is template dependent,
+    and who had its value partially verified, but not parsed.
+    """
+
+    def __init__(
+        self,
+        possible_expressions: list[ExpressionValue],
+        value_type: TypeValue | None = None,
+        is_strict_subtype: bool | None = None,
+    ):
+        super().__init__(value_type=value_type, is_strict_subtype=is_strict_subtype)
+        self.possible_expressions = possible_expressions
+
+    @property
+    def is_valid(self) -> bool:
+        return len(self.possible_expressions) > 0 and all(
+            not isinstance(expr_value, IllFormedExpression) for expr_value in self.possible_expressions
+        )
+
+    def get_subexpressions(self) -> Iterator[Expression]:
+        """Yield the subexpressions located at any of its possible expressions."""
+        for expr_value in self.possible_expressions:
+            yield from expr_value.get_subexpressions()
+
+
+class PossibleInstExpression(TemplateDependentExpression):
+    def __init__(self, value_type: TypeValue | None = None):
+        super().__init__(value_type)
+
+
+class PossibleNarrowExpression(TemplateDependentExpression):
+    def __init__(self, value_type: TypeValue, is_strict_subtype: bool | None = None):
+        super().__init__(value_type, is_strict_subtype)
+
+
+class PossibleFunctionEvaluationExpression(TemplateDependentExpression):
+    def __init__(self, value_type: TypeValue | None = None, is_strict_subtype: bool | None = None):
+        super().__init__(value_type, is_strict_subtype)
 
 
 class LiteralTemplateVariableValue(TemplateDependentExpression):
@@ -68,7 +110,7 @@ class LiteralTemplateVariableValue(TemplateDependentExpression):
     def is_fully_parsed(self) -> bool:
         return True
 
-    def get_subexpressions(self):
+    def get_subexpressions(self) -> Iterator[Expression]:
         """This does not contain subexpressions."""
         yield from []
 
@@ -90,12 +132,32 @@ class Variable(ExpressionValue):
     def is_fully_parsed(self) -> bool:
         return True
 
-    def get_subexpressions(self):
+    def get_subexpressions(self) -> Iterator[Expression]:
         """This does not contain subexpressions."""
         yield from []
 
 
 class VariableWithTemplateType(Variable, TemplateDependentExpression):
+    def __init__(self, variable_name: str, variable_type: TypeValue):
+        super().__init__(variable_name, variable_type)
+
+    @property
+    def is_template_dependent(self) -> bool:
+        return True
+
+    @property
+    def is_fully_parsed(self) -> bool:
+        return False
+
+
+class PossibleVariableExpression(Variable, TemplateDependentExpression):
+    """
+    The difference between PossibleVariableExpression and VariableWithTemplateType is:
+     - for VariableWithTemplateType, the expression type is a ground type application
+     - for PossibleVariableExpression, the expression type is not a ground type application
+        a template variable or a template-dependent instantiation
+    """
+
     def __init__(self, variable_name: str, variable_type: TypeValue):
         super().__init__(variable_name, variable_type)
 
@@ -158,7 +220,7 @@ class FunctionEvaluation(ExpressionValue):
             arg.is_value_template_dependent for arg in self.arguments.values()
         )
 
-    def get_subexpressions(self):
+    def get_subexpressions(self) -> Iterator[Expression]:
         """The argument values are the sub-expressions."""
         yield from self.arguments.values()
 
@@ -179,7 +241,9 @@ class InstExpression(ExpressionValue):
                     return False
         return True
         """
-        # FIXME: this is not correct because it only checks subexpressions, not the value itself!
+        if self.value is None:
+            return False
+        # FIXME: this is not correct because it only checks the value's subexpressions, not the content of value itself!
         return all(x[1].is_value_template_dependent for x in self.value.iter_expressions())
 
     @property
@@ -190,7 +254,7 @@ class InstExpression(ExpressionValue):
                     return False
         return True
 
-    def get_subexpressions(self):
+    def get_subexpressions(self) -> Iterator[Expression]:
         """Check the self.value ParsedValue type for subexpressions"""
         if self.value is None:
             yield from []
@@ -220,6 +284,6 @@ class IllFormedExpression(ExpressionValue):
     def is_valid(self):
         return False
 
-    def get_subexpressions(self):
+    def get_subexpressions(self) -> Iterator[Expression]:
         """This is not a (completely) parsed expression... It does not contain subexpressions"""
         yield from []

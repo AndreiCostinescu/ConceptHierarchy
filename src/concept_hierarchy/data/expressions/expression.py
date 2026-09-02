@@ -51,7 +51,7 @@ class ExpressionValue(ABC):
         return True
 
     @abstractmethod
-    def get_subexpressions(self):
+    def get_subexpressions(self) -> Iterator[Expression]:
         pass
 
 
