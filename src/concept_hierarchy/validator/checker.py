@@ -383,6 +383,8 @@ class ConceptHierarchyChecker:
                 raise errors[0]
             raise CHSemanticError("Processing concept data failed because of the errors below!", causes=errors)
         # check domain_concept, value_domain, and function data!
+        self.ch.all_domain_concept_properties = {}  # reset from previous checks
+        self.ch.all_domain_concept_functions = {}  # reset from previous checks
         for c_name, c in self.ch.concepts.items():
             try:
                 c.concept_data_check()  # from now on, one can call c.location_of()
@@ -664,6 +666,7 @@ class ConceptHierarchyChecker:
                                 location_id=c.location_of(DomainConceptDefinition.domain_concept_properties, prop_name),
                                 part=PathPart.KEY,
                             )
+                        self.ch.all_domain_concept_properties[prop_name] = c_name
                         if PropertyDefinition.CONFIDENCE in prop_def_data:
                             confidence_location_id = c.location_of(
                                 DomainConceptDefinition.domain_concept_properties,
@@ -710,6 +713,7 @@ class ConceptHierarchyChecker:
                                 location_id=c.location_of(DomainConceptDefinition.domain_concept_functions, func_name),
                                 part=PathPart.KEY,
                             )
+                        self.ch.all_domain_concept_functions[func_name] = c_name
 
                 #  - check that all concept names in distinct_from are:
                 #   1) concepts,
