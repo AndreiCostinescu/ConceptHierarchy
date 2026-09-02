@@ -115,7 +115,11 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
                 raise RuntimeError(f"Unknown hierarchy check type: {check_type!r}")
 
     def create_substitution_for(
-        self, parent_type_name: str, sub_type: ConceptHierarchyType, location_id: LocationId
+        self,
+        parent_type_name: str,
+        sub_type: ConceptHierarchyType,
+        location_id: LocationId,
+        template_context: TemplateContext | None = None,
     ) -> tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] | None:
         sub_type_def_data = self.context.ch.concepts[sub_type.clean_name]
         parent_def_data = self.context.ch.concepts[parent_type_name]
@@ -126,6 +130,9 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
             # sub_type is not a ValueDomain or a Function...
             # so a substitution between the sub_type and parent type does not exist
             return None
+
+        if template_context is None:
+            template_context = TemplateContext()
 
         substitution: dict[str, ConceptHierarchyTemplateArgument] = {}
         for t_arg_name, t_arg_val in zip(sub_type_def_data.template_argument_order, sub_type.template_arguments):
@@ -151,18 +158,20 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
                 substitution_type,
                 substitution,
                 sub_type_model_data.template_context,
-                TemplateContext(),
+                template_context,
                 self,
                 location_id,
             )
-            if not subst_context.empty:
+            # The substitution must not *derive* any new constraint on the template variables that remain in
+            # the substituted value; those variables stay in `template_context` and are validated below.
+            if not subst_context.is_unconstrained:
                 raise RuntimeError(
                     f"Expected full substitution for value {substitution_type}, but produced {subst_context!r}"
                 )
             substituted_t_args_of_parent.append(subst_val)
         subst_tuple = tuple(substituted_t_args_of_parent)
         errors = validate_complete_instantiation_of_concept(
-            parent_type_name, subst_tuple, TemplateContextDeterminator(), self, location_id
+            parent_type_name, subst_tuple, TemplateContextDeterminator(template_context), self, location_id
         )
         if errors:
             raise RuntimeError(
@@ -192,10 +201,22 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
         value: ConceptHierarchyTemplateArgument,
         location_id: LocationId,
         op: HierarchyCheckType = HierarchyCheckType.SELF,
+        template_context: TemplateContext | None = None,
     ) -> NonStructureConstraintFormula:
-        subst_formula = create_exact_match_constraint_from_value(
-            value, self.context.template_constraint_formula_validator, location_id
-        )
+        formula_validator = self.context.template_constraint_formula_validator
+        if template_context is None:
+            subst_formula = create_exact_match_constraint_from_value(value, formula_validator, location_id)
+        else:
+            # `value` may reference template variables; they are only recognised as such while they are in
+            # the formula validator's scope. Registering the context's variables (rather than the ones the
+            # value happens to mention) keeps the out-of-scope check intact: a reference to a variable that
+            # is not in `template_context` still fails as "not a concept and not a template variable".
+            previous_scope = formula_validator.get_existing_template_variables()
+            formula_validator.update_existing_template_variables(set(template_context.variables))
+            try:
+                subst_formula = create_exact_match_constraint_from_value(value, formula_validator, location_id)
+            finally:
+                formula_validator.update_existing_template_variables(previous_scope)
         assert isinstance(subst_formula, TemplateConstraintHierarchyOperator)
         subst_formula = subst_formula.change_hierarchy_operator(
             op, self.context.template_constraint_formula_validator, location_id

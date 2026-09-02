@@ -75,9 +75,19 @@ class TypeTemplateInstantiationValidator(ABC):
 
     @abstractmethod
     def create_substitution_for(
-        self, parent_type_name: str, sub_type: ConceptHierarchyType, location_id: LocationId
+        self,
+        parent_type_name: str,
+        sub_type: ConceptHierarchyType,
+        location_id: LocationId,
+        template_context: TemplateContext | None = None,
     ) -> tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] | None:
         """
+        `template_context` is the context that the template variables occurring in `sub_type`'s template
+        arguments belong to. It must be supplied whenever `sub_type` is template-dependent, because the
+        substituted template arguments of `parent_type_name` then still contain those template variables,
+        and validating them requires knowing which variables are in scope.
+        Pass `None` (the default) when `sub_type` is fully instantiated.
+
         (_, t_arg_value_clean, _, t_args_of_t_arg) = process_value_domain(template_argument_value)[0]
         t_arg_vd = ValueDomain.all_value_domains[t_arg_value_clean]
         literal_vd = ValueDomain.all_value_domains[self.literal]
@@ -111,8 +121,12 @@ class TypeTemplateInstantiationValidator(ABC):
         value: ConceptHierarchyTemplateArgument,
         location_id: LocationId,
         op: HierarchyCheckType = HierarchyCheckType.SELF,
+        template_context: TemplateContext | None = None,
     ) -> NonStructureConstraintFormula:
-        pass
+        """
+        `template_context` declares which template variables `value` may legitimately reference.
+        Pass it whenever `value` is (or contains) a template variable; pass `None` for instantiated values.
+        """
 
     @abstractmethod
     def get_template_context(self) -> TemplateContext:
@@ -571,7 +585,10 @@ def _validate_type(
         # The formula will have all template arguments (and all template arguments thereof and so on) marked with a '.'
         #  to match exactly the substituted value.
         check_formula = state.validator.create_type_constraint_from_value(
-            state.type_application[formula.literal], state.location_id, formula.hierarchy_op
+            state.type_application[formula.literal],
+            state.location_id,
+            formula.hierarchy_op,
+            state.template_context.original,
         )
     elif not state.validator.is_concept(formula.literal):
         raise RuntimeError(
@@ -640,7 +657,9 @@ def _validate_type(
     #  but the substitution value of the template arguments of literal_type that must match the constraints!
     assert state.validator.is_concept(formula.literal)
     literal_type_substituted_template_args: tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] = (
-        state.validator.create_substitution_for(formula.literal, t_arg, sub_location_id)
+        state.validator.create_substitution_for(
+            formula.literal, t_arg, sub_location_id, state.template_context.original
+        )
     )
     if len(literal_type_substituted_template_args) != len(formula.literal_template_formulae):
         raise RuntimeError(
