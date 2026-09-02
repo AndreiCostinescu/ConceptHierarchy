@@ -32,6 +32,13 @@ class SchemaValidator(CHSchemaValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.type_validator = self.context.type_validator
+
+    def parse_custom_type(
+        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool
+    ) -> TypeValue:
+        if not allow_x_as_template_variable:
+            return parse_convert_type_in_template_context(type_name, self.type_validator, location_id)
+
         if SchemaValidator.x_template_variable_constraint is None:
             res = parse_constraint_definition(
                 HiddenImplementationDefinition.default_template_argument_constraint,
@@ -41,12 +48,6 @@ class SchemaValidator(CHSchemaValidator):
             )
             assert isinstance(res, NonStructureConstraintFormula)
             SchemaValidator.x_template_variable_constraint = res
-
-    def parse_custom_type(
-        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool
-    ) -> TypeValue:
-        if not allow_x_as_template_variable:
-            return parse_convert_type_in_template_context(type_name, self.type_validator, location_id)
 
         # FIXME: add as identifier to the x template variable the location_id!
         #  Because in an instantiation schema, there can be multiple x template variables defined,
