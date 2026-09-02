@@ -49,7 +49,6 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TemplateDependentType,
     TemplateVariable,
 )
-from concept_hierarchy.data.types.parsed_type import TemplateArgumentLiteral
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
 from concept_hierarchy.utils import Reference, is_integer, is_number
 
@@ -744,31 +743,31 @@ def _constrain_context_template_variable(
         )
 
 
-def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: TemplateArgumentLiteral) -> bool:
+def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: LiteralValue) -> bool:
     if formula.constraint_type == NonTypeTemplateConstraintFormula.INTEGER:
-        return is_integer(t_arg.literal_value)
+        return is_integer(t_arg.clean_name)
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.NUMBER:
-        return is_number(t_arg.literal_value)
+        return is_number(t_arg.clean_name)
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN:
-        return t_arg.literal_value in ["true", "false"]
+        return t_arg.clean_name in ["true", "false"]
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
-        return t_arg.literal_value.startswith('"') and t_arg.literal_value.endswith('"')
+        return t_arg.clean_name.startswith('"') and t_arg.clean_name.endswith('"')
     else:
         raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
 
 
-def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: TemplateArgumentLiteral) -> bool:
+def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: LiteralValue) -> bool:
     if formula.constraint_type == NonTypeTemplateConstraintFormula.INTEGER:
         ref = Reference()
-        return is_integer(t_arg.literal_value, ref) and ref.ref == formula.value
+        return is_integer(t_arg.clean_name, ref) and ref.ref == formula.value
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.NUMBER:
         ref = Reference()
-        return is_number(t_arg.literal_value, ref) and ref.ref == formula.value
+        return is_number(t_arg.clean_name, ref) and ref.ref == formula.value
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN:
         # t_arg must be exactly "true" or "false"
-        return t_arg.literal_value == formula.raw_value
+        return t_arg.clean_name == formula.raw_value
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
-        return t_arg.literal_value == formula.raw_value
+        return t_arg.clean_name == formula.raw_value
     else:
         raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
 
@@ -776,9 +775,9 @@ def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: Template
 def _validate_literal(
     formula: NonTypeTemplateConstraintFormula, t_arg: ConceptHierarchyTemplateArgument, state: _State
 ):
-    f_check: Callable[
-        [NonTypeTemplateConstraintFormula | LiteralValueConstraintFormula, TemplateArgumentLiteral], bool
-    ] = _check_literal_value if isinstance(formula, LiteralValueConstraintFormula) else _check_literal_type
+    f_check: Callable[[NonTypeTemplateConstraintFormula | LiteralValueConstraintFormula, LiteralValue], bool] = (
+        _check_literal_value if isinstance(formula, LiteralValueConstraintFormula) else _check_literal_type
+    )
 
     assert isinstance(t_arg, (ConceptHierarchyType, LiteralValue, TemplateVariable))
 
@@ -808,7 +807,7 @@ def _validate_literal(
                 state.template_context.determined.add_and_constraint_to(t_arg.clean_name, formula, sub_location_id)
             )
         return
-    assert isinstance(t_arg, TemplateArgumentLiteral)
+    assert isinstance(t_arg, LiteralValue)
     if not f_check(formula, t_arg) and state.collect_all_errors:
         err = CHSemanticError(f"{arg_str} does not satisfy the constraint {formula_str}", location_id=sub_location_id)
         state.errors.append(err)
