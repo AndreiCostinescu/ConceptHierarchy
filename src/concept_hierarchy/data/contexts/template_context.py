@@ -129,6 +129,14 @@ class TemplateContext:
     def has_template_variable(self, variable_name) -> bool:
         return variable_name in self.variables
 
+    def is_literal_template_variable(self, variable_name) -> bool:
+        assert self.has_template_variable(variable_name)
+        assert not self.empty
+        return (
+            self.constraint.variable_constraint_types[self.variables.index(variable_name)]
+            != TypeTemplateConstraintFormula.TYPE
+        )
+
     def add_and_constraint_to(
         self, variable_name: str, new_variable_constraint: NonStructureConstraintFormula, location_id: LocationId
     ) -> StructureConstraintFormula:
