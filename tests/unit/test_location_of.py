@@ -58,7 +58,9 @@ model_data = {
                 },
             },
         },
-        "DogClone": "Dog",
+        # defines no properties of its own, so aliasing it does not duplicate any property definition
+        "DogVariant": {"directParents": ["Dog"], "data": {"properties": {}}},
+        "DogClone": "DogVariant",
         "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
         "Integer": {"directParents": ["ValueDomain"], "data": {}},
         "Duration": {"directParents": ["ValueDomain"], "data": {}},
@@ -191,7 +193,7 @@ class TestLocationOf:
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
             if c_name == "DogClone":
-                expected_value += ["ref:Dog"]
+                expected_value += ["ref:DogVariant"]
             assert c.location_of(c_name) == expected_value
 
     def test_location_of_concept_names_composite(self):
@@ -199,7 +201,7 @@ class TestLocationOf:
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
             if c_name == "DogClone":
-                expected_value += ["ref:Dog"]
+                expected_value += ["ref:DogVariant"]
             assert c.location_of("concepts", c_name) == expected_value
 
     def test_location_of_concept_direct_parents(self):
@@ -215,7 +217,7 @@ class TestLocationOf:
             else:
                 expected_value = ["concepts", c_name]
                 if c_name == "DogClone":
-                    expected_value += ["ref:Dog"]
+                    expected_value += ["ref:DogVariant"]
                 expected_value += [ConceptDefinition.concept_direct_parents]
                 assert c.location_of(ConceptDefinition.concept_direct_parents) == expected_value
 
@@ -244,7 +246,7 @@ class TestLocationOf:
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
             if c_name == "DogClone":
-                expected_value += ["ref:Dog"]
+                expected_value += ["ref:DogVariant"]
             expected_value += ["data"]
             assert c.location_of(ConceptDefinition.concept_definition_data) == expected_value
 
@@ -253,7 +255,7 @@ class TestLocationOf:
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
             if c_name == "DogClone":
-                expected_value += ["ref:Dog"]
+                expected_value += ["ref:DogVariant"]
             expected_value += ["data"]
             assert c.location_of(c_name, ConceptDefinition.concept_definition_data) == expected_value
             assert c.location_of("concepts", c_name, ConceptDefinition.concept_definition_data) == expected_value
@@ -265,7 +267,7 @@ class TestLocationOf:
                 continue
             expected_value = ["concepts", c_name]
             if c_name == "DogClone":
-                expected_value += ["ref:Dog"]
+                expected_value += ["ref:DogVariant"]
             expected_value += ["data"]
             if c_name == "Animal":
                 expected_value += ["ext:external_animal_data.json"]
