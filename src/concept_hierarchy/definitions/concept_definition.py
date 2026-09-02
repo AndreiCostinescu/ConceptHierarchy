@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from types import NoneType
 from typing import Callable
 
@@ -385,7 +386,11 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         elif self._data_def is None:
             self.data = {}
         elif isinstance(self._data_def, dict):
-            self.data = self._data_def
+            # Deep copy so that the definition owns its data. Parsing normalises the content in place --
+            # expanding shorthand definitions, consuming keywords it has read -- and the caller's JSON must
+            # not be altered by being checked: it may be shared between concepts (an external data file is
+            # resolved once and handed to every concept referencing it) or checked more than once.
+            self.data = deepcopy(self._data_def)
         return isinstance(self._data_def, str)
 
     def concept_data_check(self):
