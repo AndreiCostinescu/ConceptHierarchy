@@ -90,16 +90,16 @@ git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
 
 # Install dev dependencies and register all git hooks
-make setup LANGS="python"
+python dev.py setup python
 
 # Verify your identity is configured
 git config user.name   # should be "Your Name"
 git config user.email  # should be "you@example.com"
 ```
 
-`make setup LANGS="python"` does the following (via the shared
-[DevTools](https://github.com/AndreiCostinescu/DevTools) submodule at
-`.devtools`):
+`python dev.py setup python` does the following (`dev.py` is a tiny bootstrap that
+fetches development tools from [DevTools](https://github.com/AndreiCostinescu/DevTools) 
+inside `.devtools` and delegates everything else to it — no `make` required):
 
 1. `git submodule update --init --recursive` — fetches `.devtools` (and any
    other submodules) on a fresh clone.
@@ -123,8 +123,8 @@ After setup, every `git commit` automatically runs:
 You can also run linting and formatting checks manually at any time:
 
 ```bash
-make lint      # check formatting and linting without modifying files
-make format    # auto-fix formatting and safe lint issues
+python dev.py lint python      # check formatting and linting without modifying files
+python dev.py format python    # auto-fix formatting and safe lint issues
 ```
 
 ---
@@ -152,7 +152,7 @@ PRs require:
 ## 5. Coding standards
 
 - **Style:** follow PEP 8.  `ruff` and `pre-commit` handle code formatting, 
-  so make sure you run `make setup LANGS="python"` once after cloning the repository.
+  so make sure you run `python dev.py setup python` once after cloning the repository.
 - **Type hints:** use them on all public functions.  Stay compatible with
   Python 3.10.
 - **License headers:** every new `.py` file must begin with the Apache 2.0
@@ -172,7 +172,7 @@ All commands below should be run from the **repository root** (the directory tha
 ```bash
 git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
-make setup LANGS="python"
+python dev.py setup python
 ```
 
 2. Run the test suite:

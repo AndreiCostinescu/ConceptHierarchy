@@ -92,17 +92,17 @@ sign-off, GPG commit signing, coding standards, and the PR checklist.
 ```bash
 git clone https://github.com/AndreiCostinescu/ConceptHierarchy.git
 cd ConceptHierarchy
-make setup
+python dev.py setup python
 ```
 
-`make setup` installs dev dependencies (including ruff and pre-commit) and
-registers the git hooks so formatting and linting run automatically on every
-commit.
+`python dev.py setup python` installs dev dependencies (including ruff and
+pre-commit) and registers the git hooks so formatting and linting run
+automatically on every commit.
 
 ```bash
-make lint      # check formatting + linting
-make format    # auto-fix formatting and safe lint issues
-pytest         # run the test suite
+python dev.py lint python      # check formatting + linting
+python dev.py format python    # auto-fix formatting and safe lint issues
+pytest                         # run the test suite
 ```
 
 ## License
