@@ -19,7 +19,7 @@ The rules, per the comment on that block, are: property names are unique across 
 names are unique across the hierarchy, property and function names are distinct from each other, and
 neither may collide with a global variable's name.
 
-**The duplicate-name tests in this module fail on purpose.** ``ConceptHierarchyModel`` declares
+**The duplicate-name tests in this module fail on purpose.** ``ConceptHierarchyDefinition`` declares
 ``all_domain_concept_properties`` and ``all_domain_concept_functions`` (``prop_name -> defining concept``),
 and ``checker.py`` reads both in four "is defined in multiple places!" errors -- but nothing ever writes to
 either map, so all four errors are unreachable and duplicates are silently accepted. They are left failing

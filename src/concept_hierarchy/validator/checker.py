@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-checker.py — Syntax- and semantic-level validation of a parsed ConceptHierarchyModel.
+checker.py — Syntax- and semantic-level validation of a JSON-converted-to-python ConceptHierarchyDefinition.
 """
 
 import os
@@ -38,11 +38,11 @@ from concept_hierarchy.definitions.concept_definition_domain_concept import (
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
-from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
+from concept_hierarchy.definitions.definition import DefinitionInsideConceptHierarchy
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId, PathPart
-from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.utils import (
     join_path,
     read_external_data_content,
@@ -76,22 +76,22 @@ class ConceptHierarchyChecker:
     def read_concept_hierarchy(file: str, path_to_root_dir: str) -> object:
         def create_json(file_name: str) -> object:
             res = read_json_file(file_name)
-            if ConceptHierarchyModel.model_concepts_external in res:
-                assert isinstance(res[ConceptHierarchyModel.model_concepts_external], list)
-                for sub_file_name in res[ConceptHierarchyModel.model_concepts_external]:
+            if ConceptHierarchyDefinition.model_concepts_external in res:
+                assert isinstance(res[ConceptHierarchyDefinition.model_concepts_external], list)
+                for sub_file_name in res[ConceptHierarchyDefinition.model_concepts_external]:
                     if os.path.isabs(sub_file_name):
                         res.update(create_json(sub_file_name))
                     else:
                         rel_sub_file_name = sanitize_relative_path(join_path(path_to_root_dir, sub_file_name))
                         res.update(create_json(rel_sub_file_name))
-                res.pop(ConceptHierarchyModel.model_concepts_external)
+                res.pop(ConceptHierarchyDefinition.model_concepts_external)
             return res
 
         return create_json(file)
 
     @staticmethod
     def check_cycles_in_references_based_on_defined(
-        references: dict[str, ConceptHierarchyDefinition], definitions: dict, location_id: LocationId
+        references: dict[str, DefinitionInsideConceptHierarchy], definitions: dict, location_id: LocationId
     ) -> dict[str, str | None]:
         mapped_references: dict[str, str | None] = {x: None for x in definitions}
         for reference, ref_data in references.items():
@@ -132,7 +132,7 @@ class ConceptHierarchyChecker:
 
     def __init__(
         self,
-        concept_hierarchy_data: ConceptHierarchyModel,
+        concept_hierarchy_data: ConceptHierarchyDefinition,
         external_data_resolver: Callable[[str, str], object] | None = None,
     ):
         self.model = ConceptHierarchy(concept_hierarchy_data)
@@ -145,12 +145,12 @@ class ConceptHierarchyChecker:
         self.context = ConceptHierarchyContext(self.model)
 
     @property
-    def ch(self) -> ConceptHierarchyModel:
+    def ch(self) -> ConceptHierarchyDefinition:
         return self.model.ch
 
     @staticmethod
     def resolve_aliases(
-        aliases: dict[str, ConceptHierarchyDefinition], defined_data: dict, location_id: LocationId
+        aliases: dict[str, DefinitionInsideConceptHierarchy], defined_data: dict, location_id: LocationId
     ) -> dict[str, str]:
         """
         Map each alias name to the **canonical** entry it names, following chains and rejecting cycles.
@@ -184,47 +184,47 @@ class ConceptHierarchyChecker:
 
         # interpret either as a meta-definition, or a direct definition of concepts
         ch_keys = set(concept_hierarchy.keys())
-        if not (ch_keys <= ConceptHierarchyModel.model_keywords):
+        if not (ch_keys <= ConceptHierarchyDefinition.model_keywords):
             # interpret this as a definition of concepts
-            concept_hierarchy = {ConceptHierarchyModel.model_concepts: concept_hierarchy}
+            concept_hierarchy = {ConceptHierarchyDefinition.model_concepts: concept_hierarchy}
         elif len(ch_keys) == 0:
-            concept_hierarchy = {ConceptHierarchyModel.model_concepts: {}}
+            concept_hierarchy = {ConceptHierarchyDefinition.model_concepts: {}}
 
         # -- hierarchy name (optional: default "ConceptHierarchy") ----------
 
-        self.ch.name = concept_hierarchy.get(ConceptHierarchyModel.model_name, "ConceptHierarchy")
+        self.ch.name = concept_hierarchy.get(ConceptHierarchyDefinition.model_name, "ConceptHierarchy")
         if not check_ch_name(self.ch.name, allow_starting_with_underscore=True):
             raise CHSyntaxError(
-                f'Concept Hierarchy "{ConceptHierarchyModel.model_name}" {self.ch.name!r} must be a non-empty, '
+                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_name}" {self.ch.name!r} must be a non-empty, '
                 f"non-digit-starting string containing only alphanumeric characters or '_'.",
-                location_id=base_location_id + [ConceptHierarchyModel.model_name],
+                location_id=base_location_id + [ConceptHierarchyDefinition.model_name],
                 part=PathPart.VALUE,
             )
 
         # -- metadata (optional) --------------------------------------------
-        raw_meta = concept_hierarchy.get(ConceptHierarchyModel.model_metadata, {})
+        raw_meta = concept_hierarchy.get(ConceptHierarchyDefinition.model_metadata, {})
         if not isinstance(raw_meta, dict):
             raise CHSyntaxError(
-                f'Concept Hierarchy "{ConceptHierarchyModel.model_metadata}" must be a JSON object.',
-                location_id=base_location_id + [ConceptHierarchyModel.model_metadata],
+                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_metadata}" must be a JSON object.',
+                location_id=base_location_id + [ConceptHierarchyDefinition.model_metadata],
                 part=PathPart.VALUE,
             )
         self.ch.metadata = {str(k): str(v) for k, v in raw_meta.items()}
 
         # -- concepts --------------------------------------------------------
-        concept_location_id: LocationId = base_location_id + [ConceptHierarchyModel.model_concepts]
-        if ConceptHierarchyModel.model_concepts not in concept_hierarchy:
+        concept_location_id: LocationId = base_location_id + [ConceptHierarchyDefinition.model_concepts]
+        if ConceptHierarchyDefinition.model_concepts not in concept_hierarchy:
             raise CHSyntaxError(
-                f'Missing required top-level key: "{ConceptHierarchyModel.model_concepts}".',
+                f'Missing required top-level key: "{ConceptHierarchyDefinition.model_concepts}".',
                 location_id=concept_location_id,
                 part=PathPart.KEY,
             )
-        concept_definition = concept_hierarchy[ConceptHierarchyModel.model_concepts]
+        concept_definition = concept_hierarchy[ConceptHierarchyDefinition.model_concepts]
         # type checks for concept_definition data
         if not isinstance(concept_definition, dict):
             raise CHSyntaxError(
-                f'Concept Hierarchy "{ConceptHierarchyModel.model_concepts}" data must be a JSON object of concept '
-                f"definitions, not {concept_definition!r}.",
+                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_concepts}" data must be a JSON object of concept'
+                f" definitions, not {concept_definition!r}.",
                 location_id=concept_location_id,
                 part=PathPart.VALUE,
             )
@@ -248,12 +248,12 @@ class ConceptHierarchyChecker:
             concept_def.canonicalize_concept_references(self.ch.canonical_concept_name)
 
         # -- instances (optional: default {}) --------------------------------
-        instances_location_id: LocationId = base_location_id + [ConceptHierarchyModel.model_instances]
-        instance_definition = concept_hierarchy.get(ConceptHierarchyModel.model_instances, {})
+        instances_location_id: LocationId = base_location_id + [ConceptHierarchyDefinition.model_instances]
+        instance_definition = concept_hierarchy.get(ConceptHierarchyDefinition.model_instances, {})
         if not isinstance(instance_definition, dict):
             raise CHSyntaxError(
-                f'Concept Hierarchy "{ConceptHierarchyModel.model_instances}" data must be a JSON object of definitions'
-                f" of instances, i.e. global variables, not {instance_definition!r}.",
+                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_instances}" data must be a JSON object of'
+                f" definitions of instances, i.e. global variables, not {instance_definition!r}.",
                 location_id=instances_location_id,
                 part=PathPart.VALUE,
             )
@@ -861,13 +861,13 @@ class ConceptHierarchyChecker:
         self.check_expressions()
 
 
-def check_model(model: ConceptHierarchyModel, checker: ConceptHierarchyChecker | None = None) -> None:
+def check_model(model: ConceptHierarchyDefinition, checker: ConceptHierarchyChecker | None = None) -> None:
     """Validate syntax and semantic rules on *model*, raising on the first violation.
 
     Parameters
     ----------
     model:
-        A :class:`~concept_hierarchy.models.ConceptHierarchyModel` produced by the parser.
+        A :class:`~concept_hierarchy.models.ConceptHierarchyDefinition` produced by the parser.
     checker:
         A :class:`~concept_hierarchy.checker.ConceptHierarchyChecker` instance or None.
         If not specified, will use a default-created ConceptHierarchyChecker instance.

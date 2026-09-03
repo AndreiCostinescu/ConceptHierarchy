@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the location_of function inside ConceptHierarchyDefinition."""
+"""Unit tests for the location_of function inside DefinitionInsideConceptHierarchy."""
 
 import pytest
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 
 model_data = {
@@ -149,8 +149,8 @@ def get_external_data(concept_name: str, external_data_path: str):
     )
 
 
-def _model() -> ConceptHierarchyModel:
-    model = ConceptHierarchyModel.create_from_data(model_data)
+def _model() -> ConceptHierarchyDefinition:
+    model = ConceptHierarchyDefinition.create_from_data(model_data)
     ConceptHierarchyChecker(model, get_external_data).check()
     return model
 

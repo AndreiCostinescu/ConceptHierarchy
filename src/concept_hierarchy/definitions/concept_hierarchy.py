@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-models.py — Internal representation of a ConceptHierarchy.
+concept_hierarchy.py — Internal representation of a ConceptHierarchy definition (not its parsed and validated data).
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ from concept_hierarchy.definitions.global_variable_definition import GlobalVaria
 from concept_hierarchy.errors import LocationId, LocationIdLike
 
 
-class ConceptHierarchyModel:
-    """Root model filled by the model checker and consumed by validation / codegen."""
+class ConceptHierarchyDefinition:
+    """Root model filled by the model checker and consumed by validation."""
 
     model_name: str = "name"
     model_metadata: str = "metadata"
@@ -39,19 +39,21 @@ class ConceptHierarchyModel:
     default_function_name: str = "Function"
 
     @staticmethod
-    def create_by_parser(concept_hierarchy_file: str, parse_options: dict[str, object] = None) -> ConceptHierarchyModel:
-        """Parse a JSON-decoded dict into a :class:`ConceptHierarchyModel`.
+    def create_by_parser(
+        concept_hierarchy_file: str, parse_options: dict[str, object] = None
+    ) -> ConceptHierarchyDefinition:
+        """Parse a JSON-decoded dict into a :class:`ConceptHierarchyDefinition`.
 
         Parameters
         ----------
         concept_hierarchy_file : str:
             The file to read and interpret.
         parse_options : dict[str, object]
-            The options to pass to :func:`~concept_hierarchy.model.ConceptHierarchyModel`.
+            The options to pass to :func:`~concept_hierarchy.definitions.concept_hierarchy.ConceptHierarchyDefinition`.
 
         Returns
         -------
-        ConceptHierarchyModel
+        ConceptHierarchyDefinition
         """
         if not isinstance(concept_hierarchy_file, str):
             raise RuntimeError(
@@ -65,11 +67,11 @@ class ConceptHierarchyModel:
         else:
             path_to_root_dir = os.path.dirname(concept_hierarchy_file)
 
-        return ConceptHierarchyModel(concept_hierarchy_file, path_to_root_dir)
+        return ConceptHierarchyDefinition(concept_hierarchy_file, path_to_root_dir)
 
     @staticmethod
     def create_from_data(data):
-        ch = ConceptHierarchyModel("", "")
+        ch = ConceptHierarchyDefinition("", "")
         ch.definition_data = data
         return ch
 
@@ -78,7 +80,7 @@ class ConceptHierarchyModel:
         self.path_to_root_dir: str = path_to_root_dir
         self.definition_data = None
 
-        self.root_concept_name: str = ConceptHierarchyModel.default_root_concept_name
+        self.root_concept_name: str = ConceptHierarchyDefinition.default_root_concept_name
 
         self.checked_structure = False
         self.checked = False
@@ -101,9 +103,8 @@ class ConceptHierarchyModel:
 
         As for :attr:`concept_aliases`: never an entry of :attr:`instances`, resolved at the lookup
         boundary by :meth:`canonical_variable_name`, and already resolved through any chain. Because there
-        is one entry rather than a copy per name, an alias and its target are *the same*
-        ``GlobalVariableData`` -- writing through either name writes the one object, with no propagation
-        step.
+        is one entry rather than a copy per name, an alias and its target are *the same* ``GlobalVariableData``
+        -- writing through either name writes the one object, with no propagation step.
         """
         self.metadata: dict[str, str] = {}
 
@@ -127,10 +128,10 @@ class ConceptHierarchyModel:
 
     def __repr__(self) -> str:
         return (
-            f"ConceptHierarchyModel({ConceptHierarchyModel.model_name}={self.name!r}, "
-            f"{ConceptHierarchyModel.model_concepts}={self.concept_names()!r}, "
-            f"{ConceptHierarchyModel.model_instances}={self.instance_names()!r}, "
-            f"{ConceptHierarchyModel.model_metadata}={self.metadata!r})"
+            f"ConceptHierarchyDefinition({ConceptHierarchyDefinition.model_name}={self.name!r}, "
+            f"{ConceptHierarchyDefinition.model_concepts}={self.concept_names()!r}, "
+            f"{ConceptHierarchyDefinition.model_instances}={self.instance_names()!r}, "
+            f"{ConceptHierarchyDefinition.model_metadata}={self.metadata!r})"
         )
 
     def assert_structure(self):
@@ -176,16 +177,16 @@ class ConceptHierarchyModel:
         return not self.is_value_domain(c)
 
     def is_value_domain(self, c: str) -> bool:
-        return self.is_concept(ConceptHierarchyModel.default_value_domain_name) and self.is_a_subconcept_of_b(
-            c, ConceptHierarchyModel.default_value_domain_name, include_self=True
+        return self.is_concept(ConceptHierarchyDefinition.default_value_domain_name) and self.is_a_subconcept_of_b(
+            c, ConceptHierarchyDefinition.default_value_domain_name, include_self=True
         )
 
     def is_pure_value_domain(self, c: str) -> bool:
         return self.is_value_domain(c) and not self.is_function(c)
 
     def is_function(self, c: str) -> bool:
-        return self.is_concept(ConceptHierarchyModel.default_function_name) and self.is_a_subconcept_of_b(
-            c, ConceptHierarchyModel.default_function_name, include_self=True
+        return self.is_concept(ConceptHierarchyDefinition.default_function_name) and self.is_a_subconcept_of_b(
+            c, ConceptHierarchyDefinition.default_function_name, include_self=True
         )
 
     def canonical_variable_name(self, v: str) -> str:

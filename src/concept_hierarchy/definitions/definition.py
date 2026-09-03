@@ -18,7 +18,7 @@ from typing import Callable, TypeVar
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSyntaxError, LocationId, PathPart, PathSegment
 
-T = TypeVar("T", bound="ConceptHierarchyDefinition")
+T = TypeVar("T", bound="DefinitionInsideConceptHierarchy")
 
 
 @dataclass
@@ -47,7 +47,7 @@ class FoundLocationId(StopLocationOfCheck):
         super().__init__(check_data)
 
 
-class ConceptHierarchyDefinition(ABC):
+class DefinitionInsideConceptHierarchy(ABC):
     def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
         self.name: str = name
         # noinspection PyTypeChecker
@@ -57,7 +57,7 @@ class ConceptHierarchyDefinition(ABC):
         self.is_reference_to: str | None = None
         """Set when ``definition_data`` is a bare string: the name this entry aliases. An alias is a name,
         not an entity, so nothing is cloned from the target -- the checker records the resolved name in
-        ``ConceptHierarchyModel.concept_aliases`` / ``.variable_aliases`` and this value is not used after."""
+        ``ConceptHierarchyDefinition.concept_aliases`` / ``.variable_aliases`` and this value is not used after."""
 
         self._definition_location_cache: dict[tuple[str, ...], LocationId] = {}
 
@@ -92,14 +92,14 @@ class ConceptHierarchyDefinition(ABC):
         if not isinstance(self.name, str) or not check_ch_name(self.name):
             raise CHSyntaxError(
                 f"Name of {self.definition_type()!r} definition must be a valid string identifier, got {self.name!r}!",
-                location_id=ConceptHierarchyDefinition.definition_location(self) + [self.name],
+                location_id=DefinitionInsideConceptHierarchy.definition_location(self) + [self.name],
                 part=PathPart.KEY,
             )
         if check_type_of_data and not isinstance(self.definition_data, (dict, str)):
             raise CHSyntaxError(
                 f'The {self.definition_type()} definition of "{self.name}" is not a JSON object or a JSON string '
                 f"{self.definition_type()}-name reference, but {self.definition_data!r}!",
-                location_id=ConceptHierarchyDefinition.definition_location(self) + [self.name],
+                location_id=DefinitionInsideConceptHierarchy.definition_location(self) + [self.name],
                 part=PathPart.VALUE,
             )
         if isinstance(self.definition_data, str):
@@ -119,7 +119,7 @@ class ConceptHierarchyDefinition(ABC):
     def has_location_of(self, *keywords: str) -> bool:
         """
         THIS FUNCTION SHOULD ONLY BE CALLED AFTER THE STRUCTURAL CHECKS OF THE CONCEPTS HAVE PASSED!
-        Do not use this function during the structural checks of the ConceptHierarchyDefinition subclasses!
+        Do not use this function during the structural checks of the DefinitionInsideConceptHierarchy subclasses!
 
         This function determines whether a concept-specific location of a piece of data
         is specified in the definition of this concept.
@@ -143,7 +143,7 @@ class ConceptHierarchyDefinition(ABC):
     def location_of(self, *keywords: str) -> LocationId:
         """
         THIS FUNCTION SHOULD ONLY BE CALLED AFTER THE STRUCTURAL CHECKS OF THE CONCEPTS HAVE PASSED!
-        Do not use this function during the structural checks of the ConceptHierarchyDefinition subclasses!
+        Do not use this function during the structural checks of the DefinitionInsideConceptHierarchy subclasses!
 
         This function determines the concept-specific specification location of a piece of data.
         This is because data is not always at a fixed location in the Concept Hierarchy.
@@ -171,7 +171,7 @@ class ConceptHierarchyDefinition(ABC):
         # processes "concepts"/"instances" location
         return self.check_location_id(
             LocationOfCheckData(None, keywords, (), False),
-            ConceptHierarchyDefinition.definition_location(self),
+            DefinitionInsideConceptHierarchy.definition_location(self),
             location_check=self.definition_location_id[-1],
             previous_location=None,
             allow_start_at_this_location=True,

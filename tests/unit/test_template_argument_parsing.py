@@ -23,8 +23,8 @@ import pytest
 
 from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
-from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 
 
@@ -189,7 +189,7 @@ class TestTemplateArgumentParsing:
         pass
 
     def get_model(self, model_data) -> ConceptHierarchy:
-        model = ConceptHierarchyModel.create_from_data(model_data)
+        model = ConceptHierarchyDefinition.create_from_data(model_data)
         checker = ConceptHierarchyChecker(model, self.get_external_data)
         res = checker.model
         checker.check()

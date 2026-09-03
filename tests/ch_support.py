@@ -25,7 +25,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 
 CH_PRELUDE: dict[str, dict] = {
@@ -72,7 +72,7 @@ def check_hierarchy(model_data: dict, external_data: object = None) -> ConceptHi
 
     :raises ConceptHierarchyError: if the hierarchy does not check, as for any invalid definition.
     """
-    model = ConceptHierarchyModel.create_from_data(model_data)
+    model = ConceptHierarchyDefinition.create_from_data(model_data)
     checker = ConceptHierarchyChecker(model, lambda _concept, _instance: external_data)
     checker.check()
     return checker.context

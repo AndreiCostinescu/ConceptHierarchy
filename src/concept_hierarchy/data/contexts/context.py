@@ -26,8 +26,8 @@ from concept_hierarchy.data.validators.template_argument_constraints_validator i
     TypeTemplateInstantiationValidator,
 )
 from concept_hierarchy.data.validators.type_validator import TypeValidator
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import LocationId
-from concept_hierarchy.models import ConceptHierarchyModel
 
 
 class ConceptHierarchyContext:
@@ -51,7 +51,7 @@ class ConceptHierarchyContext:
         self.expression_parser_validator: ExpressionParserValidator | None = None
 
     @property
-    def ch(self) -> ConceptHierarchyModel:
+    def ch(self) -> ConceptHierarchyDefinition:
         return self.model.ch
 
     def __copy__(self):

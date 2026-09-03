@@ -57,7 +57,7 @@ The concept graph must have exactly one root (a concept with no parents). If top
 - **Source:** `validator/checker.py` — `check_structure`
 
 ### 1.4 Root must have the canonical name
-The single root concept must be named with `ConceptHierarchyModel.root_concept_name`. Any other name is rejected.
+The single root concept must be named with `ConceptHierarchyDefinition.root_concept_name`. Any other name is rejected.
 
 - **Source:** `validator/checker.py` — `check_structure`
 

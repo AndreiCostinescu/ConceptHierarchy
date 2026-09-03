@@ -22,12 +22,12 @@ public data members.
 """
 
 from concept_hierarchy.backends.base import BaseBackend
+from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
     DomainConceptDefinition,
     PropertyDefinitionKeywords,
 )
-from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.utils import topological_sort
 
 # ---------------------------------------------------------------------------
@@ -53,16 +53,16 @@ _HEADER = """\
 
 
 class CppBackend(BaseBackend):
-    """Generate a C++ header from a :class:`ConceptHierarchyModel`."""
+    """Generate a C++ header from a :class:`ConceptHierarchy`."""
 
-    def generate(self, model: ConceptHierarchyModel) -> str:
+    def generate(self, model: ConceptHierarchy) -> str:
         lines: list[str] = [_HEADER]
 
         # Topologically sorted so base classes always appear before derived ones.
-        ordered, _roots = topological_sort({c: c_data.parents for c, c_data in model.concepts.items()})
+        ordered, _roots = topological_sort({c: c_data.parents for c, c_data in model.ch.concepts.items()})
 
         for concept_name in ordered:
-            lines.append(CppBackend.render_concept(model.concepts[concept_name]))
+            lines.append(CppBackend.render_concept(model.ch.concepts[concept_name]))
 
         return "\n".join(lines)
 

@@ -19,7 +19,7 @@ from types import NoneType
 from typing import Callable
 
 from concept_hierarchy.definitions.definition import (
-    ConceptHierarchyDefinition,
+    DefinitionInsideConceptHierarchy,
     LocationOfCheckData,
     StopLocationOfCheck,
 )
@@ -27,7 +27,7 @@ from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
 
-class ConceptDefinition(ConceptHierarchyDefinition):
+class ConceptDefinition(DefinitionInsideConceptHierarchy):
     concept_name: str = "Concept"
     concept_definition_data: str = "data"
     concept_description: str = "description"

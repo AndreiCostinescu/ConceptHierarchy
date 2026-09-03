@@ -54,7 +54,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TypeValue,
     VariadicTemplateVariable,
 )
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 
 MODEL_DATA = {
@@ -92,7 +92,7 @@ class Hierarchy:
     """A checked hierarchy plus the bits a subtype check needs."""
 
     def __init__(self, model_data: dict):
-        model = ConceptHierarchyModel.create_from_data(model_data)
+        model = ConceptHierarchyDefinition.create_from_data(model_data)
         checker = ConceptHierarchyChecker(model, lambda _concept, _instance: None)
         checker.check()
         self.context = checker.context

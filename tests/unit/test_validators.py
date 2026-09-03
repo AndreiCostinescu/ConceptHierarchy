@@ -16,13 +16,13 @@
 
 import pytest
 
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, CHWarning
-from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.validator.checker import check_model
 
 
 def _model(concepts, name="MyHierarchy"):
-    return ConceptHierarchyModel.create_from_data({"name": name, "concepts": concepts})
+    return ConceptHierarchyDefinition.create_from_data({"name": name, "concepts": concepts})
 
 
 class TestSyntaxValidator:

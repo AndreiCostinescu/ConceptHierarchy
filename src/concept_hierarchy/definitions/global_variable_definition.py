@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition, LocationOfCheckData
+from concept_hierarchy.definitions.definition import DefinitionInsideConceptHierarchy, LocationOfCheckData
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSyntaxError, LocationId, PathPart
 
 
-class GlobalVariableDefinition(ConceptHierarchyDefinition):
+class GlobalVariableDefinition(DefinitionInsideConceptHierarchy):
     global_variable_name: str = "Global Variable"
 
     def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):

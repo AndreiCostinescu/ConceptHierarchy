@@ -33,7 +33,7 @@ from pathlib import Path
 
 import pytest
 
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 from tests.ch_support import build_hierarchy
 
@@ -65,7 +65,9 @@ NORMALISING_CONCEPTS: dict[str, dict] = {
 
 
 def check(model_data: dict, external_data: object = None) -> None:
-    ConceptHierarchyChecker(ConceptHierarchyModel.create_from_data(model_data), lambda _c, _f: external_data).check()
+    ConceptHierarchyChecker(
+        ConceptHierarchyDefinition.create_from_data(model_data), lambda _c, _f: external_data
+    ).check()
 
 
 class TestTheInputIsNotModified:

@@ -58,8 +58,8 @@ from concept_hierarchy.data.expressions.subexpressions import (
     VerifiedTemplateDependentExpression,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError
-from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
@@ -108,7 +108,7 @@ def check_hierarchy(model_data: dict, external_data: object = None) -> ConceptHi
 
     :raises ConceptHierarchyError: if the hierarchy does not check, as for any invalid definition.
     """
-    model = ConceptHierarchyModel.create_from_data(model_data)
+    model = ConceptHierarchyDefinition.create_from_data(model_data)
     checker = ConceptHierarchyChecker(model, lambda _concept, _instance: external_data)
     checker.check()
     return checker.context

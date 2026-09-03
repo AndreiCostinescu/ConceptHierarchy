@@ -32,7 +32,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TypeValue,
 )
 from concept_hierarchy.data.utils import UNINITIALIZED
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 
 from .utils import lazy_properties
 
@@ -143,7 +143,7 @@ class GlobalVariableData(ConceptHierarchyData):
 
 
 class ConceptHierarchy:
-    def __init__(self, ch_def: ConceptHierarchyModel):
+    def __init__(self, ch_def: ConceptHierarchyDefinition):
         self.ch = ch_def
         self.concepts: dict[str, ConceptData] = {}
         self.instances: dict[str, GlobalVariableData] = {}
