@@ -245,13 +245,23 @@ def substitute_schema(
 def parse_expression(
     json_value: object,
     expr_type: TypeValue,
-    expr_provenance: FunctionArgumentProvenance,
-    expr_access: FunctionArgumentAccessor,
+    expr_provenance: FunctionArgumentProvenance | ValueDomainArgumentProvenance,
+    expr_access: FunctionArgumentAccessor | FunctionResultAccessor,
     expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     parse_template_expressions_without_type_checks: bool = False,
 ) -> Expression:
+    if isinstance(expr_provenance, ValueDomainArgumentProvenance):
+        expr_provenance = (
+            FunctionArgumentProvenance.ADDR
+            if expr_provenance == ValueDomainArgumentProvenance.ADDR
+            else FunctionArgumentProvenance.ANY
+        )
+    if isinstance(expr_access, FunctionResultAccessor):
+        expr_access = (
+            FunctionArgumentAccessor.GET if expr_access == FunctionResultAccessor.GET else FunctionArgumentAccessor.MOD
+        )
     expr_candidate_value = _parse_syntax_of_expression(
         json_value,
         expr_type,
