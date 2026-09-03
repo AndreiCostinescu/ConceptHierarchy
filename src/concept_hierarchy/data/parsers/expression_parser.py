@@ -661,7 +661,12 @@ def parse_expression_of_json_object(
     function_composition_type = validator.create_instantiated_type("FunctionComposition", location_id)
     function_type = validator.create_instantiated_type("Function", location_id)
 
-    key_type = validator.create_possibly_template_dependent_type(key, location_id)
+    try:
+        key_type = validator.create_possibly_template_dependent_type(key, location_id)
+    except CHSemanticError as e:
+        if e.args[0] == f"ParsedType '{key}' is not a template variable (in this context) nor a concept!":
+            return expressions_res
+        raise e
     if not isinstance(key_type, TemplateVariable) and validator.is_type_abstract(key_type):
         raise CHSemanticError(
             f"{key_type} is an abstract type! Thus, it can not be used in expression values "
