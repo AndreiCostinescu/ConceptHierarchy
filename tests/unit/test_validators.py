@@ -119,27 +119,38 @@ class TestSemanticValidator:
             check_model(model)
 
     def test_value_domain_reference(self):
+        """
+        An alias of a ValueDomain *is* that ValueDomain. It is not an entry of its own, and every
+        membership predicate answers for the concept it names -- so it is a ValueDomain too, where the
+        clone it used to produce was a parentless domain concept.
+        """
         model = _model(
             {"Concept": {}, "ValueDomain": {"directParents": ["Concept"], "data": {}}, "Type": "ValueDomain"}
         )
-        with pytest.warns(CHWarning, match="Found a domain concept with no data defined: 'Type'"):
-            check_model(model)
-        assert "Type" in model.domain_concepts
+        check_model(model)
+        assert model.concept_aliases == {"Type": "ValueDomain"}
+        assert "Type" not in model.concepts
+        assert "Type" not in model.domain_concepts
         assert "Type" not in model.value_domains
+        assert model.is_value_domain("Type")
 
     def test_reference_chain(self):
         model = _model({"Concept": {}, "A": {"directParents": ["Concept"], "data": {"properties": {}}}, "B": "A"})
         check_model(model)
 
     def test_root_reference_chain(self):
+        """An alias of the root is a second *name* for the root, not a second root."""
         model = _model({"Concept": {}, "A": "Concept"})
-        with pytest.raises(CHSemanticError, match=r"Concept Hierarchy has multiple roots: \['Concept', 'A'\]"):
-            check_model(model)
+        check_model(model)
+        assert model.concept_aliases == {"A": "Concept"}
+        assert model.concept_topo_sort == ["Concept"]
 
     def test_long_root_reference_chain(self):
+        """A chain resolves all the way to the canonical concept, not to the next link."""
         model = _model({"Concept": {}, "A": "Concept", "B": "A"})
-        with pytest.raises(CHSemanticError, match=r"Concept Hierarchy has multiple roots: \['Concept', 'A', 'B'\]"):
-            check_model(model)
+        check_model(model)
+        assert model.concept_aliases == {"A": "Concept", "B": "Concept"}
+        assert model.concept_topo_sort == ["Concept"]
 
     def test_self_reference(self):
         model = _model({"Concept": {}, "A": "A"})

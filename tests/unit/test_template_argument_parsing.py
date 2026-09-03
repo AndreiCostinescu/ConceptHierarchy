@@ -84,9 +84,8 @@ class TestTemplateArgumentParsing:
                     },
                 },
             },
-            # defines no properties of its own, so aliasing it does not duplicate any property definition
-            "DogVariant": {"directParents": ["Dog"], "data": {"properties": {}}},
-            "DogClone": "DogVariant",
+            # an alias: a second name for Dog, not a second definition of it
+            "DogClone": "Dog",
             "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
             "Integer": {"directParents": ["ValueDomain"], "data": {}},
             "Duration": {"directParents": ["ValueDomain"], "data": {}},

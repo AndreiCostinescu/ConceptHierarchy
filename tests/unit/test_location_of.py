@@ -58,9 +58,9 @@ model_data = {
                 },
             },
         },
-        # defines no properties of its own, so aliasing it does not duplicate any property definition
-        "DogVariant": {"directParents": ["Dog"], "data": {"properties": {}}},
-        "DogClone": "DogVariant",
+        # an alias: a second name for Dog, not a second definition of it -- so it never appears in
+        # ``concepts`` and has no definition location of its own
+        "DogClone": "Dog",
         "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
         "Integer": {"directParents": ["ValueDomain"], "data": {}},
         "Duration": {"directParents": ["ValueDomain"], "data": {}},
@@ -192,16 +192,12 @@ class TestLocationOf:
         concepts = _model().concepts
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
-            if c_name == "DogClone":
-                expected_value += ["ref:DogVariant"]
             assert c.location_of(c_name) == expected_value
 
     def test_location_of_concept_names_composite(self):
         concepts = _model().concepts
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
-            if c_name == "DogClone":
-                expected_value += ["ref:DogVariant"]
             assert c.location_of("concepts", c_name) == expected_value
 
     def test_location_of_concept_direct_parents(self):
@@ -216,8 +212,6 @@ class TestLocationOf:
                     c.location_of(ConceptDefinition.concept_direct_parents)
             else:
                 expected_value = ["concepts", c_name]
-                if c_name == "DogClone":
-                    expected_value += ["ref:DogVariant"]
                 expected_value += [ConceptDefinition.concept_direct_parents]
                 assert c.location_of(ConceptDefinition.concept_direct_parents) == expected_value
 
@@ -245,8 +239,6 @@ class TestLocationOf:
         concepts = _model().concepts
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
-            if c_name == "DogClone":
-                expected_value += ["ref:DogVariant"]
             expected_value += ["data"]
             assert c.location_of(ConceptDefinition.concept_definition_data) == expected_value
 
@@ -254,8 +246,6 @@ class TestLocationOf:
         concepts = _model().concepts
         for c_name, c in concepts.items():
             expected_value = ["concepts", c_name]
-            if c_name == "DogClone":
-                expected_value += ["ref:DogVariant"]
             expected_value += ["data"]
             assert c.location_of(c_name, ConceptDefinition.concept_definition_data) == expected_value
             assert c.location_of("concepts", c_name, ConceptDefinition.concept_definition_data) == expected_value
@@ -266,8 +256,6 @@ class TestLocationOf:
             if not isinstance(c, HiddenImplementationDefinition):
                 continue
             expected_value = ["concepts", c_name]
-            if c_name == "DogClone":
-                expected_value += ["ref:DogVariant"]
             expected_value += ["data"]
             if c_name == "Animal":
                 expected_value += ["ext:external_animal_data.json"]
@@ -285,3 +273,31 @@ class TestLocationOf:
                     rf"found in the .* definition of {c_name}",
                 ):
                     c.location_of(HiddenImplementationDefinition.hidden_template_arguments)
+
+
+class TestAliasLocations:
+    """
+    ``DogClone`` is an alias of ``Dog``: a name, not an entity. It has no definition of its own and so no
+    definition location -- the ``ref:<alias>`` annotation it used to carry as a cloned concept moves to the
+    use site (§6 of ``documentation/TODO_ALIASES_IMPLEMENTATION.md``, exercised in
+    ``tests/unit/test_aliases.py``).
+    """
+
+    def test_an_alias_has_no_concept_entry(self):
+        model = _model()
+        assert "DogClone" not in model.concepts
+        assert model.concept_aliases["DogClone"] == "Dog"
+
+    def test_the_aliased_concepts_locations_are_unannotated(self):
+        dog = _model().concepts["Dog"]
+        assert dog.location_of("concepts", "Dog") == ["concepts", "Dog"]
+        assert dog.location_of(ConceptDefinition.concept_definition_data) == ["concepts", "Dog", "data"]
+
+    def test_the_alias_annotates_the_site_that_uses_it(self):
+        """The alias shows up as ``ref:DogClone`` where it is *written*, not where ``Dog`` is defined."""
+        model = _model()
+        definition, location = model.concept(
+            "DogClone", ["concepts", "Puppy", ConceptDefinition.concept_direct_parents, 0]
+        )
+        assert definition is model.concepts["Dog"]
+        assert location == ["concepts", "Puppy", ConceptDefinition.concept_direct_parents, 0, "ref:DogClone"]

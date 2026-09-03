@@ -66,3 +66,51 @@ class TestCompileHierarchy:
         ch_compile_from_json(ANIMAL_KINGDOM, target="cpp", output_path=str(out))
         assert out.exists()
         assert "struct Animal" in out.read_text()
+
+
+ALIASED_KINGDOM = {
+    "name": "AliasedKingdom",
+    "concepts": {
+        "Concept": {},
+        "Animal": {"directParents": ["Concept"], "data": {"properties": {"age": "Integer"}}},
+        # a concept alias, and a type alias over a templatable ValueDomain
+        "Beast": "Animal",
+        "IntBox": "Box<Integer>",
+        "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
+        "Numeric": {"directParents": ["ValueDomain"], "data": {}},
+        "Number": {"directParents": ["Numeric"], "data": {"instantiation": "number"}},
+        "Integer": {"directParents": ["Number"], "data": {"instantiation": "integer"}},
+        "Box": {"directParents": ["ValueDomain"], "data": {"templateContext": {"order": ["T"], "T": "ValueDomain"}}},
+    },
+}
+
+
+class TestAliasEmission:
+    """
+    Aliases survive into the compiled output as ``using`` declarations and never as data copies (§8 of
+    ``documentation/TODO_ALIASES_IMPLEMENTATION.md``) -- which is why the alias containers live on the
+    model the backend reads. Variable aliases are not covered here: global variables are not emitted at
+    all yet, so how their alias is spelled is for the implementation that emits them.
+    """
+
+    def test_a_concept_alias_emits_a_using_declaration(self):
+        code = ch_compile_from_json(ALIASED_KINGDOM, target="cpp")
+        assert "using Beast = Animal;" in code
+
+    def test_a_type_alias_emits_a_using_declaration(self):
+        code = ch_compile_from_json(ALIASED_KINGDOM, target="cpp")
+        assert "using IntBox = Box<Integer>;" in code
+
+    def test_an_alias_does_not_emit_a_second_struct(self):
+        code = ch_compile_from_json(ALIASED_KINGDOM, target="cpp")
+        assert "struct Beast" not in code
+        assert "struct IntBox" not in code
+
+    def test_the_aliased_concept_is_still_emitted_once(self):
+        code = ch_compile_from_json(ALIASED_KINGDOM, target="cpp")
+        assert code.count("struct Animal") == 1
+
+    def test_a_using_declaration_follows_the_thing_it_names(self):
+        """``using Beast = Animal;`` is only valid C++ after ``Animal`` has been declared."""
+        code = ch_compile_from_json(ALIASED_KINGDOM, target="cpp")
+        assert code.index("struct Animal") < code.index("using Beast = Animal;")
