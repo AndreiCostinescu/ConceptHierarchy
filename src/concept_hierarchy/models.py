@@ -22,6 +22,7 @@ import os
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
+from concept_hierarchy.errors import LocationId, LocationIdLike
 
 
 class ConceptHierarchyModel:
@@ -84,6 +85,16 @@ class ConceptHierarchyModel:
         self.name: str = ""
         self.concepts: dict[str, ConceptDefinition] = {}
         self.instances: dict[str, GlobalVariableDefinition] = {}
+        self.concept_aliases: dict[str, str] = {}
+        """
+        Alias name -> the canonical concept it names.
+
+        An alias is a *name*, not an entity: it is never an entry of :attr:`concepts`, never takes part in
+        the subconcept relation, and is never a definition site. It is resolved at the lookup boundary --
+        see :meth:`canonical_concept_name` and :meth:`concept` -- rather than by rewriting the definition
+        data, so a use of the alias is still visible in the diagnostics of the use site. Chains are already
+        followed here: the value is the concept that ultimately defines the data, not the next link.
+        """
         self.metadata: dict[str, str] = {}
 
         self.domain_concepts: set[str] = set()
@@ -116,9 +127,38 @@ class ConceptHierarchyModel:
         if not self.checked_structure:
             raise RuntimeError("Can't verify Concept Hierarchy relations before it has been processed!")
 
+    def canonical_concept_name(self, c: str) -> str:
+        """
+        The name under which ``c`` is defined: ``c`` itself, or -- if ``c`` is an alias -- what it names.
+
+        Every map keyed by a concept name is keyed by the canonical one, so a name that came from the
+        user's JSON must pass through here before it indexes one. Names taken from an already-canonical
+        source (:attr:`concept_topo_sort`, a concept's ``parents``, ...) need not.
+        """
+        return self.concept_aliases.get(c, c)
+
+    def concept(self, name: str, location_id: LocationIdLike | None = None) -> tuple[ConceptDefinition, LocationId]:
+        """
+        The definition ``name`` denotes, and the location to blame in an error about *this* use of it.
+
+        Reaching a concept through an alias annotates the **use site** with ``ref:<alias>``: an alias has no
+        definition of its own to annotate, and the use site is where a reader has to look to see that an
+        alias was written at all. ``location_id`` is not modified; the annotated copy is returned.
+
+        :raises RuntimeError: if ``name`` is neither a concept nor an alias of one.
+        """
+        self.assert_structure()
+        location = LocationId(location_id) if location_id is not None else LocationId()
+        canonical = self.concept_aliases.get(name)
+        if canonical is None:
+            if name not in self.concepts:
+                raise RuntimeError(f"{name!r} is not the name of a concept in the Concept Hierarchy!")
+            return self.concepts[name], location
+        return self.concepts[canonical], location + ["ref:" + name]
+
     def is_concept(self, c: str) -> bool:
         self.assert_structure()
-        return c in self.concepts
+        return c in self.concepts or c in self.concept_aliases
 
     def is_domain_concept(self, c: str) -> bool:
         return not self.is_value_domain(c)
@@ -146,6 +186,8 @@ class ConceptHierarchyModel:
             raise RuntimeError(f"{a!r} is not the name of a concept in the Concept Hierarchy!")
         if not self.is_concept(b):
             raise RuntimeError(f"{b!r} is not the name of a concept in the Concept Hierarchy!")
+        # either side may be written as an alias; an alias and its target are the same concept
+        a, b = self.canonical_concept_name(a), self.canonical_concept_name(b)
         if include_self and a == b:
             return True
         return b in self.all_concept_parents[a]

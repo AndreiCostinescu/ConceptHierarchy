@@ -98,6 +98,28 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         self.parents = new_parents
         self.non_root_data_specified_check()
 
+    def canonicalize_concept_references(self, canonical_concept_name: Callable[[str], str]) -> None:
+        """
+        Replace every alias this definition names -- as a parent, a child, or a distinct concept -- with
+        the concept it aliases.
+
+        These are *derived* tuples, so canonicalizing them here rewrites nothing in the definition data:
+        the input-purity guarantee of :meth:`_check_data_content` still holds. (Several of them are read
+        straight off the caller's JSON as lists, so they are replaced by tuples rather than edited.) Doing
+        it once, here, makes every consumer alias-safe at a stroke -- the topological sort, the subconcept
+        relation, the specialization regime's parent walk, the template-substitution matching, the
+        distinctness relation. The name the user actually wrote stays recoverable for diagnostics from the
+        corresponding ``location_of(...) + [index]``.
+        """
+        self.parents = tuple(canonical_concept_name(parent) for parent in self.parents)
+        self.distinct_from = tuple(canonical_concept_name(other) for other in self.distinct_from)
+        self.distinct_group = tuple(canonical_concept_name(child) for child in self.distinct_group)
+        self.all_concepts_distinct_from_this = tuple(
+            canonical_concept_name(other) for other in self.all_concepts_distinct_from_this
+        )
+        if self.fixed_children is not None:
+            self.fixed_children = tuple(canonical_concept_name(child) for child in self.fixed_children)
+
     @property
     def is_root_concept(self) -> bool:
         return self.parents == ()

@@ -24,15 +24,16 @@ class ConstraintFormulaValidator(TemplateConstraintFormulaValidator):
         self.t_arg_context: set[str] = set()
 
     def full_type_name(self, name: str) -> str:
+        # a constraint literal is a concept-name position, so it may be an alias
         if self.is_concept(name):
-            type_def_data = self.context.ch.concepts[name]
+            type_def_data = self.context.ch.concepts[self.context.ch.canonical_concept_name(name)]
             if isinstance(type_def_data, HiddenImplementationDefinition):
                 return type_def_data.name_with_template_variables()
         return name
 
     def get_nr_template_arguments(self, concept_name: str) -> int:
         if self.is_concept(concept_name):
-            type_def_data = self.context.ch.concepts[concept_name]
+            type_def_data = self.context.ch.concepts[self.context.ch.canonical_concept_name(concept_name)]
             if isinstance(type_def_data, HiddenImplementationDefinition):
                 return len(type_def_data.template_argument_order)
         return 0

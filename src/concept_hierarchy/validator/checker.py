@@ -146,6 +146,24 @@ class ConceptHierarchyChecker:
         return self.model.ch
 
     @staticmethod
+    def resolve_aliases(
+        aliases: dict[str, ConceptHierarchyDefinition], defined_data: dict, location_id: LocationId
+    ) -> dict[str, str]:
+        """
+        Map each alias name to the **canonical** entry it names, following chains and rejecting cycles.
+
+        Nothing is copied and no entry is added to ``defined_data``: an alias is a name, not an entity.
+        Resolving all the way to the canonical name rather than to the next link means that a later lookup
+        never has to walk a chain.
+        """
+        mapped_data = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
+            aliases, defined_data, location_id
+        )
+        resolved = {alias_name: mapped_data[alias_name] for alias_name in aliases}
+        assert all(target is not None for target in resolved.values())
+        return resolved
+
+    @staticmethod
     def resolve_references(referencing_others, defined_data, location_id: LocationId):
         mapped_data = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
             referencing_others, defined_data, location_id
@@ -218,7 +236,7 @@ class ConceptHierarchyChecker:
                 location_id=concept_location_id,
                 part=PathPart.VALUE,
             )
-        concepts_referencing_others: dict[str, ConceptDefinition] = {}
+        concept_aliases: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
         for concept_name, concept_def in concept_definition.items():  # type: str, object
             concept_definition = ConceptDefinition(
@@ -228,10 +246,14 @@ class ConceptHierarchyChecker:
                 external_data_resolver=self.ch.external_concept_data_resolver,
             )
             if concept_definition.is_reference():
-                concepts_referencing_others[concept_name] = concept_definition
+                concept_aliases[concept_name] = concept_definition
             else:
                 defined_concepts[concept_name] = concept_definition
-        self.resolve_references(concepts_referencing_others, defined_concepts, concept_location_id)
+        self.ch.concept_aliases = self.resolve_aliases(concept_aliases, defined_concepts, concept_location_id)
+        # An alias is a name, so the name it stands for has to be the one every derived structure is keyed
+        # by -- starting with `parents`, which the topological sort below reads.
+        for concept_def in defined_concepts.values():
+            concept_def.canonicalize_concept_references(self.ch.canonical_concept_name)
 
         # -- instances (optional: default {}) --------------------------------
         instances_location_id: LocationId = base_location_id + [ConceptHierarchyModel.model_instances]
@@ -331,7 +353,7 @@ class ConceptHierarchyChecker:
         self.ch.concepts = defined_concepts
 
         for instance_name in defined_instances:
-            if instance_name in defined_concepts:
+            if instance_name in defined_concepts or instance_name in self.ch.concept_aliases:
                 raise CHSemanticError(
                     f"The global variable name {instance_name!r} is also a concept name!\n\tThis can create ambiguity! "
                     f"Please rename the global variable name!",
@@ -389,6 +411,8 @@ class ConceptHierarchyChecker:
             try:
                 c.concept_data_check()  # from now on, one can call c.location_of()
                 if isinstance(c, HiddenImplementationDefinition):
+                    # the parent half of a substitution key is a concept-name position: it may be an alias
+                    c.canonicalize_template_substitution_parents(self.ch.canonical_concept_name)
                     for t_index, t_arg_name in enumerate(c.template_argument_order):
                         if t_arg_name in self.ch.concepts:
                             t_order_location = c.location_of(

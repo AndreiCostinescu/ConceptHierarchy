@@ -300,7 +300,7 @@ def check_types_in_hidden_implementation_definition(
             if c.has_location_of(subst_location_key, f"{parent_t_arg}"):
                 location_id = c.location_of(subst_location_key, f"{parent_t_arg}")
             else:
-                location_id = c.location_of(subst_location_key, f"{parent}:{parent_t_arg}")
+                location_id = c.location_of(subst_location_key, c.substitution_key_as_written(parent, parent_t_arg))
             try:
                 # Converts the subst_value to a ConceptHierarchyTemplateArgument
                 # using TemplateArgumentValue as an intermediate representation

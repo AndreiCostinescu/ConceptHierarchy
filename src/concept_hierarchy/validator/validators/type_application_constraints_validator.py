@@ -94,7 +94,7 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
     def concept_check(self, a_type: ConceptHierarchyType, b_name: str, check_type: HierarchyCheckType) -> bool:
         # perform the subconcept check!
         a_name = a_type.clean_name
-        a_is_abstract = self.context.ch.concepts[a_name].abstract
+        a_is_abstract = self.context.ch.concepts[self.context.ch.canonical_concept_name(a_name)].abstract
         match check_type:
             case HierarchyCheckType.SELF:
                 include_abstract = True
@@ -121,7 +121,9 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
         location_id: LocationId,
         template_context: TemplateContext | None = None,
     ) -> tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] | None:
-        sub_type_def_data = self.context.ch.concepts[sub_type.clean_name]
+        # `parent_type_name` comes from a constraint literal, which is a concept-name position, which could be an alias
+        parent_type_name = self.context.ch.canonical_concept_name(parent_type_name)
+        sub_type_def_data = self.context.ch.concepts[self.context.ch.canonical_concept_name(sub_type.clean_name)]
         parent_def_data = self.context.ch.concepts[parent_type_name]
         if not isinstance(parent_def_data, HiddenImplementationDefinition) or not parent_def_data.is_templatable():
             return ()
@@ -181,6 +183,7 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
         return tuple(zip(parent_def_data.template_argument_order, subst_tuple))
 
     def get_template_argument_names_of(self, concept_name: str) -> tuple[str, ...]:
+        concept_name = self.context.ch.canonical_concept_name(concept_name)
         if concept_name not in self.context.ch.concepts:
             raise RuntimeError(f"{concept_name} is not a concept!")
         c_data = self.context.ch.concepts[concept_name]
@@ -189,6 +192,7 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
         return c_data.template_argument_order
 
     def get_constraint_formula_of(self, name: str) -> StructureConstraintFormula | None:
+        name = self.context.ch.canonical_concept_name(name)
         if name not in self.context.model.concepts:
             raise RuntimeError("fConcept {name} is not a concept!")
         model_data = self.context.model.concepts[name]

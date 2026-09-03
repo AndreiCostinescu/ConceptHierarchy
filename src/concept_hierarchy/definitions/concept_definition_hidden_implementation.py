@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Callable
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.definition import LocationOfCheckData, StopLocationOfCheck
@@ -52,6 +53,9 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         self.template_argument_constraints: dict[str, bool | int | float | str] = {}
         # mapping from (parent VD, parent template arg name) -> string value or list of strings variadic value
         self.substitution_of_template_arguments: dict[tuple[str | None, str], str | list[str]] = {}
+        # maps a canonicalized substitution key to the parent name the user actually wrote in it, which may
+        # have been an alias -- only the written spelling can be found back in the definition data
+        self.substitution_parents_as_written: dict[tuple[str, str], str] = {}
         self.variadic_template_arguments: set[str] = set()
         # maps variadic template argument to its variadic group identifier
         self.variadic_template_argument_group_identifiers: dict[str, str] = {}
@@ -67,11 +71,47 @@ class HiddenImplementationDefinition(ConceptDefinition, ABC):
         domain_concept.template_argument_order = ()
         domain_concept.template_argument_constraints = {}
         domain_concept.substitution_of_template_arguments = {}
+        domain_concept.substitution_parents_as_written = {}
         domain_concept.variadic_template_arguments = set()
         domain_concept.variadic_template_argument_group_identifiers = {}
         domain_concept.defined_variadic_group_identifiers = {}
 
         return domain_concept
+
+    def canonicalize_template_substitution_parents(self, canonical_concept_name: Callable[[str], str]) -> None:
+        """
+        Replace every alias naming a parent in a ``substitution`` key with the concept it names.
+
+        A substitution key is written ``"<ParentConceptName>:<ParentTemplateArgumentName>"``, so its first
+        half is a concept-name position and may be an alias. As for
+        :meth:`ConceptDefinition.canonicalize_concept_references`, what is rewritten is the *parsed* key
+        pairs, not the definition data they were read from -- which is why the spelling the user used is
+        kept, for :meth:`substitution_key_as_written`. The shorthand key (no parent named) is left alone:
+        it is matched against the parents by template-argument name only.
+        """
+        canonicalized: dict[tuple[str | None, str], str | list[str]] = {}
+        as_written: dict[tuple[str, str], str] = {}
+        for (parent, t_arg), substitution_value in self.substitution_of_template_arguments.items():
+            if parent is None:
+                canonicalized[None, t_arg] = substitution_value
+                continue
+            canonical_parent = canonical_concept_name(parent)
+            canonicalized[canonical_parent, t_arg] = substitution_value
+            as_written[canonical_parent, t_arg] = parent
+        self.substitution_of_template_arguments = canonicalized
+        self.substitution_parents_as_written = as_written
+
+    def substitution_key_as_written(self, parent: str, parent_template_argument: str) -> str:
+        """
+        The ``"<Parent>:<TemplateArgument>"`` substitution key as the user spelled it -- with the alias, if
+        one was used.
+
+        The parsed keys are canonicalized so that they can be matched against the (canonical) parents, but
+        the *location* of a substitution has to be found in the definition data, which still says what the
+        user wrote.
+        """
+        written_parent = self.substitution_parents_as_written.get((parent, parent_template_argument), parent)
+        return f"{written_parent}:{parent_template_argument}"
 
     @abstractmethod
     def definition_type(self) -> str:

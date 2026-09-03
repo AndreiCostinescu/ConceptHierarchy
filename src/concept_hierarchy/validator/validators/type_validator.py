@@ -40,12 +40,14 @@ class ConceptHierarchyTypeValidator(TypeValidator):
 
     def full_type_name(self, concept_name: str) -> str:
         if self.is_concept(concept_name):
-            type_def_data = self.context.ch.concepts[concept_name]
+            type_def_data = self.context.ch.concepts[self.canonical_concept_name(concept_name)]
             if isinstance(type_def_data, HiddenImplementationDefinition):
                 return type_def_data.name_with_template_variables()
         return concept_name
 
     def get_template_data_of(self, concept_name: str) -> TypeTemplateData:
+        # an alias and the concept it names share one entry, so also one cache entry
+        concept_name = self.canonical_concept_name(concept_name)
         if concept_name not in self.context.ch.concepts:
             raise RuntimeError(f"Wrong concept name specified: {concept_name}")
         if concept_name not in self.cached_template_data:
@@ -70,6 +72,9 @@ class ConceptHierarchyTypeValidator(TypeValidator):
 
     def is_concept(self, concept_name: str) -> bool:
         return self.context.ch.is_concept(concept_name)
+
+    def canonical_concept_name(self, concept_name: str) -> str:
+        return self.context.ch.canonical_concept_name(concept_name)
 
     def is_template_variable(self, concept_name: str) -> bool:
         return self.context.template_context.has_template_variable(concept_name)

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Callable
+
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
@@ -32,6 +34,7 @@ def verify_specializations(
     subconcepts_spec_data: dict[str, set[str]] | None,
     available_parent_data: dict[str, dict[str, list[str]]],
     location_id: LocationId,
+    canonical_concept_name: Callable[[str], str] = lambda concept_name: concept_name,
     verbose: bool = False,
 ) -> dict[str, set[str]]:
     verify_for_subconcepts = subconcepts_spec_data is None
@@ -121,6 +124,10 @@ def verify_specializations(
                     continue
                 # GET VALUE FROM PARENT disambiguation
                 res = def_data.split(INHERIT_FROM_KEYWORD)
+                # the named parent is a concept-name position, so it may be written as an alias, while
+                # `c.parents` is canonical -- record the parent under the name the hierarchy is keyed by
+                if len(res) == 2 and res[0] == "":
+                    res[1] = canonical_concept_name(res[1])
                 if len(res) != 2 or res[0] != "" or res[1] not in c.parents:
                     not_in_parents = res[1] not in c.parents
                     if not_in_parents:
@@ -419,6 +426,7 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
             None,
             available_parent_data_for_properties,
             location_id=property_location,
+            canonical_concept_name=context.ch.canonical_concept_name,
         )
         verify_specializations(
             c,
@@ -426,6 +434,7 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
             prop_spec_data,
             available_parent_data_for_properties,
             location_id=property_location + [DomainConceptDefinition.domain_concept_specialization_for_this],
+            canonical_concept_name=context.ch.canonical_concept_name,
         )
         func_spec_data = verify_specializations(
             c,
@@ -433,6 +442,7 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
             None,
             available_parent_data_for_functions,
             location_id=function_location,
+            canonical_concept_name=context.ch.canonical_concept_name,
         )
         verify_specializations(
             c,
@@ -440,6 +450,7 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
             func_spec_data,
             available_parent_data_for_functions,
             location_id=function_location + [DomainConceptDefinition.domain_concept_specialization_for_this],
+            canonical_concept_name=context.ch.canonical_concept_name,
         )
 
         # Record the derived view on the model: everything inherited from the parents, overlaid with what

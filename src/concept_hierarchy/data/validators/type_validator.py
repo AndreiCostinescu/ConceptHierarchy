@@ -75,6 +75,15 @@ class TypeValidator(ABC):
     def is_concept(self, concept_name: str) -> bool:
         pass
 
+    def canonical_concept_name(self, concept_name: str) -> str:
+        """
+        The name under which ``concept_name`` is defined: itself, unless it is an alias naming a concept.
+
+        A hierarchy without aliases -- and any validator that does not know about them -- answers with the
+        name it was given, which is why this is not abstract.
+        """
+        return concept_name
+
     @abstractmethod
     def is_template_variable(self, concept_name: str) -> bool:
         pass
@@ -516,15 +525,18 @@ def _convert_template_argument_to_concept_hierarchy_template_argument(
                 assert not t_arg.has_variadic_template_expansion
                 return NonVariadicTemplateVariable(t_arg.clean_name, validator.get_identifier_where_types_are_defined())
         assert not t_arg.has_variadic_template_expansion
+        # The user may have written an alias of the concept; the type is built from the canonical name, so
+        # that everything downstream compares and indexes one name per concept.
+        clean_name = validator.canonical_concept_name(t_arg.clean_name)
         # check if all the template arguments are instantiated or not
         if not t_arg.is_templated:
-            return InstantiatedType(t_arg.clean_name, ())
+            return InstantiatedType(clean_name, ())
         converted_template_arguments, has_template_dependent_template_arguments = _convert_items(
             t_arg.template_arguments, validator
         )
         if has_template_dependent_template_arguments:
-            return TemplateDependentType(t_arg.clean_name, converted_template_arguments)
-        return InstantiatedType(t_arg.clean_name, converted_template_arguments)
+            return TemplateDependentType(clean_name, converted_template_arguments)
+        return InstantiatedType(clean_name, converted_template_arguments)
     assert isinstance(t_arg, TemplateArgumentVariadicGroup)
     converted_group_elements, has_template_dependent_group_elements = _convert_items(t_arg.variadic_group, validator)
     assert all(isinstance(x, (ConceptHierarchyType, LiteralValue, TemplateVariable)) for x in converted_group_elements)
