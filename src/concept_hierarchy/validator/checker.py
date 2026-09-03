@@ -861,7 +861,7 @@ class ConceptHierarchyChecker:
         self.check_expressions()
 
 
-def check_model(model: ConceptHierarchyDefinition, checker: ConceptHierarchyChecker | None = None) -> None:
+def check_model(model: ConceptHierarchyDefinition, checker: ConceptHierarchyChecker | None = None) -> ConceptHierarchy:
     """Validate syntax and semantic rules on *model*, raising on the first violation.
 
     Parameters
@@ -884,3 +884,4 @@ def check_model(model: ConceptHierarchyDefinition, checker: ConceptHierarchyChec
     if checker is None:
         checker = ConceptHierarchyChecker(model)
     checker.check()
+    return checker.model

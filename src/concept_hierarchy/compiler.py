@@ -36,10 +36,10 @@ def compile_impl(
     output_path: str | None = None,
 ) -> str:
     # Read file source, validate and interpret data!
-    check_model(ch)
+    model = check_model(ch)
 
     # Code generation
-    code = generate(ch, target=target)
+    code = generate(model, target=target)
 
     # Optional file output
     if output_path is not None:
