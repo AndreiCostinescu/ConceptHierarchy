@@ -81,6 +81,14 @@ class ConceptDefinition(DefinitionInsideConceptHierarchy):
         self.all_concepts_distinct_from_this: tuple[str, ...] = ()
         """Contains the union of this concept's distinctFrom and the parents' distinctGroup."""
 
+        self.concept_references_as_written: dict[tuple[str, int], str] = {}
+        """
+        Maps ``(keyword, index)`` of a canonicalized concept reference to the alias the user wrote there.
+
+        Only positions that actually named an alias appear. See :meth:`canonicalize_concept_references` and
+        :meth:`reference_location`.
+        """
+
         self.data: dict[str, object] = {}
         self._data_def: object = None
         self.external_data_resolver = external_data_resolver
@@ -108,17 +116,55 @@ class ConceptDefinition(DefinitionInsideConceptHierarchy):
         straight off the caller's JSON as lists, so they are replaced by tuples rather than edited.) Doing
         it once, here, makes every consumer alias-safe at a stroke -- the topological sort, the subconcept
         relation, the specialization regime's parent walk, the template-substitution matching, the
-        distinctness relation. The name the user actually wrote stays recoverable for diagnostics from the
-        corresponding ``location_of(...) + [index]``.
+        distinctness relation. The name the user actually wrote is kept, per position, for
+        :meth:`reference_location` to put back into the diagnostics.
         """
-        self.parents = tuple(canonical_concept_name(parent) for parent in self.parents)
-        self.distinct_from = tuple(canonical_concept_name(other) for other in self.distinct_from)
-        self.distinct_group = tuple(canonical_concept_name(child) for child in self.distinct_group)
+        self.parents = self._canonicalize(
+            self.parents, ConceptDefinition.concept_direct_parents, canonical_concept_name
+        )
+        self.distinct_from = self._canonicalize(
+            self.distinct_from, ConceptDefinition.concept_distinct_from, canonical_concept_name
+        )
+        self.distinct_group = self._canonicalize(
+            self.distinct_group, ConceptDefinition.concept_distinct_group, canonical_concept_name
+        )
+        # derived from `distinctFrom` plus the parents' `distinctGroup`, so it has no single JSON position
         self.all_concepts_distinct_from_this = tuple(
             canonical_concept_name(other) for other in self.all_concepts_distinct_from_this
         )
         if self.fixed_children is not None:
-            self.fixed_children = tuple(canonical_concept_name(child) for child in self.fixed_children)
+            self.fixed_children = self._canonicalize(
+                self.fixed_children, ConceptDefinition.concept_direct_children, canonical_concept_name
+            )
+
+    def _canonicalize(
+        self, names: tuple[str, ...], keyword: str, canonical_concept_name: Callable[[str], str]
+    ) -> tuple[str, ...]:
+        """Canonicalize one list of concept references, remembering which positions were written as aliases."""
+        canonical_names = []
+        for index, name in enumerate(names):
+            canonical_name = canonical_concept_name(name)
+            if canonical_name != name:
+                self.concept_references_as_written[keyword, index] = name
+            canonical_names.append(canonical_name)
+        return tuple(canonical_names)
+
+    def reference_location(self, keyword: str, index: int) -> LocationId:
+        """
+        Where the concept name at ``keyword[index]`` is written, annotated with ``ref:<alias>`` if the user
+        wrote an alias there.
+
+        An alias has no definition of its own to blame, so the annotation belongs on the **use site** --
+        the same convention as :meth:`ConceptHierarchyDefinition.get_concept_definition`, for the positions
+        where the name has already been canonicalized and it is the location, not the definition, that is
+        wanted. Without it a message names the canonical concept while the JSON at that path names the
+        alias, and nothing connects the two.
+        """
+        location = self.location_of(keyword) + [index]
+        written_name = self.concept_references_as_written.get((keyword, index))
+        if written_name is not None:
+            location.append("ref:" + written_name)
+        return location
 
     @property
     def is_root_concept(self) -> bool:

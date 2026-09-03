@@ -84,6 +84,16 @@ class TypeValidator(ABC):
         """
         return concept_name
 
+    def resolved_type_alias(self, concept_name: str) -> InstantiatedType | None:
+        """
+        The type ``concept_name`` names if it is a *type* alias, else ``None``.
+
+        A type alias is not a concept -- ``is_concept`` is false for it -- so it is substituted here, where
+        a name becomes a type, rather than resolved like a concept alias. Not abstract for the same reason
+        as :meth:`canonical_concept_name`.
+        """
+        return None
+
     @abstractmethod
     def is_template_variable(self, concept_name: str) -> bool:
         pass
@@ -398,6 +408,19 @@ def _validate_type(
             )
         return t
 
+    # A type alias stands for a saturated type, so it is already complete: it takes no template arguments
+    # and there is nothing further to validate about its name here -- the type it names was validated when
+    # the alias was resolved. It is substituted in `_convert_template_argument_to_...`.
+    if validator.resolved_type_alias(t.clean_name) is not None:
+        if t.is_templated:
+            raise CHSemanticError(
+                f"Can not define template arguments on {t.clean_name!r}: it is an alias of a type that is "
+                f"already fully applied.\nFound {t.full_name}\nRemove the template arguments to make this "
+                f"usage valid.",
+                location_id=location_id,
+            )
+        return t
+
     if not validator.is_concept(t.clean_name):
         raise CHSemanticError(
             f"ParsedType {t.full_name!r} is not a template variable (in this context) nor a concept!",
@@ -510,6 +533,10 @@ def _convert_template_argument_to_concept_hierarchy_template_argument(
     if isinstance(t_arg, TemplateArgumentLiteral):
         return LiteralValue(t_arg.clean_name, t_arg.literal_type)
     if isinstance(t_arg, ParsedType):
+        # a type alias names a whole type, not a concept: substitute what it names
+        alias_type = validator.resolved_type_alias(t_arg.clean_name)
+        if alias_type is not None:
+            return alias_type
         if not validator.is_concept(t_arg.clean_name):
             assert validator.is_template_variable(t_arg.clean_name)
             if validator.is_variadic_template_variable(t_arg.clean_name):

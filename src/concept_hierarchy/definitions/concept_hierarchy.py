@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 
+from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
 from concept_hierarchy.errors import LocationId, LocationIdLike
@@ -105,6 +106,20 @@ class ConceptHierarchyDefinition:
         boundary by :meth:`canonical_variable_name`, and already resolved through any chain. Because there
         is one entry rather than a copy per name, an alias and its target are *the same* ``GlobalVariableData``
         -- writing through either name writes the one object, with no propagation step.
+        """
+        self.type_aliases: dict[str, InstantiatedType] = {}
+        """
+        Alias name -> the saturated, ground type it names.
+
+        Unlike the other two containers this one is filled in ``check_types``, not ``check_structure``:
+        turning ``"Box<Integer>"`` into a type needs the concepts *and* their template contexts, which do
+        not exist until then. Every entry is saturated and ground by construction -- an alias of a bare
+        name is a concept alias, so only an *applied* type reaches this map -- and it can not be
+        parameterized further.
+
+        A type alias is **not** a concept: :meth:`is_concept` stays false for it, which is what keeps it out
+        of ``directParents`` and the other concept-name positions. It is substituted where a type is built,
+        via :meth:`resolved_type_alias`.
         """
         self.metadata: dict[str, str] = {}
 
@@ -196,6 +211,15 @@ class ConceptHierarchyDefinition:
         The counterpart of :meth:`canonical_concept_name`, for :attr:`instances`.
         """
         return self.variable_aliases.get(v, v)
+
+    def resolved_type_alias(self, name: str) -> InstantiatedType | None:
+        """
+        The type ``name`` names if it is a type alias, else ``None``.
+
+        This is the lookup the type parser goes through, and the reason a type alias needs no place in
+        :attr:`concepts`: where a bare name is turned into a type, the stored type is substituted instead.
+        """
+        return self.type_aliases.get(name)
 
     def get_variable_definition(
         self, name: str, location_id: LocationIdLike | None = None

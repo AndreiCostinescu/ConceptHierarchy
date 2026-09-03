@@ -125,16 +125,22 @@ def verify_specializations(
                 # GET VALUE FROM PARENT disambiguation
                 res = def_data.split(INHERIT_FROM_KEYWORD)
                 # the named parent is a concept-name position, so it may be written as an alias, while
-                # `c.parents` is canonical -- record the parent under the name the hierarchy is keyed by
+                # `c.parents` is canonical -- record the parent under the name the hierarchy is keyed by,
+                # and annotate the use site with the alias so a message naming the canonical parent can
+                # still be traced back to what was written here
+                inherit_from_location = location_id + [name, def_key]
                 if len(res) == 2 and res[0] == "":
-                    res[1] = canonical_concept_name(res[1])
+                    canonical_parent = canonical_concept_name(res[1])
+                    if canonical_parent != res[1]:
+                        inherit_from_location = inherit_from_location + ["ref:" + res[1]]
+                    res[1] = canonical_parent
                 if len(res) != 2 or res[0] != "" or res[1] not in c.parents:
                     not_in_parents = res[1] not in c.parents
                     if not_in_parents:
                         raise CHSemanticError(
                             f"Specified parent {res[1]} is not a direct parent of {c.name}! Only allowed to specify the"
                             f" inherited value from the direct parents; in this case, only from {c.parents!r}",
-                            location_id=location_id + [name, def_key],
+                            location_id=inherit_from_location,
                             part=PathPart.VALUE,
                         )
                     raise CHSyntaxError(

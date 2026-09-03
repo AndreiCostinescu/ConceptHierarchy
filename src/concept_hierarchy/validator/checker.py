@@ -28,8 +28,10 @@ from concept_hierarchy.data.concept_hierarchy import (
     FunctionData,
     ValueDomainData,
 )
-from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
+from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext
+from concept_hierarchy.data.parsers.type_parser import ParsedType, TypeParser
 from concept_hierarchy.data.utils import UNINITIALIZED
+from concept_hierarchy.data.validators.type_validator import parse_convert_type
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
     DomainConceptDefinition,
@@ -90,45 +92,69 @@ class ConceptHierarchyChecker:
         return create_json(file)
 
     @staticmethod
-    def check_cycles_in_references_based_on_defined(
-        references: dict[str, DefinitionInsideConceptHierarchy], definitions: dict, location_id: LocationId
-    ) -> dict[str, str | None]:
-        mapped_references: dict[str, str | None] = {x: None for x in definitions}
-        for reference, ref_data in references.items():
-            assert isinstance(reference, str)
-            assert reference not in mapped_references
-            assert ref_data.is_reference()
-            referenced_concept = ref_data.is_reference_to
-            if referenced_concept not in references and referenced_concept not in definitions:
+    def alias_target_names(target: str) -> tuple[str, ...]:
+        """
+        Every concept name the alias target ``target`` mentions: its head, plus each template argument, at
+        any depth. Literal arguments (the ``3`` of ``Vector<3>``) name nothing and drop out.
+
+        This is pure syntax -- :class:`TypeParser` needs no hierarchy -- which is what lets the alias graph
+        be built in ``check_structure``, long before any type can be resolved.
+        """
+        parsed_targets = TypeParser(target, None).parse_types()
+        names: list[str] = []
+
+        def collect(parsed: ParsedType) -> None:
+            names.append(parsed.clean_name)
+            for template_argument in parsed.template_arguments or ():
+                if isinstance(template_argument, ParsedType):
+                    collect(template_argument)
+
+        for parsed_target in parsed_targets:
+            collect(parsed_target)
+        return tuple(names)
+
+    @staticmethod
+    def order_aliases(
+        alias_dependencies: dict[str, tuple[str, ...]], defined_names: dict, location_id: LocationId
+    ) -> list[str]:
+        """
+        Order the aliases so that each comes after every name it mentions, and reject cycles.
+
+        ``alias_dependencies`` maps each alias to *all* the names its target mentions -- one, for a plain
+        name; the head plus every template argument, for an applied type. Because every mention is an edge
+        of one graph, a cycle is a cycle here whatever it runs through: a chain of names, a type's head, one
+        of its template arguments, or any mixture of the three across the alias kinds.
+
+        The order is what the resolution then walks, so an alias is only ever built out of parts that are
+        already resolved -- and it is what tells a bare-name alias whether it ended up naming a concept or a
+        type, which decides its kind.
+        """
+        entry_kind = str(location_id[-1])[:-1]  # "concepts" -> "concept", "instances" -> "instance"
+        graph: dict[str, tuple[str, ...]] = {}
+        for alias_name, mentioned_names in alias_dependencies.items():
+            for mentioned_name in mentioned_names:
+                if mentioned_name not in alias_dependencies and mentioned_name not in defined_names:
+                    raise CHSemanticError(
+                        f"The referenced {entry_kind} {mentioned_name!r} of {alias_name} does not exist in "
+                        f"the Concept Hierarchy!",
+                        location_id=location_id + [alias_name],
+                        part=PathPart.VALUE,
+                    )
+                # every mentioned name has to be a node of its own: `topological_sort` raises KeyError
+                # for a name it has no entry for. A name that is not an alias is simply a leaf.
+                graph.setdefault(mentioned_name, ())
+            graph[alias_name] = mentioned_names
+        try:
+            ordered_names, _roots = topological_sort(graph)
+        except RuntimeError as e:
+            if str(e).startswith("Non-hierarchy structure detected!"):
                 raise CHSemanticError(
-                    f"The referenced concept {referenced_concept!r} of {reference} does not exist in the "
-                    f"Concept Hierarchy!",
-                    location_id=location_id + [reference],
-                    part=PathPart.VALUE,
-                )
-        total_length = len(definitions) + len(references)
-        prev_length = len(mapped_references)
-        while True:
-            for concept_name, concept_def in references.items():
-                if concept_name not in mapped_references:
-                    referenced_concept = concept_def.is_reference_to
-                    if referenced_concept in mapped_references:
-                        if referenced_concept in definitions:
-                            mapped_references[concept_name] = referenced_concept
-                        else:
-                            mapped_references[concept_name] = mapped_references[referenced_concept]
-            current_length = len(mapped_references)
-            assert current_length <= total_length
-            if current_length == total_length:
-                break
-            elif current_length == prev_length:
-                raise CHSemanticError(
-                    f"There is a cycle in the {location_id[-1][:-1]} references: {set(references.keys())!r}",
+                    f"There is a cycle in the {entry_kind} references:\n{tab}{e!s}",
                     location_id=location_id,
                     part=PathPart.VALUE,
-                )
-            prev_length = current_length
-        return mapped_references
+                ) from e
+            raise
+        return [name for name in ordered_names if name in alias_dependencies]
 
     def __init__(
         self,
@@ -143,6 +169,14 @@ class ConceptHierarchyChecker:
         else:
             self.ch.external_concept_data_resolver = external_data_resolver
         self.context = ConceptHierarchyContext(self.model)
+        self._type_alias_targets: dict[str, ParsedType] = {}
+        """
+        Alias name -> the applied type it names, parsed but not yet resolved, in resolution order.
+
+        Filled in ``check_structure`` (which can only parse the target's *syntax*) and turned into
+        ``ch.type_aliases`` in ``check_types``, once concepts and their template contexts exist. Python
+        dicts keep insertion order, so iterating this is walking the alias graph's topological order.
+        """
 
     @property
     def ch(self) -> ConceptHierarchyDefinition:
@@ -241,7 +275,26 @@ class ConceptHierarchyChecker:
                 concept_aliases[concept_name] = concept_definition
             else:
                 defined_concepts[concept_name] = concept_definition
-        self.ch.concept_aliases = self.resolve_aliases(concept_aliases, defined_concepts, concept_location_id)
+        # Classify and order every alias through one graph. A target that parses to a bare name *may* still
+        # be a type alias -- if the name it gives is itself one -- so the kind is settled by walking the
+        # order, not by the target's syntax alone.
+        alias_targets = {name: TypeParser(a.is_reference_to, None).parse_types() for name, a in concept_aliases.items()}
+        alias_dependencies = {name: self.alias_target_names(a.is_reference_to) for name, a in concept_aliases.items()}
+        for alias_name in self.order_aliases(alias_dependencies, defined_concepts, concept_location_id):
+            parsed_target = alias_targets[alias_name]
+            if len(parsed_target) != 1:
+                raise CHSemanticError(
+                    f"The alias {alias_name} must name exactly one concept or type, not "
+                    f"{concept_aliases[alias_name].is_reference_to!r}.",
+                    location_id=concept_location_id + [alias_name],
+                    part=PathPart.VALUE,
+                )
+            (target,) = parsed_target
+            if target.is_templated or target.clean_name in self._type_alias_targets:
+                # an applied type, or a name that resolved to one: only `check_types` can build it (§4)
+                self._type_alias_targets[alias_name] = target
+            else:
+                self.ch.concept_aliases[alias_name] = self.ch.canonical_concept_name(target.clean_name)
         # An alias is a name, so the name it stands for has to be the one every derived structure is keyed
         # by -- starting with `parents`, which the topological sort below reads.
         for concept_def in defined_concepts.values():
@@ -268,7 +321,12 @@ class ConceptHierarchyChecker:
             else:
                 variable_definition.is_reference_to = None
                 defined_instances[variable_name] = variable_definition
-        self.ch.variable_aliases = self.resolve_aliases(variable_aliases, defined_instances, instances_location_id)
+        # the same graph, for the kind whose targets are always plain names
+        variable_alias_dependencies = {name: (a.is_reference_to,) for name, a in variable_aliases.items()}
+        for alias_name in self.order_aliases(variable_alias_dependencies, defined_instances, instances_location_id):
+            self.ch.variable_aliases[alias_name] = self.ch.canonical_variable_name(
+                variable_aliases[alias_name].is_reference_to
+            )
         # missing checks:
         #  - valid expressions for all global variables
         #    EXPRESSION CHECK
@@ -516,7 +574,9 @@ class ConceptHierarchyChecker:
                                 f"Parents of {ValueDomainDefinition.value_domain_name}s must be "
                                 f"{ValueDomainDefinition.value_domain_name}s.\nEncountered non "
                                 f"{ValueDomainDefinition.value_domain_name} parent {parent!r} of {c_name}",
-                                location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                                location_id=c.reference_location(
+                                    ConceptDefinition.concept_direct_parents, parent_index
+                                ),
                             )
                     if (
                         c.default_serialization is not None
@@ -542,7 +602,7 @@ class ConceptHierarchyChecker:
                             f"Parents of {FunctionDefinition.function_name}s must be "
                             f"{FunctionDefinition.function_name}s.\nEncountered non "
                             f"{FunctionDefinition.function_name} parent {parent!r} of {c_name}",
-                            location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                            location_id=c.reference_location(ConceptDefinition.concept_direct_parents, parent_index),
                         )
                     elif parent != ValueDomainDefinition.value_domain_name:
                         assert isinstance(parent_c, FunctionDefinition)
@@ -646,7 +706,9 @@ class ConceptHierarchyChecker:
                                 f"Parents of {DomainConceptDefinition.domain_concept_name}s must be "
                                 f"{DomainConceptDefinition.domain_concept_name}s.\nEncountered non "
                                 f"{DomainConceptDefinition.domain_concept_name} parent {parent!r} of {c_name}",
-                                location_id=c.location_of(ConceptDefinition.concept_direct_parents) + [parent_index],
+                                location_id=c.reference_location(
+                                    ConceptDefinition.concept_direct_parents, parent_index
+                                ),
                             )
                     # check unique property names, unique function names, distinct function and property names,
                     # and non-ambiguous definitions of properties or functions with the same name as a global variable
@@ -738,7 +800,7 @@ class ConceptHierarchyChecker:
                         raise CHSemanticError(
                             f"{ConceptDefinition.concept_distinct_from} entry {index} of {c.name} "
                             f'("{distinct_from_concept}") is not a concept!',
-                            location_id=c.location_of(ConceptDefinition.concept_distinct_from) + [index],
+                            location_id=c.reference_location(ConceptDefinition.concept_distinct_from, index),
                         )
                     if self.ch.is_a_subconcept_of_b(c.name, distinct_from_concept, include_self=True):
                         raise CHSemanticError(
@@ -746,7 +808,7 @@ class ConceptHierarchyChecker:
                             f" either the same concept as {c.name} or a parent concept of {c.name}!\n\tIf you want to "
                             f'make this concept non-instantiable, set the "{ConceptDefinition.concept_abstract}" '
                             f'keyword in the concept definition to "true"!',
-                            location_id=c.location_of(ConceptDefinition.concept_distinct_from) + [index],
+                            location_id=c.reference_location(ConceptDefinition.concept_distinct_from, index),
                         )
                     self.ch.add_distinct_pair(c_name, distinct_from_concept)
                 for index, distinct_group_entry in enumerate(c.distinct_group):
@@ -754,7 +816,7 @@ class ConceptHierarchyChecker:
                         raise CHSemanticError(
                             f"{ConceptDefinition.concept_distinct_group} entry {index} of {c.name} "
                             f'("{distinct_group_entry}") is not a concept!',
-                            location_id=c.location_of(ConceptDefinition.concept_distinct_group) + [index],
+                            location_id=c.reference_location(ConceptDefinition.concept_distinct_group, index),
                         )
                     # check that the child is a *direct* child, not just some concept
                     entry_concept = self.ch.concepts[distinct_group_entry]
@@ -762,7 +824,7 @@ class ConceptHierarchyChecker:
                         raise CHSemanticError(
                             f"The {ConceptDefinition.concept_distinct_group} entry {distinct_group_entry} of {c.name} "
                             f"is not a direct child of {c.name}!",
-                            location_id=c.location_of(ConceptDefinition.concept_distinct_group) + [index],
+                            location_id=c.reference_location(ConceptDefinition.concept_distinct_group, index),
                         )
                     # append the data from the group to the distinctFrom of the concepts in the distinctGroup
                     for other_entry_in_distinct_group in c.distinct_group:
@@ -779,7 +841,7 @@ class ConceptHierarchyChecker:
                             raise CHSemanticError(
                                 f"{ConceptDefinition.concept_direct_children} entry {index} of {c.name} "
                                 f'("{fixed_child}") is not a concept! Either remove it from the list or ',
-                                location_id=c.location_of(ConceptDefinition.concept_direct_children) + [index],
+                                location_id=c.reference_location(ConceptDefinition.concept_direct_children, index),
                             )
                         # check that the child is a *direct* child, not just some concept
                         child_concept = self.ch.concepts[fixed_child]
@@ -787,7 +849,7 @@ class ConceptHierarchyChecker:
                             raise CHSemanticError(
                                 f"The {ConceptDefinition.concept_direct_children} entry {fixed_child} of {c.name} is "
                                 f"not a direct child of {c.name}!",
-                                location_id=c.location_of(ConceptDefinition.concept_direct_children) + [index],
+                                location_id=c.reference_location(ConceptDefinition.concept_direct_children, index),
                             )
                     # Verify that there are no other children of this concept except the ones defined there
                     defined_children = set()
@@ -846,7 +908,40 @@ class ConceptHierarchyChecker:
         self.context.type_application_constraints_validator = TypeApplicationValidator(self.context)
         self.context.type_validator = ConceptHierarchyTypeValidator(self.context)
         self.context.instantiation_schema_validator = SchemaValidator(self.context)
+        # 3) resolve the type aliases -- possible only now that concepts and their template contexts exist,
+        #    and necessarily before the types that use them are checked
+        self.resolve_type_aliases()
         check_types_in_concept_hierarchy(self.context)
+
+    def resolve_type_aliases(self):
+        """
+        Turn each alias of an applied type into the :class:`InstantiatedType` it names.
+
+        ``_type_alias_targets`` is already in the alias graph's topological order, so an alias that names
+        another is built after it, and the substitution in the type validator finds a resolved type waiting
+        for it. Every entry is saturated and ground by construction: only an *applied* type gets here, and
+        anything it mentions is either a concept or an already-resolved alias.
+        """
+        concepts_location_id = LocationId([ConceptHierarchyDefinition.model_concepts])
+        # An alias is declared at the hierarchy level, so no template variable is in scope for it -- the
+        # type parser still needs *a* context to answer `is_template_variable`, so give it an empty one.
+        self.context.set_template_context(TemplateContext())
+        try:
+            for alias_name, parsed_target in self._type_alias_targets.items():
+                location_id = concepts_location_id + [alias_name]
+                try:
+                    self.ch.type_aliases[alias_name] = parse_convert_type(
+                        parsed_target.full_name, self.context.type_validator, location_id
+                    )
+                except ConceptHierarchyError as e:
+                    raise CHSemanticError(
+                        f"Parsing the alias {alias_name} into a type failed: got {parsed_target.full_name!r}",
+                        location_id=location_id,
+                        part=PathPart.VALUE,
+                        causes=[e],
+                    ) from e
+        finally:
+            self.context.reset_template_context()
 
     def check_expressions(self):
         self.context.instantiation_values_validator = ValueValidator(self.context)

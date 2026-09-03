@@ -76,6 +76,9 @@ class ConceptHierarchyTypeValidator(TypeValidator):
     def canonical_concept_name(self, concept_name: str) -> str:
         return self.context.ch.canonical_concept_name(concept_name)
 
+    def resolved_type_alias(self, concept_name: str):
+        return self.context.ch.resolved_type_alias(concept_name)
+
     def is_template_variable(self, concept_name: str) -> bool:
         return self.context.template_context.has_template_variable(concept_name)
 
