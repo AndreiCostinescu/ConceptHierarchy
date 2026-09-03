@@ -52,9 +52,10 @@ from concept_hierarchy.data.validators.type_validator import (
     parse_convert_type,
     parse_convert_type_in_template_context,
 )
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
-    FunctionDefinition as DomainConceptFunctionDefinition,
+    DomainConceptDefinition,
+    FunctionDefinitionKeywords,
+    PropertyDefinitionKeywords,
 )
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
@@ -80,9 +81,9 @@ def check_default_instance_naming(
     if not context.ch.is_concept("InstanceBase"):
         raise CHSemanticError(
             f"The InstanceBase concept is not defined in the Concept Hierarchy => can not use "
-            f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}".\nPlease define the "InstanceBase" concept as '
+            f'"{PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING}".\nPlease define the "InstanceBase" concept as '
             f"a subconcept of ValueDomain (and as a parent concept of Instance, if defined) or remove the "
-            f'"{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" keyword from all property definitions and '
+            f'"{PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING}" keyword from all property definitions and '
             f"specializations!",
             location_id=location_id,
             part=PathPart.KEY,
@@ -96,7 +97,7 @@ def check_default_instance_naming(
         if context.type_application_constraints_validator.is_a_subtype_of_b(subtype, instance_base_type, location_id):
             return
     raise CHSemanticError(
-        f'Can not set "{PropertyDefinition.DEFAULT_INSTANCE_NAMING}" for a property whose type does '
+        f'Can not set "{PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING}" for a property whose type does '
         f"not contain any instance type: {prop_type.full_name!r}!",
         location_id=location_id,
         part=PathPart.VALUE,
@@ -148,10 +149,10 @@ def check_default_instance_naming_in_specializations(
         for prop_name, specialization_data in specializations.items():
             if (
                 not isinstance(specialization_data, dict)
-                or PropertyDefinition.DEFAULT_INSTANCE_NAMING not in specialization_data
+                or PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING not in specialization_data
             ):
                 continue
-            value = specialization_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING]
+            value = specialization_data[PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING]
             if is_for_this:
                 # the "_forThis" slot stores (value, is_inherited_from_the_for-subconcepts slot)
                 assert isinstance(value, tuple)
@@ -164,7 +165,7 @@ def check_default_instance_naming_in_specializations(
             check_default_instance_naming(
                 context,
                 resolve_property_type(context, c.name, prop_name),
-                location_id + [prop_name, PropertyDefinition.DEFAULT_INSTANCE_NAMING],
+                location_id + [prop_name, PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING],
             )
 
 
@@ -185,20 +186,20 @@ def check_types_in_domain_concept_definition(
     value_domain_type: InstantiatedType | None = None
     domain_concept_function_type: InstantiatedType | None = None
     for prop_name, prop_def_data in c.properties.items():
-        if PropertyDefinition.VALUE_DOMAIN in prop_def_data:
+        if PropertyDefinitionKeywords.VALUE_DOMAIN in prop_def_data:
             # validate the type of the property!
-            value_domain = prop_def_data[PropertyDefinition.VALUE_DOMAIN]
+            value_domain = prop_def_data[PropertyDefinitionKeywords.VALUE_DOMAIN]
             assert isinstance(value_domain, str)
             location_id = c.location_of(
-                DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinition.VALUE_DOMAIN
+                DomainConceptDefinition.domain_concept_properties, prop_name, PropertyDefinitionKeywords.VALUE_DOMAIN
             )
             try:
                 # check syntax and semantics of types
                 ch_type = parse_convert_type(value_domain, type_validator, location_id)
             except ConceptHierarchyError as e:
                 raise CHSemanticError(
-                    f'Parsing the "{PropertyDefinition.VALUE_DOMAIN}" definition of property {prop_name} into a type '
-                    f"failed: got {value_domain!r}",
+                    f'Parsing the "{PropertyDefinitionKeywords.VALUE_DOMAIN}" definition of property {prop_name} into a'
+                    f" type failed: got {value_domain!r}",
                     location_id=location_id,
                     part=PathPart.VALUE,
                     causes=[e],
@@ -215,10 +216,10 @@ def check_types_in_domain_concept_definition(
         else:
             # missing checks: infer the type from the expression that is the constraint!...
             #  but this can only be done later because we can't parse expressions yet...
-            assert PropertyDefinition.CONSTRAINT in prop_def_data
+            assert PropertyDefinitionKeywords.CONSTRAINT in prop_def_data
         if (
-            PropertyDefinition.DEFAULT_INSTANCE_NAMING in prop_def_data
-            and prop_def_data[PropertyDefinition.DEFAULT_INSTANCE_NAMING] is True
+            PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING in prop_def_data
+            and prop_def_data[PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING] is True
         ):
             check_default_instance_naming(
                 context,
@@ -226,7 +227,7 @@ def check_types_in_domain_concept_definition(
                 c.location_of(
                     DomainConceptDefinition.domain_concept_properties,
                     prop_name,
-                    PropertyDefinition.DEFAULT_INSTANCE_NAMING,
+                    PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING,
                 ),
             )
     datum.property_types = frozendict(property_types)
@@ -234,18 +235,18 @@ def check_types_in_domain_concept_definition(
     function_types: dict[str, InstantiatedType] = {}
     for func_name, func_def_data in c.functions.items():
         location_id = c.location_of(
-            DomainConceptDefinition.domain_concept_functions, func_name, DomainConceptFunctionDefinition.VALUE_DOMAIN
+            DomainConceptDefinition.domain_concept_functions, func_name, FunctionDefinitionKeywords.VALUE_DOMAIN
         )
-        assert DomainConceptFunctionDefinition.VALUE_DOMAIN in func_def_data
+        assert FunctionDefinitionKeywords.VALUE_DOMAIN in func_def_data
         # validate the type of the function!
-        value_domain = func_def_data[DomainConceptFunctionDefinition.VALUE_DOMAIN]
+        value_domain = func_def_data[FunctionDefinitionKeywords.VALUE_DOMAIN]
         assert isinstance(value_domain, str)
         try:
             # check syntax and semantics of types
             ch_type = parse_convert_type(value_domain, type_validator, location_id)
         except ConceptHierarchyError as e:
             raise CHSemanticError(
-                f'Parsing the "{DomainConceptFunctionDefinition.VALUE_DOMAIN}" definition of function '
+                f'Parsing the "{FunctionDefinitionKeywords.VALUE_DOMAIN}" definition of function '
                 f"{func_name} into a type failed: got {value_domain!r}",
                 location_id=location_id,
                 part=PathPart.VALUE,

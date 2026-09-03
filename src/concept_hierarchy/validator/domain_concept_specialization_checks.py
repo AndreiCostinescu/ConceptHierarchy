@@ -22,8 +22,8 @@ from concept_hierarchy.definitions.concept_definition_domain_concept import (
     INHERIT_FROM_KEYWORD,
     DomainConceptDefinition,
     ForPropertyOrFunction,
-    FunctionDefinition,
-    PropertyDefinition,
+    FunctionDefinitionKeywords,
+    PropertyDefinitionKeywords,
 )
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId, PathPart
 
@@ -40,8 +40,8 @@ def verify_specializations(
     verify_for_subconcepts = subconcepts_spec_data is None
     if for_either_properties_or_functions.value:
         data_type, data_type_plural, available_data = "property", "properties", c.available_property_data
-        specialization_keys, concept_data = PropertyDefinition.SPECIALIZATION_KEYWORDS, c.properties
-        conjunctive_specialization_keys = PropertyDefinition.CONJUNCTIVE_SPECIALIZATION_KEYWORDS
+        specialization_keys, concept_data = PropertyDefinitionKeywords.SPECIALIZATION_KEYWORDS, c.properties
+        conjunctive_specialization_keys = PropertyDefinitionKeywords.CONJUNCTIVE_SPECIALIZATION_KEYWORDS
         if verify_for_subconcepts:
             specialization_content = c.property_specializations_for_sub
         else:
@@ -49,8 +49,8 @@ def verify_specializations(
         check_valid_types_at_specialization = DomainConceptDefinition.check_property_data_types
     else:
         data_type, data_type_plural, available_data = "function", "functions", c.available_function_data
-        specialization_keys, concept_data = FunctionDefinition.SPECIALIZATION_KEYWORDS, c.functions
-        conjunctive_specialization_keys = FunctionDefinition.CONJUNCTIVE_SPECIALIZATION_KEYWORDS
+        specialization_keys, concept_data = FunctionDefinitionKeywords.SPECIALIZATION_KEYWORDS, c.functions
+        conjunctive_specialization_keys = FunctionDefinitionKeywords.CONJUNCTIVE_SPECIALIZATION_KEYWORDS
         if verify_for_subconcepts:
             specialization_content = c.function_specializations_for_sub
         else:

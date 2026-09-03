@@ -23,7 +23,10 @@ public data members.
 
 from concept_hierarchy.backends.base import BaseBackend
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    DomainConceptDefinition,
+    PropertyDefinitionKeywords,
+)
 from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.utils import topological_sort
 
@@ -83,9 +86,8 @@ class CppBackend(BaseBackend):
         if isinstance(concept, DomainConceptDefinition):
             for prop_name, prop_type in concept.properties.items():
                 assert isinstance(prop_type, dict)
-                cpp_type = _TYPE_MAP.get(
-                    prop_type[PropertyDefinition.VALUE_DOMAIN], prop_type[PropertyDefinition.VALUE_DOMAIN]
-                )
+                prop_value_domain = prop_type[PropertyDefinitionKeywords.VALUE_DOMAIN]
+                cpp_type = _TYPE_MAP.get(prop_value_domain, prop_value_domain)
                 parts.append(f"    {cpp_type} {prop_name};")
 
         parts.append("};\n")

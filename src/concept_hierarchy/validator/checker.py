@@ -31,7 +31,10 @@ from concept_hierarchy.data.concept_hierarchy import (
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    DomainConceptDefinition,
+    PropertyDefinitionKeywords,
+)
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
@@ -691,20 +694,21 @@ class ConceptHierarchyChecker:
                                 part=PathPart.KEY,
                             )
                         self.ch.all_domain_concept_properties[prop_name] = c_name
-                        if PropertyDefinition.CONFIDENCE in prop_def_data:
+                        if PropertyDefinitionKeywords.CONFIDENCE in prop_def_data:
                             confidence_location_id = c.location_of(
                                 DomainConceptDefinition.domain_concept_properties,
                                 prop_name,
-                                PropertyDefinition.CONFIDENCE,
+                                PropertyDefinitionKeywords.CONFIDENCE,
                             )
                             # Check whether the Duration type is defined:
                             #  this is the expected value of the CONFIDENCE keyword => if used, it must be defined
                             if not self.ch.is_concept("Duration"):
                                 raise CHSemanticError(
                                     f"The Duration concept is not defined in the Concept Hierarchy => can not use "
-                                    f'"{PropertyDefinition.CONFIDENCE}".\nPlease define the "Duration" concept as a '
-                                    f'subconcept of ValueDomain or remove the "{PropertyDefinition.CONFIDENCE}" keyword'
-                                    f" from all property definitions and specializations!",
+                                    f'"{PropertyDefinitionKeywords.CONFIDENCE}".\nPlease define the "Duration" concept '
+                                    f"as a subconcept of ValueDomain or remove the "
+                                    f'"{PropertyDefinitionKeywords.CONFIDENCE}" keyword from all property definitions '
+                                    f"and specializations!",
                                     location_id=confidence_location_id,
                                     part=PathPart.KEY,
                                 )
