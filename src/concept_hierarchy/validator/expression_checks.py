@@ -254,6 +254,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                 location_id=expression_location,
                 part=PathPart.VALUE,
             )
+        global_variable.value = parsed_expr
     context.reset_template_context()
 
     # First process all default_expressions in the instantiation

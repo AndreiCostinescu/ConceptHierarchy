@@ -571,9 +571,8 @@ class TestNotYetParsedExpressions:
         procedure = context.model.functions["AddOne"].procedure
         assert isinstance(procedure, Expression), f"Function procedure is still unparsed: {procedure!r}"
 
-    @pytest.mark.xfail(reason="only the type of a global variable is computed, not its expression", strict=False)
     def test_global_variable_value_is_parsed(self):
-        context = check_concepts({}, instances={"one": {"value": 1, "valueDomain": "Integer"}})
+        context = check_concepts({}, instances={"one": {"Integer": 1}})
         assert isinstance(context.model.instances["one"].value, Expression)
 
 
