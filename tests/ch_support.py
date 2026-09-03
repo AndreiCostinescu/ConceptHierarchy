@@ -78,7 +78,7 @@ def check_hierarchy(model_data: dict, external_data: object = None) -> ConceptHi
     return checker.context
 
 
-def check_concepts(concepts: dict[str, dict], instances: dict | None = None, **kwargs) -> ConceptHierarchyContext:
+def check_concepts(concepts: dict[str, str | dict], instances: dict | None = None, **kwargs) -> ConceptHierarchyContext:
     """Shorthand for ``check_hierarchy(build_hierarchy(concepts, instances), ...)``."""
     return check_hierarchy(build_hierarchy(concepts, instances=instances), **kwargs)
 
