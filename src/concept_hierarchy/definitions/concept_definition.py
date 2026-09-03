@@ -363,10 +363,7 @@ class ConceptDefinition(ConceptHierarchyDefinition):
         return ConceptDefinition.concept_name
 
     def definition_location(self) -> LocationId:
-        location_res = super().definition_location() + [self.name]
-        if self.from_reference is not None:
-            location_res.append("ref:" + self.from_reference)
-        return location_res
+        return super().definition_location() + [self.name]
 
     def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
         # processes name-of-concept keyword (after processing parent keywords: "concepts"/"instances")

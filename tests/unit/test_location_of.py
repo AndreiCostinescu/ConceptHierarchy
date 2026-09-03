@@ -296,7 +296,7 @@ class TestAliasLocations:
     def test_the_alias_annotates_the_site_that_uses_it(self):
         """The alias shows up as ``ref:DogClone`` where it is *written*, not where ``Dog`` is defined."""
         model = _model()
-        definition, location = model.concept(
+        definition, location = model.get_concept_definition(
             "DogClone", ["concepts", "Puppy", ConceptDefinition.concept_direct_parents, 0]
         )
         assert definition is model.concepts["Dog"]

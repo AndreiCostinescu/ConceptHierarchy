@@ -147,7 +147,9 @@ class ConceptHierarchyModel:
         """
         return self.concept_aliases.get(c, c)
 
-    def concept(self, name: str, location_id: LocationIdLike | None = None) -> tuple[ConceptDefinition, LocationId]:
+    def get_concept_definition(
+        self, name: str, location_id: LocationId | LocationIdLike | None = None
+    ) -> tuple[ConceptDefinition, LocationId]:
         """
         The definition ``name`` denotes, and the location to blame in an error about *this* use of it.
 
@@ -193,6 +195,27 @@ class ConceptHierarchyModel:
         The counterpart of :meth:`canonical_concept_name`, for :attr:`instances`.
         """
         return self.variable_aliases.get(v, v)
+
+    def get_variable_definition(
+        self, name: str, location_id: LocationIdLike | None = None
+    ) -> tuple[GlobalVariableDefinition, LocationId]:
+        """
+        The definition ``name`` denotes, and the location to blame in an error about *this* use of it.
+
+        Reaching a variable through an alias annotates the **use site** with ``ref:<alias>``: an alias has no
+        definition of its own to annotate, and the use site is where a reader has to look to see that an
+        alias was written at all. ``location_id`` is not modified; the annotated copy is returned.
+
+        :raises RuntimeError: if ``name`` is neither a variable nor an alias of one.
+        """
+        self.assert_structure()
+        location = LocationId(location_id) if location_id is not None else LocationId()
+        canonical = self.variable_aliases.get(name)
+        if canonical is None:
+            if name not in self.instances:
+                raise RuntimeError(f"{name!r} is not the name of a variable in the Concept Hierarchy!")
+            return self.instances[name], location
+        return self.instances[canonical], location + ["ref:" + name]
 
     def is_variable(self, v: str) -> bool:
         self.assert_structure()

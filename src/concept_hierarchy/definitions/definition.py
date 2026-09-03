@@ -55,7 +55,9 @@ class ConceptHierarchyDefinition(ABC):
         self.definition_location_id: LocationId = definition_location_id
 
         self.is_reference_to: str | None = None
-        self.from_reference: str | None = None
+        """Set when ``definition_data`` is a bare string: the name this entry aliases. An alias is a name,
+        not an entity, so nothing is cloned from the target -- the checker records the resolved name in
+        ``ConceptHierarchyModel.concept_aliases`` / ``.variable_aliases`` and this value is not used after."""
 
         self._definition_location_cache: dict[tuple[str, ...], LocationId] = {}
 
@@ -79,21 +81,6 @@ class ConceptHierarchyDefinition(ABC):
         # Don't process definition_location_id specially, even if it is a mutable object (LocationId) because this is
         #  treated as frozen/fixed in all (subclass) Definitions!
         return obj
-
-    def create_from_reference(self, referenced_definition: T) -> T:
-        if not self.is_reference():
-            raise RuntimeError(
-                f"Can not call create_from_reference on a non-reference {self.definition_type()} {self.name}"
-            )
-        assert isinstance(self.is_reference_to, str)
-        # This ``self.is_reference_to != referenced_definition.name`` can happen in long reference chains!
-        # because is_reference_to is the direct reference; but this direct reference can reference other data itself...
-        # So can't check correctness of the referenced_definition by the name alone...
-        res = self.__class__._from_node(referenced_definition)
-        res.is_reference_to = None
-        res.from_reference = res.name
-        res.name = self.name
-        return res
 
     @abstractmethod
     def check(self):
