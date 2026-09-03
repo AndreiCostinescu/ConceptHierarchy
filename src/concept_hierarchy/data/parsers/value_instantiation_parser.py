@@ -538,8 +538,9 @@ def _parse_string(node: CHSchemaNode, value: str, location_id: LocationId, rec, 
     # node.custom_string_format and node.custom_string_constraint must be checked.
     if node.custom_string_format is not None:
         assert node.custom_string_format in {"Concept", "Type"}
+        value_to_check = value[2:] if value.startswith("s:") else value
         if node.custom_string_format == "Concept":
-            if not state.context.is_concept(value):
+            if not state.context.is_concept(value_to_check):
                 rec(
                     CHSemanticError(
                         f'JSON string value "{value}" is not a concept in this Concept Hierarchy',
@@ -549,7 +550,7 @@ def _parse_string(node: CHSchemaNode, value: str, location_id: LocationId, rec, 
                 )
         else:
             assert node.custom_string_format == "Type"
-            if not state.context.is_type(value, location_id):
+            if not state.context.is_type(value_to_check, location_id):
                 rec(
                     CHSemanticError(
                         f'JSON string value "{value}" is not a Type in this Concept Hierarchy',
@@ -561,7 +562,7 @@ def _parse_string(node: CHSchemaNode, value: str, location_id: LocationId, rec, 
             # interpret the constraint with the template argument constraint syntax!
             string_constraint_formula = state.context.parse_constraint(node.custom_string_constraint, location_id)
             assert isinstance(string_constraint_formula, NonStructureConstraintFormula)
-            if not state.context.validate_string_constraint(string_constraint_formula, value, location_id):
+            if not state.context.validate_string_constraint(string_constraint_formula, value_to_check, location_id):
                 rec(
                     CHSemanticError(
                         f'JSON string value "{value}" satisfies the format "{node.custom_string_format}", but does not '
