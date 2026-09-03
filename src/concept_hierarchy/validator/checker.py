@@ -166,17 +166,6 @@ class ConceptHierarchyChecker:
         assert all(target is not None for target in resolved.values())
         return resolved
 
-    @staticmethod
-    def resolve_references(referencing_others, defined_data, location_id: LocationId):
-        mapped_data = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
-            referencing_others, defined_data, location_id
-        )
-        assert all(mapped_data[x] is None for x in defined_data)
-        for referencing_name, referencing_def in referencing_others.items():
-            referenced_name = mapped_data[referencing_name]
-            assert referenced_name is not None
-            defined_data[referencing_name] = referencing_def.create_from_reference(defined_data[referenced_name])
-
     def check_structure(self):
         if self.ch.checked:
             return
@@ -268,22 +257,18 @@ class ConceptHierarchyChecker:
                 location_id=instances_location_id,
                 part=PathPart.VALUE,
             )
-        instances_referencing_others: dict[str, GlobalVariableDefinition] = {}
+        variable_aliases: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
         for variable_name, variable_def in instance_definition.items():  # type: str, object
             variable_definition = GlobalVariableDefinition(variable_name, variable_def, instances_location_id)
-            # An alias/a reference is recognized by specifying a "string" value;
-            # but this value may actually be a "string" expression
-            # -> verify if the referenced value is actually a variable definition; if not, it is an expression!
-            if variable_definition.is_reference():
-                if variable_definition.is_reference_to in instance_definition:
-                    instances_referencing_others[variable_name] = variable_definition
-                else:
-                    variable_definition.is_reference_to = None
-                    defined_instances[variable_name] = variable_definition
+            # An alias is recognized by specifying a "string" value; but that value may just as well be a
+            # "string" *expression* -> it is only an alias if it names another entry of "instances".
+            if variable_definition.is_reference() and variable_definition.is_reference_to in instance_definition:
+                variable_aliases[variable_name] = variable_definition
             else:
+                variable_definition.is_reference_to = None
                 defined_instances[variable_name] = variable_definition
-        self.resolve_references(instances_referencing_others, defined_instances, instances_location_id)
+        self.ch.variable_aliases = self.resolve_aliases(variable_aliases, defined_instances, instances_location_id)
         # missing checks:
         #  - valid expressions for all global variables
         #    EXPRESSION CHECK
@@ -355,7 +340,8 @@ class ConceptHierarchyChecker:
 
         self.ch.concepts = defined_concepts
 
-        for instance_name in defined_instances:
+        # an alias is a name like any other, so it collides like one -- on both sides
+        for instance_name in list(defined_instances) + list(self.ch.variable_aliases):
             if instance_name in defined_concepts or instance_name in self.ch.concept_aliases:
                 raise CHSemanticError(
                     f"The global variable name {instance_name!r} is also a concept name!\n\tThis can create ambiguity! "
@@ -630,7 +616,7 @@ class ConceptHierarchyChecker:
                         c.all_sub_scope_data.update(parent_c.all_sub_scope_data)
                         c.all_sub_scope_data.update(c.sub_scopes)
                     for eval_arg_name in c.evaluation_interface:
-                        if eval_arg_name in self.ch.instances:
+                        if self.ch.is_variable(eval_arg_name):
                             raise CHSemanticError(
                                 f"The name of the evaluation argument {eval_arg_name!r} of {c_name} is also the name of"
                                 f" a defined global variable (global instance) in this Concept Hierarchy."
@@ -665,7 +651,7 @@ class ConceptHierarchyChecker:
                     # check unique property names, unique function names, distinct function and property names,
                     # and non-ambiguous definitions of properties or functions with the same name as a global variable
                     for prop_name, prop_def_data in c.properties.items():
-                        if prop_name in self.ch.instances:
+                        if self.ch.is_variable(prop_name):
                             raise CHSemanticError(
                                 f"The name of the concept property {prop_name!r} of {c_name} is also the name of a "
                                 f"defined global variable (global instance) in this Concept Hierarchy."
@@ -713,7 +699,7 @@ class ConceptHierarchyChecker:
                                     part=PathPart.KEY,
                                 )
                     for func_name in c.functions:
-                        if func_name in self.ch.instances:
+                        if self.ch.is_variable(func_name):
                             raise CHSemanticError(
                                 f"The name of the concept function {func_name!r} of {c_name} is also the name of a "
                                 f"defined global variable (global instance) in this Concept Hierarchy."

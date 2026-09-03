@@ -106,48 +106,33 @@ def init_expressions(context: ConceptHierarchyContext):
 
     # First, process the type of global variables; this doesn't process the expression value!
     # It processes just the type so the variable can be used/registered!
+    # ``ch.instances`` holds canonical entries only -- an alias is a second *name* for one of these, not a
+    # second variable -- so every entry here is independent and no resolution order is needed.
     value_domain_type = None
     global_variable_context: dict[str, TypeValue] = {}
-    remaining_variables_to_check: set[str] = set(context.ch.instances)
-    while remaining_variables_to_check:
-        processed_variables: int = 0
-        for global_var_name in list(remaining_variables_to_check):
-            global_var_data = context.ch.instances[global_var_name]
-            # initialization
-            if value_domain_type is None:
-                value_domain_type = context.expression_parser_validator.create_instantiated_type(
-                    "ValueDomain", global_var_data.definition_location_id
-                )
-            # skip unprocessed aliases
-            if global_var_data.is_reference() and global_var_data.is_reference_to in remaining_variables_to_check:
-                continue
-            global_var_model = GlobalVariableData(global_var_name, global_var_data.is_reference())
-            if global_var_model.is_alias:
-                global_var_model.value_type = context.model.instances[global_var_data.is_reference_to].value_type
-            else:
-                expr_type_res = get_expression_type(
-                    global_var_data.value,
-                    value_domain_type,
-                    TemplateContext(),
-                    context.expression_parser_validator,
-                    global_var_data.definition_location(),
-                )
-                if expr_type_res is None:
-                    raise CHSemanticError(
-                        f"Could not determine the type of expression {global_var_data.value}",
-                        location_id=global_var_data.definition_location(),
-                    )
-                global_var_model.value_type = expr_type_res
-            print(f"Type of global variable {global_var_name} is: {global_var_model.value_type}")
-            global_variable_context[global_var_name] = global_var_model.value_type
-            context.model.instances[global_var_name] = global_var_model
-            processed_variables += 1
-            remaining_variables_to_check.remove(global_var_name)
-        if processed_variables == 0:
-            raise RuntimeError(
-                f"Apparently there is a cycle in global variables which was not detected before? Remaining variables to"
-                f" check: {remaining_variables_to_check}"
+    for global_var_name, global_var_data in context.ch.instances.items():
+        # initialization
+        if value_domain_type is None:
+            value_domain_type = context.expression_parser_validator.create_instantiated_type(
+                "ValueDomain", global_var_data.definition_location_id
             )
+        global_var_model = GlobalVariableData(global_var_name)
+        expr_type_res = get_expression_type(
+            global_var_data.value,
+            value_domain_type,
+            TemplateContext(),
+            context.expression_parser_validator,
+            global_var_data.definition_location(),
+        )
+        if expr_type_res is None:
+            raise CHSemanticError(
+                f"Could not determine the type of expression {global_var_data.value}",
+                location_id=global_var_data.definition_location(),
+            )
+        global_var_model.value_type = expr_type_res
+        print(f"Type of global variable {global_var_name} is: {global_var_model.value_type}")
+        global_variable_context[global_var_name] = global_var_model.value_type
+        context.model.instances[global_var_name] = global_var_model
 
     context.push_new_variable_stack_frame(VariableStackFrame(global_variable_context))
 
@@ -241,15 +226,11 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
 
     init_expressions(context)
 
-    # 1. process global variable expressions
-    aliases: set[str] = set()
+    # 1. process global variable expressions (aliases are already processed; process expressions of canonical variables)
     global_template_context = TemplateContext()
     context.set_template_context(global_template_context)
     for global_variable_name, global_variable_definition in context.ch.instances.items():
         global_variable = context.model.instances[global_variable_name]
-        if global_variable.is_alias:
-            aliases.add(global_variable_name)
-            continue
         definition_value = global_variable_definition.value
         expression_location = global_variable_definition.location_of(global_variable_name)
         print(f"Parsing expression of global variable {global_variable_name}: {definition_value}")
@@ -274,14 +255,6 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                 part=PathPart.VALUE,
             )
     context.reset_template_context()
-    while aliases:
-        processed_aliases: set = set()
-        for alias in aliases:
-            aliased_var = context.ch.instances[alias].is_reference_to
-            if aliased_var in aliases:
-                continue
-            context.model.instances[alias].value = context.model.instances[aliased_var].value
-            processed_aliases.add(alias)
 
     # First process all default_expressions in the instantiation
     for c_name, c in context.model.value_domains.items():

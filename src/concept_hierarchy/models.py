@@ -95,6 +95,16 @@ class ConceptHierarchyModel:
         data, so a use of the alias is still visible in the diagnostics of the use site. Chains are already
         followed here: the value is the concept that ultimately defines the data, not the next link.
         """
+        self.variable_aliases: dict[str, str] = {}
+        """
+        Alias name -> the canonical global variable it names.
+
+        As for :attr:`concept_aliases`: never an entry of :attr:`instances`, resolved at the lookup
+        boundary by :meth:`canonical_variable_name`, and already resolved through any chain. Because there
+        is one entry rather than a copy per name, an alias and its target are *the same*
+        ``GlobalVariableData`` -- writing through either name writes the one object, with no propagation
+        step.
+        """
         self.metadata: dict[str, str] = {}
 
         self.domain_concepts: set[str] = set()
@@ -176,9 +186,17 @@ class ConceptHierarchyModel:
             c, ConceptHierarchyModel.default_function_name, include_self=True
         )
 
+    def canonical_variable_name(self, v: str) -> str:
+        """
+        The name under which the global variable ``v`` is defined: ``v`` itself, or what it aliases.
+
+        The counterpart of :meth:`canonical_concept_name`, for :attr:`instances`.
+        """
+        return self.variable_aliases.get(v, v)
+
     def is_variable(self, v: str) -> bool:
         self.assert_structure()
-        return v in self.instances
+        return v in self.instances or v in self.variable_aliases
 
     def is_a_subconcept_of_b(self, a: str, b: str, *, include_self: bool) -> bool:
         self.assert_structure()

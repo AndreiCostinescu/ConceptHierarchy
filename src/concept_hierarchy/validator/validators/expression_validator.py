@@ -53,10 +53,15 @@ class ExpressionValidator(ExpressionParserValidator):
         raise NotImplementedError
 
     def is_variable(self, candidate_variable_name: str) -> bool:
-        return self.context.variable_context.has_variable(candidate_variable_name)
+        return self.context.variable_context.has_variable(
+            self.context.ch.canonical_variable_name(candidate_variable_name)
+        )
 
     def get_variable_type(self, variable_name: str) -> TypeValue:
-        return self.context.variable_context.get(variable_name)
+        # A global variable may be written under any of its names; the variable context is keyed by the
+        # canonical one. Local names can not collide with an alias -- a Function argument, a property or a
+        # concept function sharing a global variable's name is rejected in `check_after_parsing_concepts`.
+        return self.context.variable_context.get(self.context.ch.canonical_variable_name(variable_name))
 
     def is_type_abstract(self, candidate_type: InstantiatedType | TemplateDependentType) -> bool:
         return not self.context.model.value_domains[candidate_type.clean_name].instantiable
