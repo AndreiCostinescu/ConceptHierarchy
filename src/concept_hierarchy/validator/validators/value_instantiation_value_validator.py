@@ -17,12 +17,11 @@ from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     ExpressionProvenance,
     FunctionArgumentAccessor,
-    FunctionArgumentProvenance,
 )
 from concept_hierarchy.data.expressions.subexpressions import IllFormedExpression
 from concept_hierarchy.data.parsers.expression_parser import parse_expression
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
-from concept_hierarchy.data.parsers.value_instantiation_parser import MISSING, ValueInstantiationContext
+from concept_hierarchy.data.parsers.value_instantiation_parser import ValueInstantiationContext
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
     NonStructureConstraintFormula,
     TemplateConstraintFormula,
@@ -44,22 +43,13 @@ class ValueValidator(ValueInstantiationContext):
         self,
         custom_type: TypeValue,
         provenance: ExpressionProvenance,
-        default_expr: object,
         value: object,
         location_id: LocationId,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
-        if value is MISSING and default_expr is MISSING:
-            return None, [
-                CHSemanticError(
-                    "No expression available (both the value and its default are missing)!", location_id=location_id
-                )
-            ]
         expr = parse_expression(
-            value if value is not MISSING else default_expr,
+            value,
             custom_type,
-            FunctionArgumentProvenance.ADDR
-            if provenance == ExpressionProvenance.ADDR
-            else FunctionArgumentProvenance.ANY,
+            provenance,
             FunctionArgumentAccessor.GET,
             self.context.template_context,
             self.context.expression_parser_validator,

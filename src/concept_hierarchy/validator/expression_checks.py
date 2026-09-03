@@ -261,6 +261,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
     for c_name, c in context.model.value_domains.items():
         context.set_template_context(c.template_context)
         context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
+        context.push_new_variable_stack_frame(VariableStackFrame())
 
         # ``c.instantiation`` is a tuple, so if something is modified here, the whole tuple should be modified...
         for instantiation_constraint, instantiation_schema in c.instantiation:
@@ -277,7 +278,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                 parsed_expr = parse_expression(
                     schema_node.default_expr,
                     schema_node.custom_type,
-                    FunctionArgumentProvenance.ANY,
+                    schema_node.provenance,
                     FunctionArgumentAccessor.GET,
                     c.template_context,
                     context.expression_parser_validator,
@@ -294,8 +295,10 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                         location_id=location_of_default,
                         part=PathPart.VALUE,
                     )
-                schema_node.default_expr = parsed_expr
+                # This stores the parsed/processed default_expr in custom nodes.
+                schema_node.parsed_default_expr = parsed_expr
 
+        context.pop_last_variable_stack_frame()
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
         context.reset_template_context()
 

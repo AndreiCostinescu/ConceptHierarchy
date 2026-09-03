@@ -84,6 +84,18 @@ CH_PRELUDE: dict[str, dict] = {
     },
     "Function": {"directParents": ["ValueDomain"], "data": {}, "abstract": True},
     "FunctionReturning": {"directParents": ["Function"], "data": {"templateContext": ["T"]}, "abstract": True},
+    "FunctionComposition": {
+        "directParents": ["ValueDomain"],
+        "data": {
+            "instantiation": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 1,
+                "propertyNames": {"type": "string", "format": "Type", "constraint": "Function"},
+                "additionalProperties": {"type": "object", "properties": "args", "additionalProperties": False},
+            },
+        },
+    },
 }
 """
 The built-in concepts that essentially every Concept Hierarchy needs. Tests spread ``**CH_PRELUDE`` into
@@ -153,23 +165,25 @@ def schema_field_path(location_id) -> str:
     )
 
 
-def instantiation_default_expressions(context: ConceptHierarchyContext, value_domain_name: str) -> dict[str, object]:
+def instantiation_default_expressions(
+    context: ConceptHierarchyContext, value_domain_name: str
+) -> dict[str, Expression | None]:
     """
     The parsed instantiation-schema default expressions of a ValueDomain, keyed by field path.
 
     A ValueDomain may declare several instantiation schemas (one per template-argument constraint); the
     defaults of all of them are returned together. Values are :class:`Expression` objects once the default
-    has been parsed, and the raw JSON value if it has not.
+    has been parsed, and `None` if it has not been parsed.
     """
     assert value_domain_name in context.model.value_domains, (
         f"{value_domain_name!r} is not a ValueDomain of this hierarchy; "
         f"available: {sorted(context.model.value_domains)}"
     )
-    defaults: dict[str, object] = {}
+    defaults: dict[str, Expression | None] = {}
     for _instantiation_constraint, instantiation_schema in context.model.value_domains[value_domain_name].instantiation:
         for schema_node in instantiation_schema.walk():
             if schema_node.has_default:
-                defaults[schema_field_path(schema_node.location_id)] = schema_node.default_expr
+                defaults[schema_field_path(schema_node.location_id)] = schema_node.parsed_default_expr
     return defaults
 
 

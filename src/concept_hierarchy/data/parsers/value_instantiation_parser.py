@@ -71,25 +71,12 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     TemplateConstraintFormula,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
-from concept_hierarchy.data.utils import StopValidation, record
+from concept_hierarchy.data.utils import MISSING, StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
 # ===========================================================================================================
 # Context seam
 # ===========================================================================================================
-
-
-class _Missing:
-    """Sentinel for "no value present" / "no default specified", distinguishable from a legitimate JSON ``null``."""
-
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return "<MISSING>"
-
-    def __bool__(self) -> bool:  # pragma: no cover - defensive
-        return False
-
-
-MISSING = _Missing()
 
 
 class ValueInstantiationContext(ABC):
@@ -105,14 +92,10 @@ class ValueInstantiationContext(ABC):
         self,
         custom_type: TypeValue,
         provenance: ExpressionProvenance,
-        default_expr: object,
         value: object,
         location_id: LocationId,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         """Parse and validate ``value`` as an expression of ``custom_type``.
-
-        When ``value`` is :data:`MISSING` and ``default_expr`` is not :data:`MISSING`, the implementation must parse
-        and independently validate ``default_expr`` instead.  Provenance admissibility must be checked on both paths.
 
         Returns:
             ``(expression, errors)``.  ``expression`` is ``None`` when parsing failed; ``errors`` lists *every* problem
@@ -303,14 +286,16 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
     """Parse a custom-type leaf.  ``value`` is :data:`MISSING` when the node's default is being applied instead."""
     local: list[ConceptHierarchyError] = []
     used_default = value is MISSING
-    default_expr = node.default_expr if node.has_default else MISSING
-
-    expression, errs = state.context.parse_value_against_custom_type_expression(
-        node.custom_type, node.provenance, default_expr, value, location_id
-    )
-    for err in errs:
-        local.append(err)
-        state.record(err)
+    expression, default_expr = None, node.default_expr if node.has_default else MISSING
+    if node.has_default and node.parsed_default_expr is not None:
+        expression = node.parsed_default_expr
+    if not used_default:
+        expression, errs = state.context.parse_value_against_custom_type_expression(
+            node.custom_type, node.provenance, value, location_id
+        )
+        for err in errs:
+            local.append(err)
+            state.record(err)
 
     return ParsedCustomValue(
         location_id=location_id,
@@ -458,10 +443,11 @@ def _parse_object(
     if node.property_names is not None:
         pn = node.property_names
         if pn.is_custom_type:
-            default_expr = pn.default_expr if pn.has_default else MISSING
+            # Default values are not applicable here because it is the appearing/existing/available names of the JSON
+            # object's keys that are checked; there is no MISSING case for which a default value/expression can be used.
             for key in value:
                 _, errs = state.context.parse_value_against_custom_type_expression(
-                    pn.custom_type, pn.provenance, default_expr, key, location_id + [key]
+                    pn.custom_type, pn.provenance, key, location_id + [key]
                 )
                 for err in errs:
                     err.part = PathPart.KEY

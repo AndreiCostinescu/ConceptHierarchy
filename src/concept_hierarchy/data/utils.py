@@ -40,6 +40,19 @@ def record(errors: list[ConceptHierarchyError], collect_all_errors: bool, err: C
 UNINITIALIZED = object()
 
 
+class _Missing:
+    """Sentinel for "no value present" / "no default specified", distinguishable from a legitimate JSON ``null``."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "<MISSING>"
+
+    def __bool__(self) -> bool:  # pragma: no cover - defensive
+        return False
+
+
+MISSING = _Missing()
+
+
 def lazy_properties(cls):
     # All annotated class vars without a class-level default are lazy.
     # (hasattr returns True for defaults, class methods, etc.)

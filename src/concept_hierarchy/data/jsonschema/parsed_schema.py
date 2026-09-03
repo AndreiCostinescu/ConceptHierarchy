@@ -36,6 +36,7 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import Callable, Iterator
 
+from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
@@ -83,11 +84,17 @@ class CHSchemaNode:
     custom_type: TypeValue | None = None
     provenance: ExpressionProvenance | None = None  # "Addr" | "Any", only set if is_custom_type
     has_default: bool = False
+    """
+    Differentiates `default_expr` being `None` because there is no value, 
+    versus an actual JSON `null` value supplied as default expression.
+    """
     default_expr: object = None
     """
     Raw, *unvalidated* default-value expression (only meaningful if :attr:`has_default` is True). 
     Validating this expression against the custom type's own schema is a separate, later pass.
     """
+    parsed_default_expr: Expression | None = None
+    """ Validated expression representing the value's default expression. `None` only when has_default is False. """
 
     # --- custom keywords -------------------
     custom_string_format: str | None = None
@@ -161,15 +168,17 @@ class CHSchemaNode:
 
     # ------------------------------------------------------------------
     def __repr__(self):
-        non_empty_fields = []
-        non_empty_fields.append(f"location={self.location_id}")
+        non_empty_fields = [f"location={self.location_id}"]
         if self.is_custom_type:
             if self.custom_type is not None:
                 non_empty_fields.append(f"type={self.custom_type}")
             if self.provenance is not None:
                 non_empty_fields.append(f"provenance={self.provenance}")
             if self.has_default:
-                non_empty_fields.append(f"default={self.default_expr}")
+                if self.parsed_default_expr is None:
+                    non_empty_fields.append(f"default={self.default_expr}")
+                else:
+                    non_empty_fields.append(f"default={self.parsed_default_expr}")
         elif self.type_value is not None:
             non_empty_fields.append(f"type={self.type_value}")
             types = self.type_value
