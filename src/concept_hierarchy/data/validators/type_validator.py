@@ -593,7 +593,19 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
     )
     # 3) Check the semantic of the value
     res = _convert_template_argument_to_concept_hierarchy_template_argument(validated_t_arg_value, validator)
-    validator.validate_fully_instantiated_types_in_converted_value(res, location_id)
+    # 4) Check the instantiation constraints of every type in the value, not only of the outermost one:
+    #    a nested application has to satisfy the constraints of *its* concept too. `Any<Box<String>>` is
+    #    the case this catches -- `Box<String>` is a perfectly good ValueDomain as far as `Any` is
+    #    concerned, so only checking `Box` against its own `T : Number` rejects it.
+    #    Done here, over the finished value, rather than inside the (bottom-up, recursive) conversion:
+    #    one flat walk visits each type once, where validating per construction would re-check every
+    #    shared subtree once per level it sits under.
+    already_validated: set[str] = set()
+    for sub_value in res.iterate_subtypes(do_not_expand_instantiated_types=False):
+        if sub_value.full_name in already_validated:
+            continue
+        already_validated.add(sub_value.full_name)
+        validator.validate_fully_instantiated_types_in_converted_value(sub_value, location_id)
     return res
 
 
@@ -607,7 +619,7 @@ def _parse_convert_no_check(
 
 
 def parse_convert_type(type_def: str, validator: TypeValidator, location_id: LocationId) -> InstantiatedType:
-    """This does not check that the fully-type-instantiated types satisfy the type-constraints."""
+    """Parse and convert a type, checking the instantiation constraints of every type it contains."""
     ch_type = _parse_convert_no_check(type_def, validator, location_id)
     if not isinstance(ch_type, InstantiatedType):
         raise CHSemanticError(f"Expected an InstantiatedType, got {ch_type!r}", location_id=location_id)
@@ -617,7 +629,13 @@ def parse_convert_type(type_def: str, validator: TypeValidator, location_id: Loc
 def parse_convert_type_in_template_context(
     type_def: str, validator: TypeValidator, location_id: LocationId
 ) -> TypeValue:
-    """This does not check that the fully-type-instantiated types satisfy the type-constraints."""
+    """
+    As :func:`parse_convert_type`, but the result may still depend on the template variables in scope.
+
+    The instantiation constraints of every type it contains are checked here too; for a template-dependent
+    one that means checking that *no* substitution could satisfy them, and that the constraints it implies
+    are compatible with the ones already on those variables.
+    """
     ch_type = _parse_convert_no_check(type_def, validator, location_id)
     if not isinstance(ch_type, TYPE_VALUE_IS_INSTANCE_CHECK):
         raise CHSemanticError(

@@ -71,7 +71,6 @@ class ExpressionValidator(ExpressionParserValidator):
 
     def create_instantiated_type(self, instantiated_type_name: str, location_id: LocationId) -> InstantiatedType:
         if instantiated_type_name not in self.instantiated_types:
-            # FixMe: parse_convert_type does not check if the instantiation's template arguments fulfill the constraints
             self.instantiated_types[instantiated_type_name] = parse_convert_type(
                 instantiated_type_name, self.context.type_validator, location_id
             )
@@ -80,7 +79,6 @@ class ExpressionValidator(ExpressionParserValidator):
 
     def create_possibly_template_dependent_type(self, type_name: str, location_id: LocationId) -> TypeValue:
         if type_name not in self.parsed_types:
-            # FixMe: parse_convert_type does not check if the instantiation's template arguments fulfill the constraints
             self.parsed_types[type_name] = parse_convert_type_in_template_context(
                 type_name, self.context.type_validator, location_id
             )

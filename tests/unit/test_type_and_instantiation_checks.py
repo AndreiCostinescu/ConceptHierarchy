@@ -436,3 +436,91 @@ class TestInstantiationSchemas:
                 }
             }
         )
+
+
+# --------------------------------------------------------------------------------------------------
+# Instantiation constraints of *nested* type applications
+# --------------------------------------------------------------------------------------------------
+
+# ``Any<T>`` accepts any ValueDomain, so it never rejects an argument on its own account. That is what
+# makes it able to hide a bad application: only checking the outermost type says nothing about what is
+# inside it. ``Box<T : Number>`` from above is the strict one that the nested applications violate.
+ANY = {"Any": {"directParents": ["ValueDomain"], "data": {"templateContext": {"order": ["T"], "T": "ValueDomain"}}}}
+
+
+class TestNestedInstantiationConstraints:
+    """
+    Every type application in a value is checked against the constraints of *its own* concept, at any
+    depth -- not just the outermost one.
+
+    ``Box<Box<Integer>>`` above already failed, but only because the *outer* ``Box`` rejects a non-Number
+    argument; the inner application was never looked at. Wrapping in a permissive ``Any`` removes that
+    accident, so these are the cases that actually pin the recursion.
+    """
+
+    def test_a_violating_argument_one_level_down(self):
+        with pytest.raises(CHSemanticError, match="into a type failed") as raised:
+            check_concepts({**BOX, **ANY, **holder("Any<Box<String>>")})
+        assert "Box<String>" in str(raised.value), "the message should name the application that is wrong"
+
+    def test_a_violating_argument_two_levels_down(self):
+        with pytest.raises(CHSemanticError, match="into a type failed"):
+            check_concepts({**BOX, **ANY, **holder("Any<Any<Box<String>>>")})
+
+    def test_a_satisfying_nested_argument_is_still_accepted(self):
+        context = check_concepts({**BOX, **ANY, **holder("Any<Any<Box<Integer>>>")})
+        assert str(context.model.domain_concepts["Holder"].property_types["p"]) == "Any<Any<Box<Integer>>>"
+
+    def test_a_violating_argument_beside_a_satisfying_one(self):
+        """The bad application sits in the second argument of a two-argument type."""
+        concepts = {
+            **BOX,
+            "Pair": {
+                "directParents": ["ValueDomain"],
+                "data": {"templateContext": {"order": ["A", "B"], "A": "ValueDomain", "B": "ValueDomain"}},
+            },
+        }
+        check_concepts({**concepts, **holder("Pair<Box<Integer>, Box<Number>>")})
+        with pytest.raises(CHSemanticError, match="into a type failed"):
+            check_concepts({**concepts, **holder("Pair<Box<Integer>, Box<String>>")})
+
+    def test_a_violating_argument_in_a_function_argument_type(self):
+        with pytest.raises(CHSemanticError):
+            check_concepts(
+                {
+                    **BOX,
+                    **ANY,
+                    "Unwrap": {
+                        "directParents": ["FunctionReturning"],
+                        "data": {
+                            "templateContext": {"substitution": {"FunctionReturning:T": "Integer"}},
+                            "interface": {"arg": "Any<Box<String>>", "res": "Integer"},
+                        },
+                    },
+                }
+            )
+
+    def test_a_violating_argument_in_an_instantiation_schema(self):
+        """The schema parser wraps the violation, as it wraps any type failure inside a schema."""
+        with pytest.raises(CHSyntaxError, match="into a json schema failed") as raised:
+            check_concepts(
+                {
+                    **BOX,
+                    **ANY,
+                    "Wrap": {
+                        "directParents": ["ValueDomain"],
+                        "data": {"instantiation": {"type": "object", "properties": {"y": "Any<Box<String>>"}}},
+                    },
+                }
+            )
+        assert "Box<String>" in str(raised.value), "the wrapped cause should name the application that is wrong"
+
+    def test_a_violating_argument_in_a_type_alias_target(self):
+        """A type alias is resolved through the same conversion, so it is checked the same way."""
+        with pytest.raises(CHSemanticError, match="into a type failed"):
+            check_concepts({**BOX, **ANY, "BadBox": "Any<Box<String>>"})
+
+    def test_a_violating_argument_reached_through_a_concept_alias(self):
+        """The alias resolves to ``Box`` before the constraint is checked, so it is caught all the same."""
+        with pytest.raises(CHSemanticError, match="into a type failed"):
+            check_concepts({**BOX, **ANY, "MyBox": "Box", **holder("Any<MyBox<String>>")})
