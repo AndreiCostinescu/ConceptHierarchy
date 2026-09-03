@@ -91,9 +91,18 @@ def check_expressions_in_function_definition(
     pass
 
 
-def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
-    context.set_template_context(TemplateContext())
-    context.set_variable_context(VariableContext([]))
+def init_expressions(context: ConceptHierarchyContext):
+    """
+    This initializes the type of all variables, but does not parse its definition expressions.
+    This also initializes the dependencies between Function default argument expressions,
+    but their expressions also must be rechecked (like the variable-expressions)
+    to ensure that there is no remaining unprocessed default-circular Function evaluation expression.
+
+    After this function, the VariableContext will have the bottom-most stack frame populated with the global variables.
+
+    :param context: the Concept Hierarchy that is analyzed, i.e. for which the expressions are to be initialized.
+    :return:
+    """
 
     # First, process the type of global variables; this doesn't process the expression value!
     # It processes just the type so the variable can be used/registered!
@@ -142,7 +151,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
 
     context.push_new_variable_stack_frame(VariableStackFrame(global_variable_context))
 
-    # First, process the expressions for Function default arguments; this allows creating the dependencies between the
+    # Then, process the expressions for Function default arguments; this allows creating the dependencies between the
     #   default Function argument values; which allows determining whether a Function evaluation/composition is
     #   well-formed (if all needed arguments are supplied and if there's no circular dependency in Function arguments)
     # - first process the expressions
@@ -225,6 +234,55 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         context.reset_template_context()
         context.pop_last_variable_stack_frame()
 
+
+def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
+    context.set_template_context(TemplateContext())
+    context.set_variable_context(VariableContext([]))
+
+    init_expressions(context)
+
+    # 1. process global variable expressions
+    aliases: set[str] = set()
+    global_template_context = TemplateContext()
+    context.set_template_context(global_template_context)
+    for global_variable_name, global_variable_definition in context.ch.instances.items():
+        global_variable = context.model.instances[global_variable_name]
+        if global_variable.is_alias:
+            aliases.add(global_variable_name)
+            continue
+        definition_value = global_variable_definition.value
+        expression_location = global_variable_definition.location_of(global_variable_name)
+        print(f"Parsing expression of global variable {global_variable_name}: {definition_value}")
+        parsed_expr = parse_expression(
+            definition_value,
+            global_variable.value_type,
+            FunctionArgumentProvenance.ANY,
+            FunctionArgumentAccessor.GET,
+            global_template_context,
+            context.expression_parser_validator,
+            expression_location,
+        )
+        if not parsed_expr.is_valid:
+            assert isinstance(parsed_expr.value, IllFormedExpression)
+            raise CHSemanticError(
+                f"Invalid expression: expected {parsed_expr.required_expression_type}, "
+                f"{parsed_expr.required_provenance_type}, "
+                f"{parsed_expr.required_access_type};"
+                f"\n\tgot {parsed_expr.unparsed}!"
+                f"\n\t\tReason: {parsed_expr.value.reason}",
+                location_id=expression_location,
+                part=PathPart.VALUE,
+            )
+    context.reset_template_context()
+    while aliases:
+        processed_aliases: set = set()
+        for alias in aliases:
+            aliased_var = context.ch.instances[alias].is_reference_to
+            if aliased_var in aliases:
+                continue
+            context.model.instances[alias].value = context.model.instances[aliased_var].value
+            processed_aliases.add(alias)
+
     # First process all default_expressions in the instantiation
     for c_name, c in context.model.value_domains.items():
         context.set_template_context(c.template_context)
@@ -242,7 +300,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                     schema_node.default_expr,
                     sep="\n",
                 )
-                parsed_default_value_expr = parse_expression(
+                parsed_expr = parse_expression(
                     schema_node.default_expr,
                     schema_node.custom_type,
                     FunctionArgumentProvenance.ANY,
@@ -251,18 +309,18 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                     context.expression_parser_validator,
                     location_of_default,
                 )
-                if not parsed_default_value_expr.is_valid:
-                    assert isinstance(parsed_default_value_expr.value, IllFormedExpression)
+                if not parsed_expr.is_valid:
+                    assert isinstance(parsed_expr.value, IllFormedExpression)
                     raise CHSemanticError(
-                        f"Invalid expression: expected {parsed_default_value_expr.required_expression_type}, "
-                        f"{parsed_default_value_expr.required_provenance_type}, "
-                        f"{parsed_default_value_expr.required_access_type};"
-                        f"\n\tgot {parsed_default_value_expr.unparsed}!"
-                        f"\n\t\tReason: {parsed_default_value_expr.value.reason}",
+                        f"Invalid expression: expected {parsed_expr.required_expression_type}, "
+                        f"{parsed_expr.required_provenance_type}, "
+                        f"{parsed_expr.required_access_type};"
+                        f"\n\tgot {parsed_expr.unparsed}!"
+                        f"\n\t\tReason: {parsed_expr.value.reason}",
                         location_id=location_of_default,
                         part=PathPart.VALUE,
                     )
-                schema_node.default_expr = parsed_default_value_expr
+                schema_node.default_expr = parsed_expr
 
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
         context.reset_template_context()
