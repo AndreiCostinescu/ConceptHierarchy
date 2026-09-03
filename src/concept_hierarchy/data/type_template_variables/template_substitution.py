@@ -43,6 +43,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     VariadicTemplateVariable,
 )
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
+    TemplateContextDeterminator,
     TypeTemplateInstantiationValidator,
     validate_complete_instantiation_of_concept,
 )
@@ -186,7 +187,9 @@ def substitute_non_template_variable(
     tuple_new_items = tuple(new_items)
     if is_type:
         # check instantiation constraints only for completely instantiated types
-        sub_template_context = template_context_of_mapped_variables.create_unconstrained_context(location_id)
+        sub_template_context = TemplateContextDeterminator(
+            template_context_of_mapped_variables.create_unconstrained_context(location_id)
+        )
         errors = validate_complete_instantiation_of_concept(
             value.clean_name, tuple_new_items, sub_template_context, validator, location_id
         )
@@ -197,7 +200,7 @@ def substitute_non_template_variable(
                 causes=errors,
             )
         else:
-            template_context_of_mapped_variables.merge_in_place(sub_template_context, location_id)
+            template_context_of_mapped_variables.merge_in_place(sub_template_context.determined, location_id)
         return InstantiatedType(value.clean_name, tuple_new_items)
     return InstantiatedVariadicGroup(value.clean_name, tuple_new_items)
 
