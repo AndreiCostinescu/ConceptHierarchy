@@ -165,6 +165,17 @@ def init_expressions(context: ConceptHierarchyContext):
     # - then check on which variables do the default values depend on
     # - create the dependency graph between default values; this must be checked at every Function evaluation in all
     #   future expressions!
+    # Every Function's parsed defaults are readable from the outset, before any of them are parsed.
+    # Parsing one Function's default can reach an evaluation of *any* Function -- of itself, as when
+    # `MakeT1`'s default instantiates a `T1` whose schema evaluates `MakeT1` again, or of one this loop has
+    # not come to yet, as when a parent's default evaluates its own child.
+    # **The grounding step asks for the defaults of whatever Function it meets,
+    # so leaving the field unset makes that a crash.**
+    # Empty is the honest answer during that window, and `get_function_argument_default_source` reads the declarations
+    # rather than this, so the edge itself is not lost.
+    for c in context.model.functions.values():
+        c.evaluation_argument_default_value_expressions = frozendict()
+
     for c_name, c in context.model.functions.items():
         context.set_template_context(c.template_context)
         context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
@@ -231,9 +242,60 @@ def init_expressions(context: ConceptHierarchyContext):
             {x: frozenset(y) for x, y in default_argument_dependencies.items()}
         )
 
+        context.pop_last_variable_stack_frame()
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
         context.reset_template_context()
+
+    # Then, after the Function default argument dependencies are registered,
+    # process the default expressions in ValueDomain instantiations.
+    # Process here in the initialization, so that the expressions for global variables, and Function default arguments
+    # have the default instantiations completely stored once those global-variable-expressions are checked again.
+    # The issue here is that default instantiations inside default instantiations are possible;
+    # and I think the only way to check if all are processed is to iterate over all created ParsedCustomValues
+    # and check if their expression is None instead of an expression (if the value is valid)!
+    # There is a dependency between instantiation schema expressions:
+    #  the default expressions may depend on other default expressions which may form a cycle of dependencies!
+    #  That cycle (on other CHSchemaNodes that must use their default expressions to instantiate the value
+    #  given by this schema's default expression) must be detected and reported.
+    #  However, detection may only be possible once a ground type application is given
+    #  because the schemas can depend on their template types...
+    #  But this anyway means, that default expressions in instantiations are not always resolvable at this point;
+    #  only at runtime, when an ground type application (instantiation) is given...
+    for c_name, c in context.model.value_domains.items():
+        context.set_template_context(c.template_context)
+        context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
+        context.push_new_variable_stack_frame(VariableStackFrame())
+
+        for instantiation_constraint, instantiation_schema in c.instantiation:
+            for schema_node in instantiation_schema.walk():
+                if not schema_node.has_default:
+                    continue
+                location_of_default = schema_node.location_id + ["default"]
+                print(
+                    f"Parsing default instantiation expression (at {c_name} and {instantiation_constraint}):",
+                    location_of_default,
+                    schema_node.default_expr,
+                    sep="\n",
+                )
+                parsed_expr = parse_expression(
+                    schema_node.default_expr,
+                    schema_node.custom_type,
+                    schema_node.provenance,
+                    FunctionArgumentAccessor.GET,
+                    c.template_context,
+                    context.expression_parser_validator,
+                    location_of_default,
+                    parse_template_expressions_without_type_checks=True,
+                )
+                if not parsed_expr.is_valid:
+                    assert isinstance(parsed_expr.value, IllFormedExpression)
+                    raise invalid_expression_error(parsed_expr, location_of_default)
+                # This stores the parsed/processed default_expr in custom nodes.
+                schema_node.parsed_default_expr = parsed_expr
+
         context.pop_last_variable_stack_frame()
+        context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
+        context.reset_template_context()
 
 
 def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
@@ -265,38 +327,46 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         global_variable.value = parsed_expr
     context.reset_template_context()
 
-    # First process all default_expressions in the instantiation
-    for c_name, c in context.model.value_domains.items():
+    # 2. reprocess Function default argument expressions
+    for c_name, c in context.model.functions.items():
         context.set_template_context(c.template_context)
         context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
         context.push_new_variable_stack_frame(VariableStackFrame())
 
-        # ``c.instantiation`` is a tuple, so if something is modified here, the whole tuple should be modified...
-        for instantiation_constraint, instantiation_schema in c.instantiation:
-            for schema_node in instantiation_schema.walk():
-                if not schema_node.has_default:
-                    continue
-                location_of_default = schema_node.location_id + ["default"]
-                print(
-                    f"Parsing default instantiation expression (at {c_name} and {instantiation_constraint}):",
-                    location_of_default,
-                    schema_node.default_expr,
-                    sep="\n",
-                )
-                parsed_expr = parse_expression(
-                    schema_node.default_expr,
-                    schema_node.custom_type,
-                    schema_node.provenance,
+        c_def = context.ch.concepts.get(c_name)
+        assert isinstance(c_def, FunctionDefinition)
+
+        # add the other Function arguments as variables to the variable context!
+        for arg_name, arg_type in c.evaluation_argument_types.items():
+            context.add_new_variable(arg_name, arg_type)
+
+        # Reparse the default argument expressions of this concept, now that *every* Function has its
+        # `default_argument_dependencies`.
+        #
+        # This is not redundant with the identical parse in `init_expressions`, and the difference is ordering.
+        # That loop fills the dependencies one Function at a time, so a default parsed early can
+        # contain an evaluation of a Function the loop has not reached yet --
+        # `get_default_argument_dependencies` answers `None` for it, and the acyclicity check is *skipped*
+        # rather than failed. On this pass every answer is there, so the check actually runs.
+        # Measured: removing this pass lets a mutually cyclic pair of default arguments through, when the Function
+        # declaring them is written after the Function whose default evaluates it.
+        if c_def.has_location_of(FunctionDefinition.function_default_argument_values):
+            default_args_location_id = c_def.location_id(FunctionDefinition.function_default_argument_values)
+            for default_arg_name, default_arg_expr_value in c_def.evaluation_argument_default_values.items():
+                default_arg_location_id = default_args_location_id + [default_arg_name]
+                parsed_default_value_expr = parse_expression(
+                    default_arg_expr_value,
+                    c.evaluation_argument_types[default_arg_name],
+                    FunctionArgumentProvenance.ANY,
                     FunctionArgumentAccessor.GET,
                     c.template_context,
                     context.expression_parser_validator,
-                    location_of_default,
+                    default_arg_location_id,
+                    parse_template_expressions_without_type_checks=True,
                 )
-                if not parsed_expr.is_valid:
-                    assert isinstance(parsed_expr.value, IllFormedExpression)
-                    raise invalid_expression_error(parsed_expr, location_of_default)
-                # This stores the parsed/processed default_expr in custom nodes.
-                schema_node.parsed_default_expr = parsed_expr
+                if not parsed_default_value_expr.is_valid:
+                    assert isinstance(parsed_default_value_expr.value, IllFormedExpression)
+                    raise invalid_expression_error(parsed_default_value_expr, default_arg_location_id)
 
         context.pop_last_variable_stack_frame()
         context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
