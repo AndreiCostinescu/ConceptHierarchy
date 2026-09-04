@@ -26,6 +26,13 @@ constraints via :attr:`~parsed_schema.CHSchemaNode.shallow_canonical`.  This is 
 :meth:`ValueInstantiationContext.parse_value_against_custom_type_expression` wherever they occur, including inside
 ``anyOf``/``oneOf``/``allOf``.
 
+One consequence is worth knowing here: a keyword written as a literal template variable (``{"minItems": "N"}``) is
+**not** in ``shallow_canonical`` until an application binds it, so a value passes such a node *unchecked* and this
+module reports no error for it.  Nothing is wrong with the value -- it simply has not been checked yet.
+:meth:`~parsed_schema.CHSchemaNode.undecided_literal_keywords_for` is what reports that a node is in that state, and
+:attr:`~subexpressions.InstExpression.is_template_dependent` consults it so the resulting expression is treated as
+still undecided rather than as parsed-and-holding.
+
 Relation to the expression parser
 ---------------------------------
 :class:`ValueInstantiationContext` is not a second validation algorithm.  It is the abstract seam that breaks the
@@ -45,8 +52,22 @@ checking, not here.
 Absent-value / default semantics
 --------------------------------
 An absent optional property is materialised only when its schema (or an ``anyOf`` branch of it) is a custom-type node
-carrying ``default_expr``.  In that case :attr:`~instantiated_value.ParsedCustomValue.used_default` is ``True``, the
-context is asked to parse ``default_expr``, and the property counts as present for the purposes of ``required``.
+carrying ``default_expr``.  In that case :attr:`~instantiated_value.ParsedCustomValue.used_default` is ``True`` and the
+property counts as present for the purposes of ``required``.
+
+This module never parses ``default_expr`` itself, and does not hold the parsed result either.  It asks the context for
+it -- :meth:`ValueInstantiationContext.resolve_default`, keyed by the *schema node*, not by the expression text -- and
+the context resolves it on demand and memoises it per ground application.  Two things follow, and neither is visible
+from ``default_expr`` alone:
+
+* the same declared default is a different expression under different applications of the same concept, since the node
+  it hangs off belongs to a substituted schema;
+* a site reached while it is *already being resolved* is a genuine expansion cycle, and the context reports it as one
+  rather than recursing.
+
+``resolve_default`` is called whenever the node **has** a default, not only when the value is absent -- but an invalid
+default is reported only where it is *materialised* (``used_default``).  Supplying the key instead stays legal, so a
+default that cannot hold for this application must not reject a value that never asks for it.
 
 ``allOf`` is all-or-nothing: if any branch fails, the errors of all failing branches are reported on the parent and
 ``all_of_parsed`` is left empty.  ``anyOf`` retains every matching branch.  ``if_parsed`` is metadata only and is
