@@ -751,7 +751,7 @@ def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: Litera
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.BOOLEAN:
         return t_arg.clean_name in ["true", "false"]
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
-        return t_arg.clean_name.startswith('"') and t_arg.clean_name.endswith('"')
+        return t_arg.literal_type == "string"
     else:
         raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
 
