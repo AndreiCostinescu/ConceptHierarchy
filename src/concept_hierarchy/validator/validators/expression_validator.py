@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
+from typing import Iterator
+
 from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
+from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
@@ -27,6 +31,7 @@ from concept_hierarchy.data.expressions.instantiated_value import ParsedValue
 from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.parsers.expression_parser import (
     ExpressionParserValidator,
+    GroundedArgumentDefault,
     expansion_cycle_expression,
     parse_expression,
 )
@@ -53,6 +58,16 @@ class ExpressionValidator(ExpressionParserValidator):
 
         self._default_sites: dict[int, tuple[CHSchemaNode, dict | None, int]] = {}
         """Registered default sites, by node identity: how to parse each one when it is first needed."""
+
+        self._grounded_function_defaults: dict[tuple[str, str], GroundedArgumentDefault] = {}
+        """
+        Every Function argument default already grounded, keyed ``(application full_name, argument)``.
+
+        Both the memo and the on-path guard: an entry is written *before* its default is parsed, marked
+        `GroundedArgumentDefault.in_progress`, so a default that reaches itself finds it there. Keyed by
+        application rather than by the declaring Function so that two call sites evaluating the same
+        application share the work, and two different applications of it do not.
+        """
 
         self._resolving: set[int] = set()
         """The default sites on the current resolution path. Re-entering one is an expansion cycle."""
@@ -184,7 +199,7 @@ class ExpressionValidator(ExpressionParserValidator):
         _node, template_substitution, expansion_depth = site
         if id(node) in self._resolving:
             # Reached while it is still being resolved: the expansion needs this very default in order to
-            # produce it. Memoised, because a site that is cyclic once is cyclic always.
+            # produce it. Memoized, because a site that is cyclic once is cyclic always.
             node.parsed_default_expr = expansion_cycle_expression(node)
             return node.parsed_default_expr
         self._resolving.add(id(node))
@@ -263,6 +278,30 @@ class ExpressionValidator(ExpressionParserValidator):
         if f.is_default_argument_dependencies_initialized():
             return f.default_argument_dependencies
         return None
+
+    def get_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
+        assert f_name in self.context.model.functions, f_name
+        return self.context.model.functions[f_name].evaluation_argument_default_value_expressions.get(f_arg_name)
+
+    @contextmanager
+    def function_argument_scope(self, arguments: dict[str, TypeValue]) -> Iterator[None]:
+        previous = self.context.variable_context
+        assert previous is not None, "there is no variable context to scope"
+        # Frame 0 is the global variables -- `check_expressions_in_concept_hierarchy` starts from an empty
+        # context and `init_expressions` pushes them first, before anything Function- or ValueDomain-local.
+        # Those stay; every frame above them is dropped for the duration.
+        globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
+        self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(arguments)]))
+        try:
+            yield
+        finally:
+            self.context.set_variable_context(previous)
+
+    def get_grounded_function_default(self, application: str, argument: str) -> GroundedArgumentDefault | None:
+        return self._grounded_function_defaults.get((application, argument))
+
+    def put_grounded_function_default(self, application: str, argument: str, grounded: GroundedArgumentDefault) -> None:
+        self._grounded_function_defaults[(application, argument)] = grounded
 
     def get_template_context(self, type_name_clean) -> TemplateContext:
         assert type_name_clean in self.context.model.value_domains

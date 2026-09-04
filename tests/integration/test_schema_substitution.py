@@ -617,7 +617,7 @@ class TestDefaultExpansionDepthLimit:
         A 20-deep chain of resolutions inside one schema is accepted even at a limit of 1, and must be.
 
         The limit exists to stop an expansion that cannot terminate, and this one **terminates by
-        construction**: resolution visits each site at most once -- it is memoised the moment it is
+        construction**: resolution visits each site at most once -- it is memoized the moment it is
         parsed, and re-entering one that is still on the path is reported as a cycle -- so the chain can
         be no longer than the number of default sites in the schemas already built. It is deep, not
         infinite, and a hierarchy is not invalid for being deep.
@@ -715,22 +715,22 @@ def function_with_default(name: str, defaults: dict, arg_type: str = "T") -> dic
     }
 
 
-class TestFunctionDefaultArgumentsAreNotSubstitutedYet:
+class TestFunctionDefaultArgumentsAreGroundedAtTheCallSite:
     """
-    A Function's ``_defaultArgumentValues`` have exactly the problem stage 1 solved for instantiation
+    A Function's ``_defaultArgumentValues`` had exactly the problem stage 1 solved for instantiation
     defaults: written in the Function's own template context, parsed once with ``T`` unbound, and only
     checkable when a call site supplies a ground application.
 
-    Stage 1 does **not** cover them. `parse_expression_of_json_object` substitutes the *types* but never
-    the unsupplied arguments' default *expressions*, which are not even materialised --
-    `FunctionEvaluation.arguments` holds supplied arguments only. See ``TODO_DEFAULT_EXPANSION_CYCLES.md``
-    §6.
+    Stage 2.5 closes that: a ground FEval reparses each *unsupplied* argument's declared default under its
+    own template arguments and reports one that cannot hold. The result is checked and dropped -- the
+    default is still not materialised into `FunctionEvaluation.arguments`, which continues to mean "what
+    the call site wrote". See ``TODO_DEFAULT_EXPANSION_CYCLES.md`` §6.
     """
 
     def test_a_non_template_default_argument_is_checked_at_definition_time(self):
         """
-        The control that locates the gap: with a ground argument type the default *is* checked. Only
-        template-dependence defers it -- and the deferral never ends.
+        The control: with a ground argument type the default is checked where it is written, and the call
+        site never gets a say. Only template-dependence defers it.
         """
         shout = {
             "Shout": {
@@ -763,22 +763,22 @@ class TestFunctionDefaultArgumentsAreNotSubstitutedYet:
         assert isinstance(feval, FunctionEvaluation)
         assert sorted(feval.arguments) == ["arg1"]
 
-    @pytest.mark.xfail(
-        reason="Function default argument expressions are not substituted per ground application yet",
-        strict=False,
-    )
-    def test_a_default_argument_is_grounded_at_a_ground_call_site(self):
+    def test_grounding_a_default_argument_does_not_materialise_it(self):
+        """
+        The default of ``arg2`` is checked against ``Integer`` at this call site and then dropped.
+
+        Materialising it would be actively wrong, not merely wasteful: the acyclicity check reads
+        ``supplied_arguments`` off this very dict, so a materialised default would make every argument look
+        supplied and switch that check off. `test_an_invalid_default_argument_is_rejected_at_a_ground_call_site`
+        is what shows the check still ran despite nothing being kept.
+        """
         context = check_concepts(
             {**function_with_default("Add2", {"arg2": 3}), **uses_feval("Add2<Integer>", {"arg1": 1})}
         )
         feval = default_site_expression(context, "Site", "p").value
-        assert "arg2" in feval.arguments, "the unsupplied argument must be materialised from its default"
-        assert feval.arguments["arg2"].required_expression_type.full_name == "Integer"
+        assert isinstance(feval, FunctionEvaluation)
+        assert sorted(feval.arguments) == ["arg1"], "grounding a default must not add it to the arguments"
 
-    @pytest.mark.xfail(
-        reason="nothing re-checks a template-dependent default argument once the application is known",
-        strict=False,
-    )
     def test_an_invalid_default_argument_is_rejected_at_a_ground_call_site(self):
         """
         ``arg2`` defaults to a String literal while ``T`` is ``Numeric``. Deferring at definition time is

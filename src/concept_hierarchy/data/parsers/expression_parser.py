@@ -16,6 +16,7 @@
 
 from abc import ABC, abstractmethod
 from collections import deque
+from contextlib import AbstractContextManager
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
@@ -84,6 +85,37 @@ from concept_hierarchy.definitions.concept_definition_value_domain import ValueD
 from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 from concept_hierarchy.utils import get_items_of_single_entry_dict
+
+
+@dataclass(frozen=True)
+class GroundedArgumentDefault:
+    """
+    A Function argument's declared default, parsed for **one ground application**.
+
+    Cached on the validator rather than on the declared `Expression`, because the declaration is shared by
+    every application and the result is not: `F<Integer>`'s default and `F<String>`'s are different
+    expressions from the same text. Keyed by the application, two call sites that evaluate `F<Integer>`
+    share this entry, which an expression-local cache could not give them.
+    """
+
+    expression: Expression | None
+    """``None`` marks an entry that is still being produced -- see `in_progress`."""
+
+    sibling_dependencies: frozenset[str] = frozenset()
+    """
+    The Function's own arguments this default reads, **as seen once ground**.
+
+    Not the same set as `FunctionData.default_argument_dependencies`, which is collected at definition time
+    from a parse with the template variables unbound. That parse stops where the type stops being decidable,
+    so a reference nested inside a template-dependent value never becomes a `Variable` and never enters the
+    set: with ``arg2: Cell<T>`` defaulting to ``{"b": "arg1"}`` the edge is missing, and with
+    ``arg2: Cell<Integer>`` it is there. Grounding is where the rest of the tree finally exists.
+    """
+
+    @property
+    def in_progress(self) -> bool:
+        """Whether this default is on the current grounding path, i.e. grounding it needs itself."""
+        return self.expression is None
 
 
 class ExpressionParserValidator(ABC):
@@ -215,6 +247,45 @@ class ExpressionParserValidator(ABC):
         pass
 
     @abstractmethod
+    def get_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
+        """
+        The declared default of one Function argument, or ``None`` when it has none.
+
+        The default was parsed once in the Function's *own* template context with its variables unbound, so
+        `Expression.value` there decided nothing about types; `Expression.unparsed` holds the JSON it was
+        written as, and that is what a ground call site reparses under its own template arguments.
+        """
+
+    @abstractmethod
+    def function_argument_scope(self, arguments: dict[str, TypeValue]) -> AbstractContextManager[None]:
+        """
+        Run with the variable scope **replaced** by the global variables plus these Function arguments.
+
+        Replaced, not extended. A default may name a sibling, so the Function's arguments have to be in
+        scope -- but everything *between* the global frame and them must be out of it, because the parser
+        classifies a bare string as a variable before it considers anything else. Leaving an enclosing
+        Function's arguments visible lets one of its names capture a string that is meant to be a value:
+        `Inner`'s default ``"leak"`` stops being a (mistyped) `String` and silently becomes `Outer`'s
+        `leak` argument.
+        """
+
+    @abstractmethod
+    def get_grounded_function_default(self, application: str, argument: str) -> GroundedArgumentDefault | None:
+        """
+        The cached grounding of one argument's default for one application, if there is one.
+
+        An entry whose `GroundedArgumentDefault.in_progress` is set means this default is on the current
+        grounding path -- a default that evaluates its own Function and leaves the same argument unsupplied
+        again -- which is the on-path check that instantiation defaults use, keyed by the ground
+        application for the reason node identity is (D2): `F<Integer>` may terminate where `F<Box<Integer>>`
+        does not.
+        """
+
+    @abstractmethod
+    def put_grounded_function_default(self, application: str, argument: str, grounded: GroundedArgumentDefault) -> None:
+        """Record a grounding, or (with `GroundedArgumentDefault.in_progress`) that one has begun."""
+
+    @abstractmethod
     def get_template_context(self, type_name_clean) -> TemplateContext:
         pass
 
@@ -234,7 +305,7 @@ class ExpressionParserValidator(ABC):
         application whose schema ``node`` belongs to, and how many *applications* deep that schema is.
 
         The depth deliberately counts application builds rather than the length of the resolution path,
-        because only one of those can run away. Resolution visits each site at most once -- it is memoised
+        because only one of those can run away. Resolution visits each site at most once -- it is memoized
         as soon as it is parsed, and re-entering one still on the path is reported as a cycle -- so a chain
         *within* the schemas already built is bounded by the number of their default sites, and is finite
         however long it gets. What is not bounded is a path that keeps *generating* applications, each
@@ -261,7 +332,7 @@ class ExpressionParserValidator(ABC):
         been built. ``cache_key`` is ``(application.full_name, constraint group index)``.
 
         There is only **one** cache here, not two. The per-application `parsed_default_expr` lives on the
-        nodes of the cached copy, so memoising the schema memoises the resolved defaults with it.
+        nodes of the cached copy, so memoizing the schema memoizes the resolved defaults with it.
         """
 
     @abstractmethod
@@ -442,7 +513,7 @@ def build_resolved_instantiation_schema(
     expansion_depth: int,
 ) -> CHSchemaNode:
     """
-    The instantiation schema of ``expr_type``, substituted and with every ``default`` resolved, memoised
+    The instantiation schema of ``expr_type``, substituted and with every ``default`` resolved, memoized
     per ``cache_key``.
 
     Templated and non-templated applications go through the same path -- the non-templated case merely has
@@ -1100,6 +1171,264 @@ def get_json_type_as_string(json_value: object, location_id: LocationId) -> str:
     )
 
 
+def _ground_unsupplied_argument_defaults(
+    key: str,
+    key_type: InstantiatedType,
+    all_arguments: set[str],
+    unsupplied_arguments: set[str],
+    f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument],
+    f_template_context: TemplateContext,
+    expr_template_context: TemplateContext,
+    validator: ExpressionParserValidator,
+    location_id: LocationId,
+    attempts: list[ExpressionAttempt],
+    expansion_depth: int,
+) -> tuple[IllFormedExpression | None, dict[str, frozenset[str]]]:
+    """
+    Check the defaults this call site leaves unsupplied, under *this* application's template arguments.
+
+    A Function's declared defaults are in the position instantiation defaults were in before stage 1: they
+    are parsed once, in the Function's own template context, with `T` standing for nothing in particular --
+    so an argument of type `T` defaulting to something no `T` could ever be was accepted and never looked
+    at again. Only an application decides it, and only a call site produces one.
+
+    Grounding produces two things, and the second is not a by-product: the verdict, and the set of sibling
+    arguments each default actually reads. That second set is what makes the acyclicity check complete --
+    see `GroundedArgumentDefault.sibling_dependencies`.
+
+    The parsed expression itself is deliberately **not** written into `FunctionEvaluation.arguments`. That
+    dict means "what the call site wrote", and the acyclicity check derives ``supplied_arguments`` from it
+    -- materialising defaults into it would tell that check every argument was supplied, and switch it off
+    exactly where it is needed. It is cached on the validator instead, per application.
+
+    Returns the failure to report (or ``None``) and the grounded dependencies of every default it decided.
+    """
+    dependencies: dict[str, frozenset[str]] = {}
+    to_ground: dict[str, Expression] = {}
+    for argument in sorted(unsupplied_arguments):
+        # A missing default here is not an omission: a *required* argument left unsupplied was already
+        # reported above, and an optional one with no default has nothing to ground.
+        declared_default = validator.get_function_argument_default(key_type.clean_name, argument)
+        if declared_default is None:
+            continue
+        declared_type, _, _ = validator.get_function_argument_interface(key_type.clean_name, argument)
+        if not declared_default.is_value_template_dependent:
+            # The default parsed to a *decided* expression where it was declared, so every type inside it
+            # was already settled against a ground type -- `is_template_dependent` recurses into the
+            # arguments of an evaluation and the leaves of a value, so it can only be false if all of them
+            # were. Nothing in there can be reparsed into anything different, and reparsing it would just
+            # re-derive the same tree.
+            if isinstance(declared_type, InstantiatedType):
+                # Its own type was ground too, so even the outermost check was made. Nothing is open.
+                continue
+            if isinstance(declared_default.value, InstExpression) and declared_default.value.value is not None:
+                # ...unless it was validated against a *schema*, which substitution rewrites. The value tree
+                # only records the types it met, not the keywords, so a schema whose template-dependence
+                # sits in a keyword rather than a custom-type leaf -- `{"minItems": "N"}` -- leaves no trace
+                # here and would sail past a subtype check. That is only worth checking for a value tree
+                # built against the declared type itself; everything else inside a decided expression was
+                # settled against a ground type, and a ground schema cannot change.
+                to_ground[argument] = declared_default
+                continue
+            # One thing *was* left open: how this expression relates to the site's type, which mentioned a
+            # template variable and now does not. That is a single subtype check, not a parse.
+            failure = _recheck_decided_default(
+                key,
+                key_type,
+                argument,
+                declared_default,
+                declared_type,
+                f_substitution_mapping,
+                f_template_context,
+                expr_template_context,
+                validator,
+                location_id,
+                attempts,
+            )
+            if failure is not None:
+                return failure, dependencies
+            # No entry is added to `dependencies`: the declaration's own scan of this default was complete
+            # (a decided tree has no unreached parts), so the declared edges already say everything.
+            continue
+        cached = validator.get_grounded_function_default(key_type.full_name, argument)
+        if cached is None:
+            to_ground[argument] = declared_default
+            continue
+        if cached.in_progress:
+            reason = (
+                f'the default of argument "{argument}" of {key_type} can never be applied: grounding it '
+                f"requires grounding it again"
+            )
+            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+            return IllFormedExpression(reason, tuple(attempts)), dependencies
+        # A cached failure is re-reported rather than passed over: the entry is the verdict for this
+        # application, and a second call site reaching it is in exactly the position the first one was.
+        assert cached.expression is not None
+        if not cached.expression.is_valid:
+            return _rejected_default(key, key_type, argument, cached.expression, attempts), dependencies
+        dependencies[argument] = cached.sibling_dependencies
+    if not to_ground:
+        return None, dependencies
+
+    # Every argument goes into scope, not just the unsupplied ones: a default may name a sibling the call
+    # site *did* supply, and what it sees there is the argument's declared type, not the supplied value.
+    argument_types: dict[str, TypeValue] = {}
+    for argument in sorted(all_arguments):
+        argument_type, _, _ = validator.get_function_argument_interface(key_type.clean_name, argument)
+        argument_type, _ = substitute(
+            argument_type,
+            f_substitution_mapping,
+            f_template_context,
+            expr_template_context,
+            validator.get_type_template_instantiation_validator(),
+            location_id,
+        )
+        argument_types[argument] = argument_type
+
+    with validator.function_argument_scope(argument_types):
+        for argument, declared_default in to_ground.items():
+            argument_type = argument_types[argument]
+            assert isinstance(argument_type, TYPE_VALUE_IS_INSTANCE_CHECK)
+            # Published before the parse, not after, so that a default which reaches itself finds the
+            # in-progress entry instead of recursing. (An exception escaping the parse leaves the marker
+            # behind, which is harmless: it aborts the whole check.)
+            validator.put_grounded_function_default(key_type.full_name, argument, GroundedArgumentDefault(None))
+            grounded = parse_expression(
+                declared_default.unparsed,
+                argument_type,
+                # ANY/GET, matching how the default was parsed where it was declared. Whether a default
+                # may satisfy an ADDR or MOD argument is a question about defaults, not about
+                # substitution, and answering it differently here would reject hierarchies for a reason
+                # this pass did not set out to find.
+                FunctionArgumentProvenance.ANY,
+                FunctionArgumentAccessor.GET,
+                # The default's text lives in the Function, so the Function's mapping -- *replacing* the
+                # call site's, not merged with it -- is what grounds it. The context passed alongside is
+                # the Function's for the same reason, though while `key_type` is ground nothing can tell
+                # the two apart: a ground application makes `f_substitution_mapping` ground, so every
+                # substitution below lands in the empty context either way.
+                f_template_context,
+                validator,
+                location_id + [key, argument],
+                template_substitution=f_substitution_mapping,
+                # Counted like an instantiation default, and for the same reason: each level here is a
+                # *new application*, because a level that repeated one is the in-progress case above. So a
+                # default that keeps growing its own application -- `F<T>`'s argument defaulting to
+                # `F<Box<T>>` -- never repeats and is stopped only by the limit.
+                expansion_depth=expansion_depth + 1,
+            )
+            grounded_dependencies = frozenset(
+                subexpression.value.variable_name
+                for subexpression in grounded.all_subexpressions(Variable)
+                if isinstance(subexpression.value, Variable) and subexpression.value.variable_name in all_arguments
+            )
+            validator.put_grounded_function_default(
+                key_type.full_name, argument, GroundedArgumentDefault(grounded, grounded_dependencies)
+            )
+            if not grounded.is_valid:
+                return _rejected_default(key, key_type, argument, grounded, attempts), dependencies
+            dependencies[argument] = grounded_dependencies
+    return None, dependencies
+
+
+def _recheck_decided_default(
+    key: str,
+    key_type: InstantiatedType,
+    argument: str,
+    declared_default: Expression,
+    declared_type: TypeValue,
+    f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument],
+    f_template_context: TemplateContext,
+    expr_template_context: TemplateContext,
+    validator: ExpressionParserValidator,
+    location_id: LocationId,
+    attempts: list[ExpressionAttempt],
+) -> IllFormedExpression | None:
+    """
+    Settle a default that is decided everywhere except in its relation to the site's type.
+
+    An expression reports its *own* template dependence, never its type's, so
+    ``{"Mk<Integer>": {"v": 1}}`` at an argument declared `Cell<T>` is fully decided -- a ground evaluation
+    with ground arguments -- while the one thing nobody could check yet is whether `Cell<Integer>` is a
+    `Cell<T>`. Under `W<String>` it is not.
+
+    So the application decides one question here, and it is answered with one subtype check. Reparsing would
+    rebuild an identical tree to ask it.
+
+    **This is narrower than a reparse, and one open defect is what keeps it sound.** A reparse would
+    revalidate an `Inst` value against the *substituted* schema, and this does not. That is safe only
+    because a value whose schema substitution could change it has a custom-type leaf that depends on
+    templates, which makes the expression template dependent and sends it down the reparse path instead --
+    with one exception: `substitute_schema` does not substitute `min_items_def` / `minimum_def` / ... (see
+    the defect table in ``EXPRESSIONS_AND_INSTANTIATION_SCHEMAS.md``), so a schema whose only
+    template-dependence sits in one of *those* keywords is not enforced either way today. If that defect is
+    fixed, this shortcut has to be revisited: such a value would be decided, would come through here, and
+    would never meet the substituted keyword.
+    """
+
+    def ground(type_value: TypeValue) -> TypeValue:
+        substituted, _ = substitute(
+            type_value,
+            f_substitution_mapping,
+            f_template_context,
+            expr_template_context,
+            validator.get_type_template_instantiation_validator(),
+            location_id,
+        )
+        return substituted
+
+    argument_type = ground(declared_type)
+    value_type = declared_default.value.value_type
+    assert value_type is not None, f"a valid expression has a type; {declared_default.unparsed} has none"
+    # The expression's own type may mention the Function's variables too -- an `Inst` of `Cell<T>` is typed
+    # `Cell<T>` -- so it is grounded by the same mapping before the two are compared.
+    # Both sides are grounded before they are compared so the answer is definite. `_check_if_subtype` reads
+    # existentially -- with a template variable left in, "no instantiation could make this hold" is the only
+    # thing it can report `False` for, and a call site needs "this does not hold". No test distinguishes it,
+    # because the expressions that reach here are typed by the declared type itself and so compare equal
+    # either way; it is two lines, and it removes the need to rely on that.
+    if value_type.depends_on_templates:
+        value_type = ground(value_type)
+    if _check_if_subtype(validator, value_type, argument_type, expr_template_context, location_id):
+        return None
+    reason = (
+        f'the default {declared_default.unparsed} of {key} argument "{argument}" has type {value_type}, '
+        f"which is not a subtype of {argument_type} under this application"
+    )
+    attempts.append(
+        ExpressionAttempt(
+            ExpressionKind.FUNCTION_EVALUATION,
+            f'the default of the unsupplied argument "{argument}" does not hold for {key_type}',
+            tried_type=key_type,
+        )
+    )
+    return IllFormedExpression(reason, tuple(attempts))
+
+
+def _rejected_default(
+    key: str,
+    key_type: InstantiatedType,
+    argument: str,
+    grounded: Expression,
+    attempts: list[ExpressionAttempt],
+) -> IllFormedExpression:
+    """Report one default that does not hold for this application, keeping the parse's own explanation."""
+    assert isinstance(grounded.value, IllFormedExpression)
+    reason = (
+        f'the default {grounded.unparsed} of {key} argument "{argument}" is not a valid '
+        f"{grounded.required_expression_type} expression under this application: {grounded.value.reason}"
+    )
+    attempts.append(
+        ExpressionAttempt(
+            ExpressionKind.FUNCTION_EVALUATION,
+            f'the default of the unsupplied argument "{argument}" does not hold for {key_type}',
+            tried_type=key_type,
+            cause=grounded.value,
+        )
+    )
+    return IllFormedExpression(reason, tuple(attempts))
+
+
 def parse_expression_of_json_object(
     key: str,
     value: object,
@@ -1272,6 +1601,41 @@ def parse_expression_of_json_object(
                 supplied_arguments = set(f_args)
                 unsupplied_arguments: set[str] = all_arguments - supplied_arguments
                 default_argument_dependencies = validator.get_default_argument_dependencies(key_type.clean_name)
+                # Ground first, then check the graph. Once the application is ground, each unsupplied
+                # default has to be a valid expression *for it* -- and grounding is also the only place the
+                # complete dependency set exists, because the definition-time scan stops wherever the type
+                # stopped being decidable. Only `InstantiatedType` is ground; a call site still inside a
+                # template gets its turn when the enclosing schema is built for an application (stage 1).
+                if isinstance(key_type, InstantiatedType):
+                    default_failure, grounded_dependencies = _ground_unsupplied_argument_defaults(
+                        key,
+                        key_type,
+                        all_arguments,
+                        unsupplied_arguments,
+                        f_substitution_mapping,
+                        f_template_context,
+                        expr_template_context,
+                        validator,
+                        location_id,
+                        attempts,
+                        expansion_depth,
+                    )
+                    if default_failure is not None:
+                        expressions_res.append(default_failure)
+                        if ensure_expression_invariant(expressions_res, expr_type):
+                            return expressions_res
+                    elif default_argument_dependencies is not None and grounded_dependencies:
+                        # Union rather than replacement. Grounding sees strictly more than the
+                        # definition-time scan did -- the only way it could see *less* is if substitution
+                        # turned a sibling reference into something else, which needs an argument and a
+                        # template variable of the same name, and those cannot collide (arguments start
+                        # lowercase, template variables uppercase). So the two agree today and no test can
+                        # tell the union from a replacement; it is kept because losing an edge is the
+                        # failure that matters, and the union cannot lose one if that ever changes.
+                        merged = dict(default_argument_dependencies)
+                        for argument, argument_dependencies in grounded_dependencies.items():
+                            merged[argument] = merged.get(argument, frozenset()) | argument_dependencies
+                        default_argument_dependencies = frozendict(merged)
                 if default_argument_dependencies is not None and not _validate_acyclic_default_argument_dependencies(
                     default_argument_dependencies, supplied_arguments
                 ):
