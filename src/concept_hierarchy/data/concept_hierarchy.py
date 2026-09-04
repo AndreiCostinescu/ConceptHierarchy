@@ -98,7 +98,6 @@ class ValueDomainData(TypeData):
 
 @lazy_properties
 class FunctionData(ValueDomainData):
-    evaluation_interface: tuple[str, ...]
     evaluation_argument_types: frozendict[str, TypeValue]
     evaluation_argument_access_type: frozendict[str, FunctionArgumentAccessor]
     evaluation_argument_provenance_type: frozendict[str, FunctionArgumentProvenance]

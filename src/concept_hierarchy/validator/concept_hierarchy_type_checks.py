@@ -504,7 +504,6 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
     datum.evaluation_argument_types = frozendict(function_evaluation_argument_types)
     datum.evaluation_argument_access_type = frozendict(function_evaluation_argument_access)
     datum.evaluation_argument_provenance_type = frozendict(function_evaluation_argument_provenance)
-    datum.evaluation_interface = c.evaluation_interface
     # process type of result
     if c.returns_something:
         assert isinstance(c.result_type, str)

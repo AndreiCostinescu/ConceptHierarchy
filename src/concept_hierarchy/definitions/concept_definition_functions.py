@@ -81,7 +81,6 @@ class FunctionDefinition(HiddenImplementationDefinition):
         self.all_sub_scope_data: dict[str, dict[str, tuple[str, bool]]] = {}
         """Contains all inherited data and the overwritten data from this concept."""
 
-        self.evaluation_interface: tuple[str, ...] = ()
         self.evaluation_argument_types: dict[str, str] = {}
         self.evaluation_argument_provenance_types: dict[str, str] = {}
         self.evaluation_argument_access_types: dict[str, str] = {}
@@ -104,7 +103,6 @@ class FunctionDefinition(HiddenImplementationDefinition):
         domain_concept.result_defined_in = UNINITIALIZED
         domain_concept.all_sub_scope_data = {}
 
-        domain_concept.evaluation_interface = ()
         domain_concept.evaluation_argument_types = {}
         domain_concept.evaluation_argument_provenance_types = {}
         domain_concept.evaluation_argument_access_types = {}

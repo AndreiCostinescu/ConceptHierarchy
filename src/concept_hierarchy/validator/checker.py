@@ -658,7 +658,7 @@ class ConceptHierarchyChecker:
                         #  first add parent data, then overwrite it with this concept's data.
                         c.all_sub_scope_data.update(parent_c.all_sub_scope_data)
                         c.all_sub_scope_data.update(c.sub_scopes)
-                    for eval_arg_name in c.evaluation_interface:
+                    for eval_arg_name in c.evaluation_argument_types:
                         if self.ch.is_variable(eval_arg_name):
                             raise CHSemanticError(
                                 f"The name of the evaluation argument {eval_arg_name!r} of {c_name} is also the name of"
