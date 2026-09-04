@@ -160,9 +160,19 @@ class ExpressionValidator(ExpressionParserValidator):
     def register_default_site(
         self, node: CHSchemaNode, template_substitution: dict | None, expansion_depth: int
     ) -> None:
-        # Keyed by identity: the nodes belong to the cached schemas, so they outlive every resolution and
-        # their ids stay valid. `CHSchemaNode` is an `eq=True` dataclass and therefore unhashable, and two
-        # distinct sites can compare equal anyway, so identity is also the only correct key here.
+        # Keyed by identity, which needs two things to be safe, both of which hold:
+        #
+        # - the id can not be recycled under us, because this registry stores the node itself and so keeps
+        #   it alive for as long as the entry exists;
+        # - the node can not be *copied* after being registered, which would leave the copy unregistered.
+        #   `CHSchemaNode` is only ever copied by `substitute_schema` and `_copy_schema`, both called from
+        #   `build_resolved_instantiation_schema` -- which registers afterward, on the tree it returns,
+        #   and is itself guarded by the resolved-schema cache. Registration is therefore the last thing
+        #   that happens to a node. **If another copy is ever introduced between the two, this breaks
+        #   silently**: the copy's default is simply never resolved.
+        #
+        # Identity is also the only correct key: `CHSchemaNode` is an `eq=True` dataclass and hence
+        # unhashable, and two distinct sites can compare equal anyway (which would be wrong).
         self._default_sites[id(node)] = (node, template_substitution, expansion_depth)
 
     def resolve_default_site(self, node: CHSchemaNode) -> Expression | None:
