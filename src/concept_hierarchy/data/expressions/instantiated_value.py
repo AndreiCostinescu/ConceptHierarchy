@@ -91,6 +91,19 @@ class ParsedValue(ABC):
             return False
         return all(child.is_valid() for _, child in self.iter_children())
 
+    def unresolved_default_sites(self) -> Iterator[ParsedValue]:
+        """
+        Every node that applied a default and never worked out what it is.
+
+        Such a leaf says both "this default was used" and "and I do not know its value", which no other
+        predicate reports: :meth:`is_valid` inspects only ``errors``, and
+        ``InstExpression.is_fully_parsed`` skips leaves whose ``expression`` is ``None``. It is the
+        standing check that default resolution actually finished.
+        """
+        for node in self.walk():
+            if getattr(node, "used_default", False) and getattr(node, "expression", False) is None:
+                yield node
+
 
 @dataclass
 class ParsedCustomValue(ParsedValue):

@@ -16,6 +16,7 @@ from frozendict import frozendict
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
+from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
@@ -24,7 +25,11 @@ from concept_hierarchy.data.expressions.expression_utils import (
 )
 from concept_hierarchy.data.expressions.instantiated_value import ParsedValue
 from concept_hierarchy.data.jsonschema import CHSchemaNode
-from concept_hierarchy.data.parsers.expression_parser import ExpressionParserValidator
+from concept_hierarchy.data.parsers.expression_parser import (
+    ExpressionParserValidator,
+    expansion_cycle_expression,
+    parse_expression,
+)
 from concept_hierarchy.data.parsers.value_instantiation_parser import parse_value
 from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
 from concept_hierarchy.data.types.concept_hierarchy_types import (
@@ -44,6 +49,14 @@ class ExpressionValidator(ExpressionParserValidator):
         self.context = context
         self.instantiated_types: dict[str, InstantiatedType] = {}
         self.parsed_types: dict[str, TypeValue] = {}
+        self.resolved_instantiation_schemas: dict[tuple[str, int], CHSchemaNode] = {}
+        """(application full name, constraint group index) -> schema substituted for that application."""
+
+        self._default_sites: dict[int, tuple[CHSchemaNode, dict | None, int]] = {}
+        """Registered default sites, by node identity: how to parse each one when it is first needed."""
+
+        self._resolving: set[int] = set()
+        """The default sites on the current resolution path. Re-entering one is an expansion cycle."""
 
     def is_concept(self, candidate_concept_name: str) -> bool:
         return self.context.ch.is_concept(candidate_concept_name)
@@ -143,6 +156,57 @@ class ExpressionValidator(ExpressionParserValidator):
             template_substitution,
             expansion_depth,
         )
+
+    def register_default_site(
+        self, node: CHSchemaNode, template_substitution: dict | None, expansion_depth: int
+    ) -> None:
+        # Keyed by identity: the nodes belong to the cached schemas, so they outlive every resolution and
+        # their ids stay valid. `CHSchemaNode` is an `eq=True` dataclass and therefore unhashable, and two
+        # distinct sites can compare equal anyway, so identity is also the only correct key here.
+        self._default_sites[id(node)] = (node, template_substitution, expansion_depth)
+
+    def resolve_default_site(self, node: CHSchemaNode) -> Expression | None:
+        if node.parsed_default_expr is not None:
+            return node.parsed_default_expr
+        site = self._default_sites.get(id(node))
+        if site is None:
+            # Not a site of a schema resolved for a ground application; nothing to resolve here.
+            return None
+        _node, template_substitution, expansion_depth = site
+        if id(node) in self._resolving:
+            # Reached while it is still being resolved: the expansion needs this very default in order to
+            # produce it. Memoised, because a site that is cyclic once is cyclic always.
+            node.parsed_default_expr = expansion_cycle_expression(node)
+            return node.parsed_default_expr
+        self._resolving.add(id(node))
+        try:
+            # The depth counted is how many *applications* deep this is, recorded when the schema was
+            # built -- deliberately not the length of the current resolution path. See
+            # `register_default_site`: a long path within one schema is finite by construction and must
+            # not be bounded, while a path that keeps generating new applications is not and must be.
+            # Counts application builds, not the length of this path -- see `register_default_site`: a
+            # long path within the schemas already built is finite by construction and must not be
+            # bounded, while one that keeps generating applications is not and must be.
+            node.parsed_default_expr = parse_expression(
+                node.default_expr,
+                node.custom_type,
+                node.provenance,
+                FunctionArgumentAccessor.GET,
+                TemplateContext(),
+                self,
+                node.location_id + ["default"],
+                template_substitution=template_substitution,
+                expansion_depth=expansion_depth,
+            )
+        finally:
+            self._resolving.discard(id(node))
+        return node.parsed_default_expr
+
+    def get_resolved_instantiation_schema(self, cache_key: tuple[str, int]) -> CHSchemaNode | None:
+        return self.resolved_instantiation_schemas.get(cache_key)
+
+    def put_resolved_instantiation_schema(self, cache_key: tuple[str, int], schema: CHSchemaNode) -> None:
+        self.resolved_instantiation_schemas[cache_key] = schema
 
     def get_default_expansion_depth_limit(self) -> int:
         return self.context.ch.get_expansion_depth_limit_for_default_instantiation_expressions()

@@ -223,6 +223,57 @@ class ExpressionParserValidator(ABC):
         pass
 
     @abstractmethod
+    def register_default_site(
+        self,
+        node: CHSchemaNode,
+        template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
+        expansion_depth: int,
+    ) -> None:
+        """
+        Record how ``node``'s default is to be parsed, without parsing it: the substitution of the
+        application whose schema ``node`` belongs to, and how many *applications* deep that schema is.
+
+        The depth deliberately counts application builds rather than the length of the resolution path,
+        because only one of those can run away. Resolution visits each site at most once -- it is memoised
+        as soon as it is parsed, and re-entering one still on the path is reported as a cycle -- so a chain
+        *within* the schemas already built is bounded by the number of their default sites, and is finite
+        however long it gets. What is not bounded is a path that keeps *generating* applications, each
+        with a schema and default sites of its own, and that is what the depth limit exists to stop.
+        """
+
+    @abstractmethod
+    def resolve_default_site(self, node: CHSchemaNode) -> Expression | None:
+        """
+        ``node``'s default expression, parsing it now if it has not been parsed yet.
+
+        Returns ``None`` for a node that was never registered, which is any node of a *declared* schema
+        rather than of one resolved for a ground application.
+
+        A node reached while it is **already being resolved** is a genuine expansion cycle, and gets an
+        `IllFormedExpression` saying so. That is the whole cycle check: being *unresolved* is not being
+        cyclic, and the two are only distinguishable by whether the node is on the current resolution path.
+        """
+
+    @abstractmethod
+    def get_resolved_instantiation_schema(self, cache_key: tuple[str, int]) -> CHSchemaNode | None:
+        """
+        The instantiation schema already substituted and resolved for one ground application, if it has
+        been built. ``cache_key`` is ``(application.full_name, constraint group index)``.
+
+        There is only **one** cache here, not two. The per-application `parsed_default_expr` lives on the
+        nodes of the cached copy, so memoising the schema memoises the resolved defaults with it.
+        """
+
+    @abstractmethod
+    def put_resolved_instantiation_schema(self, cache_key: tuple[str, int], schema: CHSchemaNode) -> None:
+        """
+        Record a resolved schema, **before** its defaults are resolved.
+
+        Publishing it early is deliberate: resolving a default re-enters the parser, and a default that
+        comes back round to this same application has to find this entry rather than build a second one.
+        """
+
+    @abstractmethod
     def get_default_expansion_depth_limit(self) -> int:
         """
         How many nested *default* expansions are allowed before the parse is rejected.
@@ -291,44 +342,76 @@ def substitute_schema(
     return instantiation_schema.apply(_parse_and_substitute)
 
 
-def resolve_substituted_defaults(
-    substituted_schema: CHSchemaNode,
-    template_substitution: dict[str, ConceptHierarchyTemplateArgument],
+def _copy_schema(node: CHSchemaNode) -> CHSchemaNode:
+    """A fresh tree with the same content, so that resolving defaults never writes to the declaration."""
+    if node.is_boolean_schema:
+        return node
+    return node.apply(_copy_schema)
+
+
+def expansion_cycle_expression(node: CHSchemaNode) -> Expression:
+    """
+    What a default site resolves to when expanding it comes back round to needing itself.
+
+    Reported by `_parse_custom` at the point of *materialisation*, which is exactly right: a value that
+    **supplies** the key never reads it and stays legal (D1). The message names the site and its type
+    rather than only the concept, because one declared site is reached under several ground applications
+    and may be cyclic under only some of them.
+    """
+    site = node.location_id[-2] if len(node.location_id) >= 2 else node.location_id[-1]
+    return Expression(
+        node.custom_type,
+        node.provenance,
+        FunctionArgumentAccessor.GET,
+        node.default_expr,
+        IllFormedExpression(
+            f'the default of "{site}" ({node.custom_type}) can never be applied -- materialising it '
+            f"requires materialising it again, so no finite value satisfies it"
+        ),
+    )
+
+
+def build_resolved_instantiation_schema(
+    declared_schema: CHSchemaNode,
+    template_context_of_concept: TemplateContext,
+    expr_type: InstantiatedType,
+    constraint_validator: TypeTemplateInstantiationValidator,
     validator: ExpressionParserValidator,
+    location_id: LocationId,
+    cache_key: tuple[str, int],
     expansion_depth: int,
-) -> None:
+) -> CHSchemaNode:
     """
-    Reparse every ``default`` of an already-substituted schema against its now-ground type, in place.
+    The instantiation schema of ``expr_type``, substituted and with every ``default`` resolved, memoised
+    per ``cache_key``.
 
-    **Re-parsing, not rewriting.** An expression's shape is decided by its type, and substitution can turn
-    a deferred ``TemplateDependentExpression`` into a real one, change which instantiation constraint
-    group is selected, change whether a key reads as ``Inst`` or ``Narrow``, and change every
-    ``is_strict_subtype``. None of that can be patched into an already-built tree.
-
-    ``template_substitution`` here is *this concept's own* mapping: a default is written in the schema, so
-    it names this concept's template variables, not the enclosing expression's. That is the one place the
-    mapping is replaced rather than inherited.
-
-    Mutates ``substituted_schema``, which must therefore be a fresh copy -- i.e. only call this when
-    :func:`substitute_schema` actually substituted something.
+    Templated and non-templated applications go through the same path -- the non-templated case merely has
+    an empty substitution, and is copied rather than substituted. Before this existed, a non-templated
+    ValueDomain's defaults were only ever parsed at definition time, and were therefore never checked for
+    the expansion cycles below.
     """
-    for node in substituted_schema.walk():
-        # A partially substituted type is left to the application that grounds it.
-        if not node.has_default or not isinstance(node.custom_type, InstantiatedType):
-            continue
-        node.parsed_default_expr = parse_expression(
-            node.default_expr,
-            node.custom_type,
-            node.provenance,
-            FunctionArgumentAccessor.GET,
-            TemplateContext(),
-            validator,
-            # `node.location_id` is already absolute -- it starts at "concepts" -- so it replaces the
-            # caller's location rather than extending it.
-            node.location_id + ["default"],
-            template_substitution=template_substitution,
-            expansion_depth=expansion_depth + 1,
+    own_substitution = build_template_substitution(template_context_of_concept, expr_type)
+    if own_substitution:
+        resolved = substitute_schema(
+            declared_schema, template_context_of_concept, expr_type, constraint_validator, location_id
         )
+    else:
+        resolved = _copy_schema(declared_schema)
+
+    # Published before the defaults are resolved: see `put_resolved_instantiation_schema`.
+    validator.put_resolved_instantiation_schema(cache_key, resolved)
+
+    # Registered, not resolved. A default is parsed the first time something materialises it, which is
+    # what makes "already being resolved" (a cycle) distinguishable from "not resolved yet" (merely not
+    # reached). Resolving everything up front cannot tell those apart, and every site would then need
+    # re-checking once its siblings were done.
+    for node in resolved.walk():
+        if node.has_default and isinstance(node.custom_type, InstantiatedType):
+            # The copy inherited whatever the *declared* node was parsed to, which was parsed without this
+            # application's substitution. Drop it so it can not be mistaken for a resolved value.
+            node.parsed_default_expr = None
+            validator.register_default_site(node, own_substitution or None, expansion_depth + 1)
+    return resolved
 
 
 def parse_expression(
@@ -892,19 +975,21 @@ def _check_instantiation_schema(
                 ConstraintGroupAttempt(type_application_constraint, matched=False, errors=tuple(constraint_errors))
             )
             continue
-        # substitute schema's template arguments
+        # Substitute this application's template arguments and resolve the schema's own defaults, once.
         expr_type_template_context = validator.get_template_context(expr_type.clean_name)
-        substituted_schema_to_match = substitute_schema(
-            schema_to_match,
-            expr_type_template_context,
-            expr_type,
-            type_template_instantiation_validator,
-            location_id,
-        )
-        own_substitution = build_template_substitution(expr_type_template_context, expr_type)
-        if own_substitution:
-            # Only then is `substituted_schema_to_match` a fresh copy that may be mutated.
-            resolve_substituted_defaults(substituted_schema_to_match, own_substitution, validator, expansion_depth)
+        cache_key = (expr_type.full_name, i)
+        substituted_schema_to_match = validator.get_resolved_instantiation_schema(cache_key)
+        if substituted_schema_to_match is None:
+            substituted_schema_to_match = build_resolved_instantiation_schema(
+                schema_to_match,
+                expr_type_template_context,
+                expr_type,
+                type_template_instantiation_validator,
+                validator,
+                location_id,
+                cache_key,
+                expansion_depth,
+            )
         # The *caller's* mapping, not `own_substitution`: `expr_value` is text from the enclosing
         # expression and names the enclosing concept's variables.
         parsed, errors = validator.validate_value_against_schema(

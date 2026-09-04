@@ -19,6 +19,7 @@ from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
 )
 from concept_hierarchy.data.expressions.subexpressions import IllFormedExpression
+from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.parsers.expression_parser import parse_expression
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
 from concept_hierarchy.data.parsers.value_instantiation_parser import ValueInstantiationContext
@@ -67,6 +68,9 @@ class ValueValidator(ValueInstantiationContext):
         error = CHSemanticError(expr.value.reason, location_id=location_id, part=PathPart.VALUE)
         error.causes.extend(expr.value.explanation_causes(location_id))
         return None, [error]
+
+    def resolve_default(self, schema_node: CHSchemaNode) -> Expression | None:
+        return self.context.expression_parser_validator.resolve_default_site(schema_node)
 
     def is_concept(self, concept_candidate: str) -> bool:
         return self.context.ch.is_concept(concept_candidate)

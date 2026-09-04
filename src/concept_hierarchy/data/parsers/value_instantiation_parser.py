@@ -110,6 +110,15 @@ class ValueInstantiationContext(ABC):
         """
 
     @abstractmethod
+    def resolve_default(self, schema_node: CHSchemaNode) -> Expression | None:
+        """The expression of ``schema_node``'s ``default``, parsed now if that has not happened yet.
+
+        Defaults are resolved on demand rather than when their schema is built, so that a site reached
+        while it is *already being resolved* -- a genuine expansion cycle -- is distinguishable from one
+        that simply has not been reached yet.  Returns ``None`` when the node has no resolvable default.
+        """
+
+    @abstractmethod
     def is_concept(self, concept_candidate: str) -> bool:
         pass
 
@@ -307,8 +316,9 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
     local: list[ConceptHierarchyError] = []
     used_default = value is MISSING
     expression, default_expr = None, node.default_expr if node.has_default else MISSING
-    if node.has_default and node.parsed_default_expr is not None:
-        expression = node.parsed_default_expr
+    if node.has_default:
+        expression = state.context.resolve_default(node)
+    if expression is not None:
         if used_default and not expression.is_valid:
             # The default is being *applied* here, and it does not parse -- which for a substituted schema
             # means it does not type-check under this ground application even though it may under another.
