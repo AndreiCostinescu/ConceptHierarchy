@@ -64,6 +64,45 @@ class CustomConceptDataConstraint:
         return self.value.is_template_dependent
 
 
+LITERAL_KEYWORD_FIELDS: dict[str, tuple[str, str]] = {
+    "min_properties_def": ("minProperties", "object"),
+    "max_properties_def": ("maxProperties", "object"),
+    "min_length_def": ("minLength", "string"),
+    "max_length_def": ("maxLength", "string"),
+    "min_items_def": ("minItems", "array"),
+    "max_items_def": ("maxItems", "array"),
+    "minimum_def": ("minimum", "number"),
+    "maximum_def": ("maximum", "number"),
+    "exclusive_minimum_def": ("exclusiveMinimum", "number"),
+    "exclusive_maximum_def": ("exclusiveMaximum", "number"),
+    "multiple_of_def": ("multipleOf", "number"),
+}
+"""
+Every keyword that may be written as a literal template variable: the `CHSchemaNode` field it is parked in,
+the JSON Schema keyword it came from, and the JSON type it constrains.
+
+The type matters because a keyword only applies to values of its own type -- an undecided ``minItems`` says
+nothing about a string -- so it is what separates "this value could not be checked yet" from "this value was
+checked completely, and a keyword that does not apply to it happens to be undecided".
+"""
+
+
+def json_type_family_of(value: object) -> str | None:
+    """The JSON Schema type family ``value`` belongs to, or ``None`` for null and booleans."""
+    if isinstance(value, bool):
+        # Before the int check: `bool` is a subclass of `int`, and no numeric keyword applies to a boolean.
+        return None
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, (int, float)):
+        return "number"
+    return None
+
+
 @dataclass
 class CHSchemaNode:
     # --- provenance -------------------------------------------------
@@ -241,6 +280,28 @@ class CHSchemaNode:
     @property
     def is_boolean_schema(self) -> bool:
         return isinstance(self.canonical, bool)
+
+    def undecided_literal_keywords_for(self, value: object) -> tuple[str, ...]:
+        """
+        The keywords of this node that would constrain ``value`` but are still written as an unsubstituted
+        literal template variable.
+
+        `jsonschema_parser` pops such a keyword out of the schema -- a Draft-07 validator cannot be handed
+        the name ``"N"`` where it expects a number -- so while it is parked here, ``value`` has *not* been
+        fully checked against this node, however clean the result looks.
+
+        Only the keywords that apply to ``value``'s own JSON type count. An undecided ``minItems`` on a node
+        reached with a string says nothing about that string, and deferring on it would refuse to decide
+        values that are in fact decided.
+        """
+        family = json_type_family_of(value)
+        if family is None:
+            return ()
+        return tuple(
+            keyword
+            for field_name, (keyword, applies_to) in LITERAL_KEYWORD_FIELDS.items()
+            if applies_to == family and getattr(self, field_name) is not None
+        )
 
     @property
     def is_template_dependent(self):

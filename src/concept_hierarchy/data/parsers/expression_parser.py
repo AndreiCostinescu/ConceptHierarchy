@@ -52,6 +52,7 @@ from concept_hierarchy.data.expressions.subexpressions import (
     VerifiedTemplateDependentExpression,
 )
 from concept_hierarchy.data.jsonschema import CHSchemaNode
+from concept_hierarchy.data.jsonschema.parsed_schema import LITERAL_KEYWORD_FIELDS
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     HierarchyCheckType,
@@ -365,31 +366,6 @@ def build_template_substitution(
     }
 
 
-LITERAL_KEYWORD_FIELDS: frozendict[str, str] = frozendict(
-    {
-        "min_properties_def": "minProperties",
-        "max_properties_def": "maxProperties",
-        "min_length_def": "minLength",
-        "max_length_def": "maxLength",
-        "min_items_def": "minItems",
-        "max_items_def": "maxItems",
-        "minimum_def": "minimum",
-        "maximum_def": "maximum",
-        "exclusive_minimum_def": "exclusiveMinimum",
-        "exclusive_maximum_def": "exclusiveMaximum",
-        "multiple_of_def": "multipleOf",
-    }
-)
-"""
-The `CHSchemaNode` fields holding a keyword written as a literal template variable, and the JSON Schema
-keyword each one came from.
-
-`jsonschema_parser` **pops** these keywords out of the schema when their value is the name of a literal
-template variable -- ``{"minItems": "N"}`` -- because a Draft-07 validator cannot be handed a name where it
-expects a number. Until they are put back, they constrain nothing at all.
-"""
-
-
 def _substitute_literal_keywords(
     node: CHSchemaNode, template_substitution: dict[str, ConceptHierarchyTemplateArgument]
 ) -> CHSchemaNode:
@@ -403,7 +379,7 @@ def _substitute_literal_keywords(
     and the field is what records that it is still waiting. Only the value being *known* moves it into
     `shallow_canonical`, which is what `parse_value` hands to the Draft-07 validator.
     """
-    for field_name, keyword in LITERAL_KEYWORD_FIELDS.items():
+    for field_name, (keyword, _applies_to) in LITERAL_KEYWORD_FIELDS.items():
         declared = getattr(node, field_name)
         if declared is None:
             continue
