@@ -162,10 +162,10 @@ class ExpressionValidator(ExpressionParserValidator):
     ) -> None:
         # Keyed by identity, which needs two things to be safe, both of which hold:
         #
-        # - the id can not be recycled under us, because this registry stores the node itself and so keeps
-        #   it alive for as long as the entry exists;
+        # - the id can not be recycled after this in the traversal.
+        #   Enforced, because this registry stores the node itself and so keeps it alive for as long as the entry exists
         # - the node can not be *copied* after being registered, which would leave the copy unregistered.
-        #   `CHSchemaNode` is only ever copied by `substitute_schema` and `_copy_schema`, both called from
+        #   `CHSchemaNode` is NOW only ever copied by `substitute_schema` and `_copy_schema`, both called from
         #   `build_resolved_instantiation_schema` -- which registers afterward, on the tree it returns,
         #   and is itself guarded by the resolved-schema cache. Registration is therefore the last thing
         #   that happens to a node. **If another copy is ever introduced between the two, this breaks
