@@ -199,7 +199,9 @@ def substitute_non_template_variable(
                 location_id=location_id,
                 causes=errors,
             )
-        else:
+        elif sub_template_context.determined is not None:
+            # `determined` stays None when nothing had to be constrained, which is the ordinary case for a
+            # fully ground substitution -- there is then nothing to merge, and merging None crashes.
             template_context_of_mapped_variables.merge_in_place(sub_template_context.determined, location_id)
         return InstantiatedType(value.clean_name, tuple_new_items)
     return InstantiatedVariadicGroup(value.clean_name, tuple_new_items)
