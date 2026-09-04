@@ -370,8 +370,7 @@ def _substitute_literal_keywords(
     node: CHSchemaNode, template_substitution: dict[str, ConceptHierarchyTemplateArgument]
 ) -> CHSchemaNode:
     """
-    Put a keyword that was written as a literal template variable back into the schema, now that its value
-    is known.
+    Put a keyword that was written as a literal template variable back into the schema, now that its value is known.
 
     ``node`` must already be a copy -- the caller hands one over -- so the declaration is never written to.
 
@@ -1562,11 +1561,10 @@ def parse_expression_of_json_object(
                             return expressions_res
                     f_args[f_arg_name] = arg_expr
                 # verify required arguments are present
-                missing_arguments: set[str] = set()
                 required_arguments: set[str] = validator.get_required_function_arguments(key_type.clean_name)
-                for required_arg in required_arguments:
-                    if required_arg not in f_args:
-                        missing_arguments.add(required_arg)
+                missing_arguments: set[str] = set(
+                    required_arg for required_arg in required_arguments if required_arg not in f_args
+                )
                 if missing_arguments:
                     raise CHSemanticError(
                         f"Argument(s) {missing_arguments} are missing from the Function evaluation interface of {key}!",
