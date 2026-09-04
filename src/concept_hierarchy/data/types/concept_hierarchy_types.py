@@ -276,6 +276,19 @@ class LiteralValue(Instantiated):
             self._registry = frozendict({self.full_name: (self.clean_name, None, None)})
         return self._registry
 
+    def convert_to_value(self) -> str | int | float | bool:
+        if self.literal_type == "string":
+            return self.clean_name
+        elif self.literal_type == "int":
+            return int(self.clean_name)
+        elif self.literal_type == "float":
+            return float(self.clean_name)
+        elif self.literal_type == "bool":
+            # The literal is "true" or "false", parsed the same way `LiteralValueConstraintFormula` parses it.
+            return self.clean_name == "true"
+        else:
+            raise RuntimeError(f"The literal type of {self.full_name!r} is invalid: {self.literal_type!r}!")
+
 
 class ConceptHierarchyVariadicGroup(VariadicArgument, ABC):
     def __init__(

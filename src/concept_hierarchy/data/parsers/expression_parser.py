@@ -484,7 +484,7 @@ def _parse_syntax_of_expression(
     if template_substitution is not None and isinstance(json_value, str):
         substituted_literal: ConceptHierarchyTemplateArgument | None = template_substitution.get(json_value)
         if isinstance(substituted_literal, LiteralValue):
-            json_value = substituted_literal.full_name
+            json_value = substituted_literal.convert_to_value()
 
     assert isinstance(expr_type, TYPE_VALUE_IS_INSTANCE_CHECK)
     if isinstance(expr_type, (ConceptHierarchyVariadicGroup, LiteralValue, ExpandedVariadicTemplateVariable)):

@@ -137,6 +137,9 @@ class TemplateContext:
             != TypeTemplateConstraintFormula.TYPE
         )
 
+    def constraint_sort(self, variable_name) -> str:
+        return self.constraint.variable_constraint_types[self.variables.index(variable_name)]
+
     def add_and_constraint_to(
         self, variable_name: str, new_variable_constraint: NonStructureConstraintFormula, location_id: LocationId
     ) -> StructureConstraintFormula:
