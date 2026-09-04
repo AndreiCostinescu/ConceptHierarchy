@@ -244,8 +244,12 @@ class CHSchemaNode:
 
     @property
     def is_template_dependent(self):
+        # Check `self.parsed_default_expr.is_value_template_dependent` for the parsed default expression
+        # Don't check `self.parsed_default_expr.is_type_template_dependent`
+        #  because that is implied by `self.custom_type.depends_on_templates`
         if (
             self.custom_type.depends_on_templates
+            or (self.parsed_default_expr is not None and self.parsed_default_expr.is_value_template_dependent)
             or self.min_items_def is not None
             or self.max_items_def is not None
             or self.min_properties_def is not None
