@@ -281,6 +281,25 @@ class InstExpression(ExpressionValue):
             yield from (expr for _, expr in self.value.iter_expressions())
 
 
+class DefaultSerializationExpression(InstExpression):
+    """
+    A value recognised by its concept's ``defaultSerialization`` rather than by an instantiation schema.
+
+    There is no :class:`ParsedValue` for such an expression -- the JSON literal *is* the value, and no
+    schema was walked to produce it -- so the value is kept here instead.
+
+    It has to be kept *somewhere*, because :attr:`Expression.unparsed` is the declared source text and is
+    never rewritten by substitution: an evaluation written ``{"Add<T>": ...}`` still reports exactly that
+    after ``T := Integer``, and a literal template variable still reports ``"N"`` after substituting ``N := 3``.
+    This is the only place where the value, from which a default-serialized expression was built, survives.
+    """
+
+    def __init__(self, value_type: TypeValue, json_value: object, is_strict_subtype: bool | None = None):
+        super().__init__(None, value_type, is_strict_subtype)
+        self.json_value = json_value
+        """The JSON value this was recognised from, *after* any substitution -- unlike ``unparsed``."""
+
+
 class NarrowExpression(InstExpression):
     def __init__(self, value: ParsedValue, value_type: TypeValue | None = None, is_strict_subtype: bool | None = None):
         super().__init__(value, value_type, is_strict_subtype)

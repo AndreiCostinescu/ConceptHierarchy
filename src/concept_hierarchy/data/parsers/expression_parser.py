@@ -34,6 +34,7 @@ from concept_hierarchy.data.expressions.expression_utils import (
 from concept_hierarchy.data.expressions.instantiated_value import ParsedValue
 from concept_hierarchy.data.expressions.subexpressions import (
     ConstraintGroupAttempt,
+    DefaultSerializationExpression,
     ExpressionAttempt,
     ExpressionKind,
     FunctionEvaluation,
@@ -436,9 +437,10 @@ def parse_expression(
 
 
 _EXPRESSION_KIND_NAMES: tuple[tuple[type, str], ...] = (
-    # Most specific first: NarrowExpression subclasses InstExpression, InstancePropertyChain subclasses
-    # Variable, so a plain isinstance sweep in the wrong order reports the base class.
+    # Most specific first: NarrowExpression and DefaultSerializationExpression subclass InstExpression,
+    # InstancePropertyChain subclasses Variable, so a plain isinstance sweep in the wrong order reports the base class.
     (NarrowExpression, "narrowed value domain instantiation"),
+    (DefaultSerializationExpression, "default-serialized value"),
     (InstExpression, "value domain instantiation"),
     (FunctionEvaluation, "Function evaluation"),
     (InstancePropertyChain, "instance property chain"),
@@ -816,7 +818,9 @@ def _parse_syntax_of_expression_with_instantiated_type(
         elif isinstance(expr_type, InstantiatedType) and _check_if_subtype(
             validator, ch_value_type, expr_type, expr_template_context, location_id
         ):
-            expressions_res.append(InstExpression(None, ch_value_type, ch_value_type != expr_type))
+            expressions_res.append(
+                DefaultSerializationExpression(ch_value_type, json_value, ch_value_type != expr_type)
+            )
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
         else:
