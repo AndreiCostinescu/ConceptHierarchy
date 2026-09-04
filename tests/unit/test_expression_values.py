@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import pytest
 
-from concept_hierarchy.data.expressions.expression import Expression
+from concept_hierarchy.data.expressions.expression import Expression, ExpressionValue
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
@@ -36,10 +36,20 @@ from concept_hierarchy.data.expressions.expression_utils import (
 )
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural
 from concept_hierarchy.data.expressions.subexpressions import (
+    DefaultSerializationExpression,
+    FunctionEvaluation,
     IllFormedExpression,
+    InstancePropertyChain,
     InstExpression,
+    LiteralTemplateVariableValue,
     NarrowExpression,
+    PossibleFunctionEvaluationExpression,
+    PossibleInstExpression,
+    PossibleNarrowExpression,
+    PossibleVariableExpression,
+    TemplateDependentExpression,
     Variable,
+    VariableWithTemplateType,
     VerifiedTemplateDependentExpression,
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import (
@@ -160,14 +170,61 @@ class TestInstExpressionIsFullyParsed:
     def test_a_literal_is_fully_parsed(self):
         assert InstExpression(structural(10), INTEGER).is_fully_parsed is True
 
-    def test_a_leaf_without_an_expression_is_fully_parsed(self):
+    def test_a_leaf_without_an_expression_is_not_fully_parsed(self):
+        """
+        A leaf with no expression is the *least* parsed thing in the tree, not a leaf with nothing to
+        check -- it is exactly how an unresolved default site looks. This property used to skip it, and
+        `ParsedValue.unresolved_default_sites` existed partly to compensate.
+        """
         value = structural(properties={"x": custom_leaf(INTEGER)})
-        assert InstExpression(value, INTEGER).is_fully_parsed is True
+        assert InstExpression(value, INTEGER).is_fully_parsed is False
 
     def test_an_unparsed_subexpression_makes_it_not_fully_parsed(self):
         inner = expression(VerifiedTemplateDependentExpression([]), T)
         value = structural(properties={"x": custom_leaf(INTEGER, inner)})
         assert InstExpression(value, INTEGER).is_fully_parsed is False
+
+    def test_a_leaf_with_a_parsed_expression_is_fully_parsed(self):
+        """The control: the same shape, with the leaf's expression actually built."""
+        value = structural(properties={"x": custom_leaf(INTEGER, expression(Variable("v", INTEGER)))})
+        assert InstExpression(value, INTEGER).is_fully_parsed is True
+
+
+class TestTheTwoPropertiesAreIndependent:
+    """
+    `is_fully_parsed` and `is_template_dependent` answer different questions, and neither implies the other.
+    Anything deciding "can this be reused without reparsing?" needs **both** -- which is what
+    `_ground_unsupplied_argument_defaults` asks.
+
+    *Measured over the suite*: 24 Function evaluations are template dependent while fully parsed, so this is
+    not a hypothetical corner.
+    """
+
+    def test_fully_parsed_but_template_dependent(self):
+        """A leaf typed `Box<T>` whose expression *was* built: nothing missing, but `T` is still open."""
+        value = structural(properties={"x": custom_leaf(BOX_T, expression(Variable("v", INTEGER)))})
+        subject = InstExpression(value, INTEGER)
+        assert subject.is_fully_parsed is True
+        assert subject.is_template_dependent is True
+
+    def test_not_fully_parsed_but_not_template_dependent(self):
+        """The other corner: a ground leaf whose expression was never built."""
+        value = structural(properties={"x": custom_leaf(INTEGER)})
+        subject = InstExpression(value, INTEGER)
+        assert subject.is_fully_parsed is False
+        assert subject.is_template_dependent is False
+
+    def test_neither(self):
+        value = structural(properties={"x": custom_leaf(BOX_T)})
+        subject = InstExpression(value, INTEGER)
+        assert subject.is_fully_parsed is False
+        assert subject.is_template_dependent is True
+
+    def test_both(self):
+        value = structural(properties={"x": custom_leaf(INTEGER, expression(Variable("v", INTEGER)))})
+        subject = InstExpression(value, INTEGER)
+        assert subject.is_fully_parsed is True
+        assert subject.is_template_dependent is False
 
 
 # --------------------------------------------------------------------------------------------------
@@ -209,3 +266,74 @@ class TestIsValid:
         self, possible_expressions, expected
     ):
         assert VerifiedTemplateDependentExpression(possible_expressions).is_valid is expected
+
+
+# --------------------------------------------------------------------------------------------------
+# The contract, for every ExpressionValue subclass
+# --------------------------------------------------------------------------------------------------
+
+GROUND_EXPRESSION = expression(Variable("v", INTEGER))
+"""A parsed, ground sub-expression, for the classes that need one."""
+
+CONTRACT: list[tuple[str, ExpressionValue, bool, bool]] = [
+    # label, value, is_template_dependent, is_fully_parsed
+    ("TemplateDependentExpression", TemplateDependentExpression(), True, False),
+    ("VerifiedTemplateDependentExpression", VerifiedTemplateDependentExpression([]), True, False),
+    ("PossibleInstExpression", PossibleInstExpression(INTEGER), True, False),
+    ("PossibleNarrowExpression", PossibleNarrowExpression(INTEGER), True, False),
+    ("PossibleFunctionEvaluationExpression", PossibleFunctionEvaluationExpression(INTEGER), True, False),
+    ("LiteralTemplateVariableValue", LiteralTemplateVariableValue("N", INTEGER, False), True, True),
+    ("Variable", Variable("v", INTEGER), False, True),
+    ("VariableWithTemplateType", VariableWithTemplateType("v", BOX_T), True, True),
+    ("PossibleVariableExpression", PossibleVariableExpression("v", INTEGER), True, True),
+    ("InstancePropertyChain", InstancePropertyChain(["a", "b"], [INTEGER, INTEGER]), False, True),
+    ("FunctionEvaluation (ground)", FunctionEvaluation(INTEGER, INTEGER, {"x": GROUND_EXPRESSION}, False), False, True),
+    ("FunctionEvaluation (templated type)", FunctionEvaluation(BOX_T, INTEGER, {}, False), True, True),
+    ("InstExpression (literal)", InstExpression(structural(10), INTEGER), False, True),
+    ("DefaultSerializationExpression", DefaultSerializationExpression(INTEGER, 10), False, True),
+    ("NarrowExpression", NarrowExpression(structural(10), INTEGER), False, True),
+    ("IllFormedExpression", IllFormedExpression("nope"), False, False),
+]
+
+
+class TestTheContractOfEverySubclass:
+    """
+    One table, both properties, every concrete `ExpressionValue`.
+
+    ``is_fully_parsed`` asks one thing only: **did the walk reach every leaf and build an expression there?**
+    Template dependence is not part of it. So the table splits by *content*, not by how decided a value is:
+
+    * `TemplateDependentExpression`, `PossibleInstExpression`, `PossibleNarrowExpression`,
+      `PossibleFunctionEvaluationExpression` and `VerifiedTemplateDependentExpression` hold no built content
+      -- nothing was walked into -- so they are not fully parsed;
+    * the three template-dependent **leaves** -- `LiteralTemplateVariableValue`, `VariableWithTemplateType`
+      and `PossibleVariableExpression` -- were each reached, with a name and a type. Nothing is unbuilt;
+      what is open is a value or a check, which the *other* property reports. All three are fully parsed;
+    * `IllFormedExpression` is neither: parsing is what failed, and nothing is waiting on a template.
+    """
+
+    @pytest.mark.parametrize(
+        "value,template_dependent,fully_parsed",
+        [(v, td, fp) for _label, v, td, fp in CONTRACT],
+        ids=[label for label, _v, _td, _fp in CONTRACT],
+    )
+    def test_the_two_properties(self, value, template_dependent, fully_parsed):
+        assert value.is_template_dependent is template_dependent
+        assert value.is_fully_parsed is fully_parsed
+
+    def test_every_concrete_subclass_is_in_the_table(self):
+        """
+        A new `ExpressionValue` must state both answers here rather than inherit them silently. Both
+        properties are consulted together to decide whether an expression can be reused without reparsing,
+        so an unconsidered default is a wrong answer waiting to happen.
+        """
+
+        def concrete(cls):
+            for sub in cls.__subclasses__():
+                if not getattr(sub, "__abstractmethods__", None):
+                    yield sub
+                yield from concrete(sub)
+
+        covered = {type(value) for _label, value, _td, _fp in CONTRACT}
+        missing = sorted(cls.__name__ for cls in set(concrete(ExpressionValue)) - covered)
+        assert not missing, f"not pinned by the contract table: {missing}"
