@@ -179,6 +179,7 @@ def substitute_non_template_variable(
         )
         has_template_dependent_items |= isinstance(new_item, TemplateDependent)
         new_items.append(new_item)
+        sub_template_contexts.append(sub_template_context)
     template_context_of_mapped_variables.merge_constraints_and(sub_template_contexts, location_id)
     if has_template_dependent_items:
         if is_type:
