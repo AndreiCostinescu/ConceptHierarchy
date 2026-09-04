@@ -1001,6 +1001,11 @@ def _parse_syntax_of_expression_with_instantiated_type(
             expansion_depth,
         )
         if inst_res.parsed is not None and inst_res.parsed.is_valid():
+            # Whether this instantiation is *decided* (= fully parsed and not template-dependent) is not settled here.
+            # A value, that met a node whose keyword is still an unbound literal template variable, passed that node
+            # unchecked, and `InstExpression.is_template_dependent` reads that off the parsed value.
+            # Template dependence is a property of what was parsed, not of which class was chosen.
+            # Saving this value as `InstExpression` also keeps the parse tree, which `PossibleInstExpression` discards.
             expressions_res.append(InstExpression(inst_res.parsed, expr_type, True))
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
@@ -1187,26 +1192,26 @@ def _ground_unsupplied_argument_defaults(
         if declared_default is None:
             continue
         declared_type, _, _ = validator.get_function_argument_interface(key_type.clean_name, argument)
-        if not declared_default.is_value_template_dependent:
-            # The default parsed to a *decided* expression where it was declared, so every type inside it
-            # was already settled against a ground type -- `is_template_dependent` recurses into the
-            # arguments of an evaluation and the leaves of a value, so it can only be false if all of them
-            # were. Nothing in there can be reparsed into anything different, and reparsing it would just
-            # re-derive the same tree.
-            if isinstance(declared_type, InstantiatedType):
-                # Its own type was ground too, so even the outermost check was made. Nothing is open.
-                continue
-            if isinstance(declared_default.value, InstExpression) and declared_default.value.value is not None:
-                # ...unless it was validated against a *schema*, which substitution rewrites. The value tree
-                # only records the types it met, not the keywords, so a schema whose template-dependence
-                # sits in a keyword rather than a custom-type leaf -- `{"minItems": "N"}` -- leaves no trace
-                # here and would sail past a subtype check. That is only worth checking for a value tree
-                # built against the declared type itself; everything else inside a decided expression was
-                # settled against a ground type, and a ground schema cannot change.
-                to_ground[argument] = declared_default
-                continue
-            # One thing *was* left open: how this expression relates to the site's type, which mentioned a
-            # template variable and now does not. That is a single subtype check, not a parse.
+        # Two *independent* things can still be waiting on the application, and they are settled
+        # differently -- which is why this is two questions rather than one condition:
+        #
+        #   1. the default's own contents, which takes *both* of the two properties that describe an
+        #      expression, because neither implies the other. `is_fully_parsed` asks whether every part was
+        #      built at all -- a custom-type leaf with no expression was not -- and
+        #      `is_value_template_dependent` asks whether any part is still waiting on a template argument.
+        #      A `FunctionEvaluation` of `Add<T>` whose arguments all parsed is fully parsed *and* template
+        #      dependent (measured: 24 of them); a value holding an unresolved default is the other way
+        #      round. Only an expression that is both can never be reparsed into a different tree.
+        #   2. how the expression's type relates to the *site's* type. That was left open whenever the site
+        #      mentioned a template variable, however decided the expression itself is -- an expression
+        #      reports its own dependence, never its type's.
+        contents_are_decided = declared_default.is_fully_parsed and not declared_default.is_value_template_dependent
+        site_type_is_decided = isinstance(declared_type, InstantiatedType)
+        if contents_are_decided and site_type_is_decided:
+            # Nothing was left open, so the declaration already holds the whole verdict.
+            continue
+        if contents_are_decided:
+            # Only (2). One subtype check settles it; reparsing would rebuild an identical tree to ask it.
             failure = _recheck_decided_default(
                 key,
                 key_type,
