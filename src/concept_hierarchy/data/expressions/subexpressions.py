@@ -14,12 +14,15 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import Iterator
 
 from concept_hierarchy.data.expressions.expression import Expression, ExpressionValue
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedValue
 from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
 from concept_hierarchy.data.types.concept_hierarchy_types import ConceptHierarchyType, InstantiatedType, TypeValue
+from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
 
 
 class TemplateDependentExpression(ExpressionValue):
@@ -283,10 +286,85 @@ class NarrowExpression(InstExpression):
         super().__init__(value, value_type, is_strict_subtype)
 
 
+class ExpressionKind(Enum):
+    """The alternatives ``_parse_syntax_of_expression_with_instantiated_type`` searches over."""
+
+    FUNCTION_EVALUATION = "FEval"
+    NARROW = "Narrow"
+    INSTANTIATION = "Inst"
+    DEFAULT_SERIALIZATION = "default serialization"
+    VARIABLE = "variable"
+    INSTANCE_PROPERTY_CHAIN = "instance property chain"
+    LITERAL_TEMPLATE_VARIABLE = "literal template variable"
+
+
+@dataclass(frozen=True)
+class ConstraintGroupAttempt:
+    """
+    One ``(ConstraintGroup, CHSchemaNode)`` pair of a type's ``instantiation``, as tried by
+    :func:`~expression_parser._check_instantiation_schema`.
+
+    ``matched`` says whether the type application satisfied the group's constraint. ``errors`` holds the
+    constraint-validation errors when it did not, and the *value* errors from parsing against that group's
+    schema when it did.
+    """
+
+    constraint: ConstraintGroup | None
+    matched: bool
+    errors: tuple[ConceptHierarchyError, ...] = ()
+
+    def describe(self) -> str:
+        constraint = "the unconstrained fallback" if self.constraint is None else f"constraint {self.constraint}"
+        if not self.matched:
+            return f"{constraint}: the type application does not satisfy it"
+        return f"{constraint}: matched, but the value does not satisfy its instantiation schema"
+
+
+@dataclass(frozen=True)
+class ExpressionAttempt:
+    """One alternative that was applicable to the value, and why it was rejected."""
+
+    kind: ExpressionKind
+    reason: str
+    tried_type: TypeValue | None = None
+    schema_errors: tuple[ConceptHierarchyError, ...] = ()
+    constraint_groups: tuple[ConstraintGroupAttempt, ...] = ()
+    cause: IllFormedExpression | None = None
+
+    def describe(self) -> str:
+        if self.tried_type is None:
+            return f"as {self.kind.value}: {self.reason}"
+        return f"as {self.kind.value} ({self.tried_type}): {self.reason}"
+
+    def as_error(self, location_id: LocationId) -> ConceptHierarchyError:
+        """Render this attempt, and anything under it, as one nested :class:`ConceptHierarchyError`."""
+        causes: list[ConceptHierarchyError] = []
+        for group in self.constraint_groups:
+            group_error = CHSemanticError(group.describe(), location_id=location_id)
+            group_error.causes.extend(group.errors)
+            causes.append(group_error)
+        causes.extend(self.schema_errors)
+        if self.cause is not None:
+            causes.extend(self.cause.explanation_causes(location_id))
+        error = CHSemanticError(self.describe(), location_id=location_id)
+        error.causes.extend(causes)
+        return error
+
+
 class IllFormedExpression(ExpressionValue):
-    def __init__(self, reason: str):
+    """
+    An expression that could not be parsed.
+
+    ``reason`` is the headline. ``attempts`` is the explanation trace: one entry per alternative that was
+    applicable to this value, in the order the parser tried them, carrying whatever that alternative
+    learned before giving up -- the errors from an instantiation schema, the constraint groups that were
+    tested, or a nested :class:`IllFormedExpression` for a sub-expression that itself failed.
+    """
+
+    def __init__(self, reason: str, attempts: tuple[ExpressionAttempt, ...] = ()):
         super().__init__()
         self.reason = reason
+        self.attempts: tuple[ExpressionAttempt, ...] = tuple(attempts)
 
     @property
     def is_template_dependent(self) -> bool:
@@ -299,6 +377,10 @@ class IllFormedExpression(ExpressionValue):
     @property
     def is_valid(self):
         return False
+
+    def explanation_causes(self, location_id: LocationId) -> list[ConceptHierarchyError]:
+        """The trace as nested errors, ready to hang off a :attr:`ConceptHierarchyError.causes`."""
+        return [attempt.as_error(location_id) for attempt in self.attempts]
 
     def get_subexpressions(self) -> Iterator[Expression]:
         """This is not a (completely) parsed expression... It does not contain subexpressions"""

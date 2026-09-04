@@ -58,7 +58,11 @@ class ValueValidator(ValueInstantiationContext):
         if expr.is_valid:
             return expr, []
         assert isinstance(expr.value, IllFormedExpression)
-        return None, [CHSemanticError(expr.value.reason, location_id=location_id, part=PathPart.VALUE)]
+        # Carry the explanation trace with the headline: this is a *nested* expression, so without the
+        # trace the enclosing value's error would say only that some leaf did not parse.
+        error = CHSemanticError(expr.value.reason, location_id=location_id, part=PathPart.VALUE)
+        error.causes.extend(expr.value.explanation_causes(location_id))
+        return None, [error]
 
     def is_concept(self, concept_candidate: str) -> bool:
         return self.context.ch.is_concept(concept_candidate)

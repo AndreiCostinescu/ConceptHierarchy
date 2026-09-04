@@ -33,6 +33,28 @@ from concept_hierarchy.definitions.concept_definition_value_domain import ValueD
 from concept_hierarchy.errors import CHSemanticError, PathPart
 
 
+def invalid_expression_error(expr: Expression, location_id) -> CHSemanticError:
+    """
+    The error for an expression that failed to parse, carrying its explanation trace as ``causes``.
+
+    Without the trace this says only that the value did not match the expected type; the trace is what
+    names the alternatives that were tried, the instantiation constraint groups that were tested, and the
+    schema errors of the one that matched.
+    """
+    assert isinstance(expr.value, IllFormedExpression)
+    error = CHSemanticError(
+        f"Invalid expression: expected {expr.required_expression_type}, "
+        f"{expr.required_provenance_type}, "
+        f"{expr.required_access_type};"
+        f"\n\tgot {expr.unparsed}!"
+        f"\n\t\tReason: {expr.value.reason}",
+        location_id=location_id,
+        part=PathPart.VALUE,
+    )
+    error.causes.extend(expr.value.explanation_causes(location_id))
+    return error
+
+
 def check_expressions_in_domain_concept_definition(
     c: DomainConceptDefinition, datum: DomainConceptData, context: ConceptHierarchyContext
 ):
@@ -181,14 +203,8 @@ def init_expressions(context: ConceptHierarchyContext):
                 )
                 if not parsed_default_value_expr.is_valid:
                     assert isinstance(parsed_default_value_expr.value, IllFormedExpression)
-                    raise CHSemanticError(
-                        f"Invalid expression: expected {parsed_default_value_expr.required_expression_type}, "
-                        f"{parsed_default_value_expr.required_provenance_type}, "
-                        f"{parsed_default_value_expr.required_access_type};"
-                        f"\n\tgot {parsed_default_value_expr.unparsed}!"
-                        f"\n\t\tReason: {parsed_default_value_expr.value.reason}",
-                        location_id=default_args_location_id + [default_arg_name],
-                        part=PathPart.VALUE,
+                    raise invalid_expression_error(
+                        parsed_default_value_expr, default_args_location_id + [default_arg_name]
                     )
                 assert default_arg_name not in default_argument_dependencies
                 default_argument_dependencies[default_arg_name] = set()
@@ -245,15 +261,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         )
         if not parsed_expr.is_valid:
             assert isinstance(parsed_expr.value, IllFormedExpression)
-            raise CHSemanticError(
-                f"Invalid expression: expected {parsed_expr.required_expression_type}, "
-                f"{parsed_expr.required_provenance_type}, "
-                f"{parsed_expr.required_access_type};"
-                f"\n\tgot {parsed_expr.unparsed}!"
-                f"\n\t\tReason: {parsed_expr.value.reason}",
-                location_id=expression_location,
-                part=PathPart.VALUE,
-            )
+            raise invalid_expression_error(parsed_expr, expression_location)
         global_variable.value = parsed_expr
     context.reset_template_context()
 
@@ -286,15 +294,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                 )
                 if not parsed_expr.is_valid:
                     assert isinstance(parsed_expr.value, IllFormedExpression)
-                    raise CHSemanticError(
-                        f"Invalid expression: expected {parsed_expr.required_expression_type}, "
-                        f"{parsed_expr.required_provenance_type}, "
-                        f"{parsed_expr.required_access_type};"
-                        f"\n\tgot {parsed_expr.unparsed}!"
-                        f"\n\t\tReason: {parsed_expr.value.reason}",
-                        location_id=location_of_default,
-                        part=PathPart.VALUE,
-                    )
+                    raise invalid_expression_error(parsed_expr, location_of_default)
                 # This stores the parsed/processed default_expr in custom nodes.
                 schema_node.parsed_default_expr = parsed_expr
 

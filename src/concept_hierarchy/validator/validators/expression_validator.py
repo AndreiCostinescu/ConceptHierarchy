@@ -31,7 +31,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedTyp
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
 from concept_hierarchy.data.validators.type_validator import parse_convert_type, parse_convert_type_in_template_context
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
-from concept_hierarchy.errors import LocationId
+from concept_hierarchy.errors import ConceptHierarchyError, LocationId
 
 
 class ExpressionValidator(ExpressionParserValidator):
@@ -124,8 +124,8 @@ class ExpressionValidator(ExpressionParserValidator):
 
     def validate_value_against_schema(
         self, schema: CHSchemaNode, value: object, location_id: LocationId
-    ) -> ParsedValue:
-        return parse_value(value, schema, self.context.instantiation_values_validator, location_id)[0]
+    ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
+        return parse_value(value, schema, self.context.instantiation_values_validator, location_id)
 
     def get_default_serialization_concept_name_for(self, json_value_type: str) -> str | None:
         return self.context.ch.default_serializations.get(json_value_type, None)

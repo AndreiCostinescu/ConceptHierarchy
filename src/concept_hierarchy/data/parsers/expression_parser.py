@@ -33,6 +33,9 @@ from concept_hierarchy.data.expressions.expression_utils import (
 )
 from concept_hierarchy.data.expressions.instantiated_value import ParsedValue
 from concept_hierarchy.data.expressions.subexpressions import (
+    ConstraintGroupAttempt,
+    ExpressionAttempt,
+    ExpressionKind,
     FunctionEvaluation,
     IllFormedExpression,
     InstancePropertyChain,
@@ -159,8 +162,14 @@ class ExpressionParserValidator(ABC):
     @abstractmethod
     def validate_value_against_schema(
         self, schema: CHSchemaNode, value: object, location_id: LocationId
-    ) -> ParsedValue:
-        pass
+    ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
+        """
+        Parse ``value`` against ``schema``, returning the result tree **and** the authoritative error list.
+
+        Both are needed: the errors are what an :class:`IllFormedExpression` reports when this value turns
+        out not to be a valid instantiation, and they cannot be recovered by walking the tree -- trial
+        branches and failed ``allOf`` branches deliberately do not attach their errors to retained nodes.
+        """
 
     @abstractmethod
     def get_default_serialization_concept_name_for(self, json_value_type: str) -> str | None:
@@ -276,13 +285,19 @@ def parse_expression(
     if not is_addressable and isinstance(expr_candidate_value, FunctionEvaluation):
         is_addressable = expr_candidate_value.is_result_addressable
     if expr_provenance != FunctionArgumentProvenance.ANY and not is_addressable:
+        # The expression parsed, but not into something that can be addressed. Say what it *is*: a bare
+        # "got False" leaves the reader to work out which of the alternatives matched.
         expr_candidate_value = IllFormedExpression(
-            f"Provenance violation: required {expr_provenance}, got {is_addressable}"
+            f"Provenance violation: {expr_provenance.value} provenance requires an addressable expression "
+            f"(a variable, an instance property chain, or a Function evaluation whose result is "
+            f"{ValueDomainArgumentProvenance.ADDR.value}); got a "
+            f"{_describe_expression_kind(expr_candidate_value)} of type {expr_candidate_value.value_type}"
         )
     elif expr_access != FunctionArgumentAccessor.GET and is_strict_subtype:
         expr_candidate_value = IllFormedExpression(
-            f"Access violation: required access {expr_access}, required type {expr_type}, value type "
-            f"{expr_candidate_value}, with is_strict_subtype {is_strict_subtype}!"
+            f"Access violation: {expr_access.value} access requires the exact type {expr_type}, but this "
+            f"{_describe_expression_kind(expr_candidate_value)} has type {expr_candidate_value.value_type}, "
+            f"which is a strict subtype"
         )
 
     expression = Expression(expr_type, expr_provenance, expr_access, json_value, expr_candidate_value)
@@ -301,6 +316,26 @@ def parse_expression(
     #     somewhere; if it is not registered, then it can't be used!
     #     if it is registered, interpret the template variable value as the type that registers
     raise NotImplementedError
+
+
+_EXPRESSION_KIND_NAMES: tuple[tuple[type, str], ...] = (
+    # Most specific first: NarrowExpression subclasses InstExpression, InstancePropertyChain subclasses
+    # Variable, so a plain isinstance sweep in the wrong order reports the base class.
+    (NarrowExpression, "narrowed value domain instantiation"),
+    (InstExpression, "value domain instantiation"),
+    (FunctionEvaluation, "Function evaluation"),
+    (InstancePropertyChain, "instance property chain"),
+    (LiteralTemplateVariableValue, "literal template variable"),
+    (Variable, "variable"),
+)
+
+
+def _describe_expression_kind(expr_value: ExpressionValue) -> str:
+    """A reader-facing name for what an expression turned out to be, for provenance/access messages."""
+    for kind, name in _EXPRESSION_KIND_NAMES:
+        if isinstance(expr_value, kind):
+            return name
+    return type(expr_value).__name__
 
 
 def get_expression_type(
@@ -410,6 +445,22 @@ def _can_be_subtype_of_instantiated(
     return _check_if_subtype(validator, type_to_be_checked, instantiated_type, template_context, location_id)
 
 
+@dataclass(frozen=True)
+class InstantiationSearch:
+    """
+    The outcome of searching a type's ``instantiation`` for a group that accepts a value.
+
+    ``parsed`` is ``None`` when the type declares no instantiation schema at all (an abstract type).
+    ``groups`` records every group that was tried, matched or not, so that a failure can say *why* --
+    which constraints the type application did not satisfy, and how the one it did satisfy rejected the
+    value.
+    """
+
+    parsed: ParsedValue | None
+    errors: tuple[ConceptHierarchyError, ...] = ()
+    groups: tuple[ConstraintGroupAttempt, ...] = ()
+
+
 def _parse_syntax_of_expression_with_instantiated_type(
     json_value: object,
     expr_type: TypeValue,
@@ -424,6 +475,8 @@ def _parse_syntax_of_expression_with_instantiated_type(
     ensure_unmodified_json_value: Callable[[object, bool, bool], None],
 ) -> list[ExpressionValue]:
     expressions_res: list[ExpressionValue] = []
+    attempts: list[ExpressionAttempt] = []
+    """Every alternative that was applicable to this value and was rejected; see IllFormedExpression."""
 
     def ensure_expression_invariant(_expressions_res: list[ExpressionValue], _expr_type: TypeValue) -> bool | None:
         assert isinstance(_expr_type, TYPE_VALUE_IS_INSTANCE_CHECK)
@@ -460,6 +513,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
                     is_function_evaluation,
                     is_function_evaluation_present,
                     ensure_expression_invariant,
+                    attempts,
                 )
             )
             if ensure_expression_invariant(expressions_res, expr_type):
@@ -485,11 +539,36 @@ def _parse_syntax_of_expression_with_instantiated_type(
             if _check_if_subtype(validator, var_type, expr_type, expr_template_context, location_id):
                 return [Variable(json_value, var_type, var_type != expr_type)]
             else:
-                return [
-                    IllFormedExpression(f"Type {var_type} of variable {json_value} is not a subtype of {expr_type}!")
-                ]
+                reason = f"Type {var_type} of variable {json_value} is not a subtype of {expr_type}!"
+                attempts.append(ExpressionAttempt(ExpressionKind.VARIABLE, reason, tried_type=var_type))
+                return [IllFormedExpression(reason, tuple(attempts))]
         else:
             possible_instance_property_chain = json_value.split(".")
+            if len(possible_instance_property_chain) <= 1 or not validator.is_variable(
+                possible_instance_property_chain[0]
+            ):
+                # Not a variable, and not a chain rooted at one. Record both, so that a string matching
+                # nothing says which kinds of name were looked for rather than only that it matched none.
+                attempts.append(
+                    ExpressionAttempt(
+                        ExpressionKind.VARIABLE, f'"{json_value}" is not a variable of this Concept Hierarchy'
+                    )
+                )
+                if len(possible_instance_property_chain) > 1:
+                    attempts.append(
+                        ExpressionAttempt(
+                            ExpressionKind.INSTANCE_PROPERTY_CHAIN,
+                            f'"{possible_instance_property_chain[0]}" is not a variable, so "{json_value}" is not '
+                            f"an instance property chain",
+                        )
+                    )
+                if not validator.is_template_variable(json_value):
+                    attempts.append(
+                        ExpressionAttempt(
+                            ExpressionKind.LITERAL_TEMPLATE_VARIABLE,
+                            f'"{json_value}" is not a template variable in this context',
+                        )
+                    )
             if len(possible_instance_property_chain) > 1 and validator.is_variable(possible_instance_property_chain[0]):
                 # Validate that the instance property chain is actually a property chain.
                 types_in_property_chain = [validator.get_variable_type(possible_instance_property_chain[0])]
@@ -512,11 +591,11 @@ def _parse_syntax_of_expression_with_instantiated_type(
                         )
                     ]
                 else:
-                    return [
-                        IllFormedExpression(
-                            f"Type {var_type} of instance property chain {json_value} is not a subtype of {expr_type}!"
-                        )
-                    ]
+                    reason = f"Type {var_type} of instance property chain {json_value} is not a subtype of {expr_type}!"
+                    attempts.append(
+                        ExpressionAttempt(ExpressionKind.INSTANCE_PROPERTY_CHAIN, reason, tried_type=var_type)
+                    )
+                    return [IllFormedExpression(reason, tuple(attempts))]
             elif validator.is_template_variable(json_value):
                 if not validator.is_literal_template_variable(json_value):
                     raise CHSemanticError(
@@ -546,35 +625,49 @@ def _parse_syntax_of_expression_with_instantiated_type(
                     if _check_if_subtype(validator, ch_value_type, expr_type, expr_template_context, location_id):
                         return [LiteralTemplateVariableValue(json_value, ch_value_type, ch_value_type != expr_type)]
                     else:
-                        return [
-                            IllFormedExpression(
-                                f"The type of the literal template variable {json_value} (matched via default "
-                                f"serialization to {ch_value_type}) is not a subtype of {expr_type}!"
-                            )
-                        ]
-                else:
-                    return [
-                        IllFormedExpression(
-                            f'The literal constraint "{literal_constraint_type}" of "{json_value}" does not have a '
-                            f'matching registered "{ValueDomainDefinition.value_domain_default_serialization}" '
-                            f"({value_type_str})!"
+                        reason = (
+                            f"The type of the literal template variable {json_value} (matched via default "
+                            f"serialization to {ch_value_type}) is not a subtype of {expr_type}!"
                         )
-                    ]
+                        attempts.append(
+                            ExpressionAttempt(
+                                ExpressionKind.LITERAL_TEMPLATE_VARIABLE, reason, tried_type=ch_value_type
+                            )
+                        )
+                        return [IllFormedExpression(reason, tuple(attempts))]
+                else:
+                    reason = (
+                        f'The literal constraint "{literal_constraint_type}" of "{json_value}" does not have a '
+                        f'matching registered "{ValueDomainDefinition.value_domain_default_serialization}" '
+                        f"({value_type_str})!"
+                    )
+                    attempts.append(ExpressionAttempt(ExpressionKind.LITERAL_TEMPLATE_VARIABLE, reason))
+                    return [IllFormedExpression(reason, tuple(attempts))]
 
     # check Inst expression (abstract Types do not have instantiation schemas)
     if isinstance(expr_type, TemplateVariable):
         expressions_res.append(PossibleInstExpression())
     else:
         inst_res = _check_instantiation_schema(json_value, expr_type, expr_template_context, validator, location_id)
-        if inst_res is not None and inst_res.is_valid():
-            expressions_res.append(InstExpression(inst_res, expr_type, True))
+        if inst_res.parsed is not None and inst_res.parsed.is_valid():
+            expressions_res.append(InstExpression(inst_res.parsed, expr_type, True))
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
+        attempts.append(_instantiation_attempt(ExpressionKind.INSTANTIATION, expr_type, inst_res))
 
     # check DS (default serialization) expression (abstract Types do not have a defaultSerialization)
     value_type_str = get_json_type_as_string(json_value, location_id)
     type_name_str = validator.get_default_serialization_concept_name_for(value_type_str)
-    if type_name_str is not None:
+    if type_name_str is None:
+        attempts.append(
+            ExpressionAttempt(
+                ExpressionKind.DEFAULT_SERIALIZATION,
+                f'no concept of this Concept Hierarchy registers a "'
+                f'{ValueDomainDefinition.value_domain_default_serialization}" for the JSON type '
+                f'"{value_type_str}"',
+            )
+        )
+    else:
         ch_value_type = validator.create_instantiated_type(type_name_str, location_id)
         assert ch_value_type is not None
         if isinstance(expr_type, TemplateVariable):
@@ -585,12 +678,39 @@ def _parse_syntax_of_expression_with_instantiated_type(
             expressions_res.append(InstExpression(None, ch_value_type, ch_value_type != expr_type))
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
+        else:
+            attempts.append(
+                ExpressionAttempt(
+                    ExpressionKind.DEFAULT_SERIALIZATION,
+                    f'the JSON type "{value_type_str}" serializes to {ch_value_type}, which is not a subtype '
+                    f"of {expr_type}",
+                    tried_type=ch_value_type,
+                )
+            )
 
     if isinstance(expr_type, InstantiatedType) and expressions_res == []:
         expressions_res.append(
-            IllFormedExpression(f"Could not match a valid {expr_type} expression to value {json_value}")
+            IllFormedExpression(
+                f"Could not match a valid {expr_type} expression to value {json_value}", tuple(attempts)
+            )
         )
     return expressions_res
+
+
+def _instantiation_attempt(
+    kind: ExpressionKind, tried_type: TypeValue, search: InstantiationSearch
+) -> ExpressionAttempt:
+    """Turn a failed :func:`_check_instantiation_schema` search into one attempt of the explanation trace."""
+    if search.parsed is None:
+        return ExpressionAttempt(kind, f"{tried_type} is abstract: it declares no instantiation schema", tried_type)
+    # `search.errors` is the matched group's error list, which its own ConstraintGroupAttempt already
+    # carries -- passing it as `schema_errors` too would render every schema error twice.
+    return ExpressionAttempt(
+        kind,
+        f"the value does not satisfy the instantiation schema of {tried_type}",
+        tried_type=tried_type,
+        constraint_groups=search.groups,
+    )
 
 
 def _check_instantiation_schema(
@@ -599,36 +719,44 @@ def _check_instantiation_schema(
     expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
-) -> ParsedValue | None:
+) -> InstantiationSearch:
     instantiation_schema = validator.get_if_has_instantiation_schema(expr_type)
     if instantiation_schema is None or len(instantiation_schema) == 0:
         assert validator.is_type_abstract(expr_type), (
             f'It can\'t be that there is no instantiation schema defined for a non-abstract ValueDomain "{expr_type}"!'
         )
-        return None
+        return InstantiationSearch(None)
+    groups: list[ConstraintGroupAttempt] = []
     for i, (type_application_constraint, schema_to_match) in enumerate(instantiation_schema):
         type_template_instantiation_validator = validator.get_type_template_instantiation_validator()
         found_matching_schema = type_application_constraint is None
+        constraint_errors: list[ConceptHierarchyError] = []
         if not found_matching_schema:
-            errors = validate_type_against_constraint_formula(
+            constraint_errors = validate_type_against_constraint_formula(
                 type_application_constraint,
                 expr_type,
                 TemplateContextDeterminator(expr_template_context),
                 type_template_instantiation_validator,
                 location_id,
             )
-            found_matching_schema = len(errors) == 0
-        if found_matching_schema:
-            # substitute schema's template arguments
-            expr_type_template_context = validator.get_template_context(expr_type.clean_name)
-            substituted_schema_to_match = substitute_schema(
-                schema_to_match,
-                expr_type_template_context,
-                expr_type,
-                type_template_instantiation_validator,
-                location_id,
+            found_matching_schema = len(constraint_errors) == 0
+        if not found_matching_schema:
+            groups.append(
+                ConstraintGroupAttempt(type_application_constraint, matched=False, errors=tuple(constraint_errors))
             )
-            return validator.validate_value_against_schema(substituted_schema_to_match, expr_value, location_id)
+            continue
+        # substitute schema's template arguments
+        expr_type_template_context = validator.get_template_context(expr_type.clean_name)
+        substituted_schema_to_match = substitute_schema(
+            schema_to_match,
+            expr_type_template_context,
+            expr_type,
+            type_template_instantiation_validator,
+            location_id,
+        )
+        parsed, errors = validator.validate_value_against_schema(substituted_schema_to_match, expr_value, location_id)
+        groups.append(ConstraintGroupAttempt(type_application_constraint, matched=True, errors=tuple(errors)))
+        return InstantiationSearch(parsed, tuple(errors), tuple(groups))
     raise RuntimeError(f"There should always be a fallback matching schema... This was not reached at {expr_type}!")
 
 
@@ -665,6 +793,7 @@ def parse_expression_of_json_object(
     is_function_evaluation: bool,
     is_function_evaluation_present: bool,
     ensure_expression_invariant: Callable[[list[ExpressionValue], TypeValue], bool | None],
+    attempts: list[ExpressionAttempt],
 ) -> list[ExpressionValue]:
     expressions_res = []
 
@@ -675,6 +804,10 @@ def parse_expression_of_json_object(
         key_type = validator.create_possibly_template_dependent_type(key, location_id)
     except CHSemanticError as e:
         if e.args[0] == f"ParsedType '{key}' is not a template variable (in this context) nor a concept!":
+            # The single key is not a type at all, so neither an FEval nor a Narrow was ever possible.
+            reason = f'"{key}" is not a concept or a template variable of this Concept Hierarchy'
+            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason))
+            attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason))
             return expressions_res
         raise e
     if not isinstance(key_type, TemplateVariable) and validator.is_type_abstract(key_type):
@@ -698,12 +831,12 @@ def parse_expression_of_json_object(
                 part=PathPart.KEY,
             )
         if not isinstance(value, dict):
-            expressions_res.append(
-                IllFormedExpression(
-                    f"Function evaluation expression should have the value of the json object an other json object, "
-                    f"not {value}!"
-                )
+            reason = (
+                f"Function evaluation expression should have the value of the json object an other json object, "
+                f"not {value}!"
             )
+            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+            expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
         else:
@@ -728,9 +861,9 @@ def parse_expression_of_json_object(
             if not isinstance(expr_type, TemplateVariable) and not _check_if_subtype(
                 validator, function_return_type, expr_type, expr_template_context, location_id
             ):
-                expressions_res.append(
-                    IllFormedExpression(f"Function result type {function_return_type} is not a subtype of {expr_type}")
-                )
+                reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
+                attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+                expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
                 if ensure_expression_invariant(expressions_res, expr_type):
                     return expressions_res
             f_args: dict[str, Expression] = {}
@@ -769,12 +902,18 @@ def parse_expression_of_json_object(
                     )
                     if not arg_expr.is_valid:
                         assert isinstance(arg_expr.value, IllFormedExpression)
-                        expressions_res.append(
-                            IllFormedExpression(
-                                f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid: "
-                                f"{arg_expr.value.reason}"
+                        reason = (
+                            f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid: {arg_expr.value.reason}"
+                        )
+                        attempts.append(
+                            ExpressionAttempt(
+                                ExpressionKind.FUNCTION_EVALUATION,
+                                f'argument "{f_arg_name}" is not a valid {f_arg_type} expression',
+                                tried_type=key_type,
+                                cause=arg_expr.value,
                             )
                         )
+                        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
                         if ensure_expression_invariant(expressions_res, expr_type):
                             return expressions_res
                     f_args[f_arg_name] = arg_expr
@@ -823,14 +962,25 @@ def parse_expression_of_json_object(
                 part=PathPart.KEY,
             )
         if not recursively_parse:
-            narrow_res = None
+            expressions_res.append(NarrowExpression(None, key_type, key_type != expr_type))
+            if ensure_expression_invariant(expressions_res, expr_type):
+                return expressions_res
         else:
             # abstract Types do not have instantiation schemas
             narrow_res = _check_instantiation_schema(value, key_type, expr_template_context, validator, location_id)
-        if not recursively_parse or (narrow_res is not None and narrow_res.is_valid()):
-            expressions_res.append(NarrowExpression(narrow_res, key_type, key_type != expr_type))
-            if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res
+            if narrow_res.parsed is not None and narrow_res.parsed.is_valid():
+                expressions_res.append(NarrowExpression(narrow_res.parsed, key_type, key_type != expr_type))
+                if ensure_expression_invariant(expressions_res, expr_type):
+                    return expressions_res
+            attempts.append(_instantiation_attempt(ExpressionKind.NARROW, key_type, narrow_res))
+    else:
+        attempts.append(
+            ExpressionAttempt(
+                ExpressionKind.NARROW,
+                f"{key_type} is not a subtype of {expr_type}",
+                tried_type=key_type,
+            )
+        )
 
     # if expr_type is InstantiatedTypes, this expression is neither a `FEval` nor a `Narrow`
     return expressions_res
