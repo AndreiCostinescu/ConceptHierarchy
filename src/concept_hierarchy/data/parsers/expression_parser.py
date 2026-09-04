@@ -80,6 +80,7 @@ from concept_hierarchy.data.validators.template_argument_constraints_validator i
     validate_type_against_constraint_formula,
 )
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 from concept_hierarchy.utils import get_items_of_single_entry_dict
 
@@ -161,10 +162,19 @@ class ExpressionParserValidator(ABC):
 
     @abstractmethod
     def validate_value_against_schema(
-        self, schema: CHSchemaNode, value: object, location_id: LocationId
+        self,
+        schema: CHSchemaNode,
+        value: object,
+        location_id: LocationId,
+        template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
+        expansion_depth: int,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
         """
         Parse ``value`` against ``schema``, returning the result tree **and** the authoritative error list.
+
+        ``template_substitution`` is the *caller's* mapping, not this schema's: ``value`` is text from the
+        enclosing expression, so it names the enclosing concept's template variables however many schemas
+        deep it is nested. A schema's own defaults are grounded separately, by :func:`resolve_substituted_defaults`.
 
         Both are needed: the errors are what an :class:`IllFormedExpression` reports when this value turns
         out not to be a valid instantiation, and they cannot be recovered by walking the tree -- trial
@@ -211,6 +221,26 @@ class ExpressionParserValidator(ABC):
     def get_type_template_instantiation_validator(self) -> TypeTemplateInstantiationValidator:
         pass
 
+    @abstractmethod
+    def get_default_expansion_depth_limit(self) -> int:
+        """
+        How many nested *default* expansions are allowed before the parse is rejected.
+
+        Materialising one instantiation default can force materialising another, and that can grow without
+        repeating -- a cycle is not the only way for it to fail to terminate -- so the recursion needs a
+        bound that is not cycle detection. See ``TODO_DEFAULT_EXPANSION_CYCLES.md`` §9a.
+        """
+
+
+def build_template_substitution(
+    template_context_of_concept: TemplateContext, expr_type: TypeValue
+) -> dict[str, ConceptHierarchyTemplateArgument]:
+    """The concept's template variables bound to the arguments of one of its ground applications."""
+    return {
+        t_arg_name: t_arg_value
+        for t_arg_name, t_arg_value in zip(template_context_of_concept.variables, expr_type.template_arguments)
+    }
+
 
 def substitute_schema(
     instantiation_schema: CHSchemaNode,
@@ -219,10 +249,19 @@ def substitute_schema(
     constraint_validator: TypeTemplateInstantiationValidator,
     location_id: LocationId,
 ) -> CHSchemaNode:
-    template_substitution = {
-        t_arg_name: t_arg_value
-        for t_arg_name, t_arg_value in zip(template_context_of_concept.variables, expr_type.template_arguments)
-    }
+    """
+    The instantiation schema of ``expr_type``'s concept, with ``expr_type``'s template arguments
+    substituted into the type of every custom-type node.
+
+    Types only. Grounding the ``default`` *expressions* of the result is
+    :func:`resolve_substituted_defaults`, which is a separate step because it re-enters the expression
+    parser -- it must be driven from `_check_instantiation_schema`, where it can be bounded and (in
+    stage 2) memoised per application, rather than from the middle of a schema walk.
+
+    Returns ``instantiation_schema`` itself when there is nothing to substitute, so callers must not
+    mutate the result without checking that a substitution actually happened.
+    """
+    template_substitution = build_template_substitution(template_context_of_concept, expr_type)
     if not template_substitution:
         return instantiation_schema
 
@@ -251,6 +290,46 @@ def substitute_schema(
     return instantiation_schema.apply(_parse_and_substitute)
 
 
+def resolve_substituted_defaults(
+    substituted_schema: CHSchemaNode,
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument],
+    validator: ExpressionParserValidator,
+    expansion_depth: int,
+) -> None:
+    """
+    Reparse every ``default`` of an already-substituted schema against its now-ground type, in place.
+
+    **Re-parsing, not rewriting.** An expression's shape is decided by its type, and substitution can turn
+    a deferred ``TemplateDependentExpression`` into a real one, change which instantiation constraint
+    group is selected, change whether a key reads as ``Inst`` or ``Narrow``, and change every
+    ``is_strict_subtype``. None of that can be patched into an already-built tree.
+
+    ``template_substitution`` here is *this concept's own* mapping: a default is written in the schema, so
+    it names this concept's template variables, not the enclosing expression's. That is the one place the
+    mapping is replaced rather than inherited.
+
+    Mutates ``substituted_schema``, which must therefore be a fresh copy -- i.e. only call this when
+    :func:`substitute_schema` actually substituted something.
+    """
+    for node in substituted_schema.walk():
+        # A partially substituted type is left to the application that grounds it.
+        if not node.has_default or not isinstance(node.custom_type, InstantiatedType):
+            continue
+        node.parsed_default_expr = parse_expression(
+            node.default_expr,
+            node.custom_type,
+            node.provenance,
+            FunctionArgumentAccessor.GET,
+            TemplateContext(),
+            validator,
+            # `node.location_id` is already absolute -- it starts at "concepts" -- so it replaces the
+            # caller's location rather than extending it.
+            node.location_id + ["default"],
+            template_substitution=template_substitution,
+            expansion_depth=expansion_depth + 1,
+        )
+
+
 def parse_expression(
     json_value: object,
     expr_type: TypeValue,
@@ -260,7 +339,27 @@ def parse_expression(
     validator: ExpressionParserValidator,
     location_id: LocationId,
     parse_template_expressions_without_type_checks: bool = False,
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
+    expansion_depth: int = 0,
 ) -> Expression:
+    """
+    ``template_substitution`` is ``None`` in the ordinary case. It is set when this expression is being
+    reparsed under a ground type application, and maps the enclosing concept's template variables to that
+    application's arguments; it is applied wherever a type or a literal is created *from source text*.
+
+    ``expansion_depth`` counts nested *default* expansions only -- supplied values are bounded by the
+    finite JSON they came from, defaults are not.
+    """
+    depth_limit = validator.get_default_expansion_depth_limit()
+    if expansion_depth > depth_limit:
+        raise CHSemanticError(
+            f"Default expansion is more than {depth_limit} levels deep at {expr_type}, and is still "
+            f"producing new values. Either it does not terminate, or the limit is too low -- raise "
+            f'"{ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions}" in '
+            f"the Concept Hierarchy metadata.",
+            location_id=location_id,
+            part=PathPart.VALUE,
+        )
     if isinstance(expr_provenance, ValueDomainArgumentProvenance):
         expr_provenance = (
             FunctionArgumentProvenance.ADDR
@@ -271,15 +370,33 @@ def parse_expression(
         expr_access = (
             FunctionArgumentAccessor.GET if expr_access == FunctionResultAccessor.GET else FunctionArgumentAccessor.MOD
         )
-    expr_candidate_value = _parse_syntax_of_expression(
-        json_value,
-        expr_type,
-        expr_template_context,
-        validator,
-        location_id,
-        True,
-        parse_template_expressions_without_type_checks,
-    )
+    try:
+        expr_candidate_value = _parse_syntax_of_expression(
+            json_value,
+            expr_type,
+            expr_template_context,
+            validator,
+            location_id,
+            True,
+            parse_template_expressions_without_type_checks,
+            template_substitution,
+            expansion_depth,
+        )
+    except RecursionError:
+        # The interpreter's own stack runs out long before `depth_limit` does -- one expansion level costs
+        # a dozen-odd Python frames -- and a bare RecursionError says nothing about the hierarchy. Convert
+        # it here rather than where the depth is counted: by the time it reaches an outermost call the
+        # frames below have unwound, so building this message is safe, which it would not be deeper down.
+        if expansion_depth != 0:
+            raise
+        raise CHSemanticError(
+            f"Ran out of stack while parsing this expression of type {expr_type}. Either a value is nested "
+            f"extremely deeply, or its instantiation defaults expand without terminating; the configured "
+            f'"{ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions}" of '
+            f"{depth_limit} was never reached, so it is above what the interpreter can support.",
+            location_id=location_id,
+            part=PathPart.VALUE,
+        ) from None
     is_strict_subtype = expr_candidate_value.is_strict_subtype
     is_addressable = isinstance(expr_candidate_value, Variable)
     if not is_addressable and isinstance(expr_candidate_value, FunctionEvaluation):
@@ -358,7 +475,17 @@ def _parse_syntax_of_expression(
     location_id: LocationId,
     recursively_parse: bool = True,
     parse_template_expressions_without_type_checks: bool = False,
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
+    expansion_depth: int = 0,
 ) -> ExpressionValue:
+    # A literal template variable stands for a value, not a type, so it is substituted in the JSON itself
+    # and then interpreted from scratch -- under `N := 3` the string "N" *becomes* the literal 3, and the
+    # expression changes class from LiteralTemplateVariableValue to InstExpression.
+    if template_substitution is not None and isinstance(json_value, str):
+        substituted_literal: ConceptHierarchyTemplateArgument | None = template_substitution.get(json_value)
+        if isinstance(substituted_literal, LiteralValue):
+            json_value = substituted_literal.full_name
+
     assert isinstance(expr_type, TYPE_VALUE_IS_INSTANCE_CHECK)
     if isinstance(expr_type, (ConceptHierarchyVariadicGroup, LiteralValue, ExpandedVariadicTemplateVariable)):
         raise RuntimeError(f"Can't parse an expression of type {expr_type}")
@@ -412,6 +539,8 @@ def _parse_syntax_of_expression(
             is_function_evaluation_present,
             len_content_keys,
             ensure_unmodified_json_value,
+            template_substitution,
+            expansion_depth,
         )
         ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
         assert isinstance(expr_type, TemplateVariable) or len(expr_value_res) == 1
@@ -473,6 +602,8 @@ def _parse_syntax_of_expression_with_instantiated_type(
     is_function_evaluation_present: bool,
     len_content_keys: int,
     ensure_unmodified_json_value: Callable[[object, bool, bool], None],
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
+    expansion_depth: int = 0,
 ) -> list[ExpressionValue]:
     expressions_res: list[ExpressionValue] = []
     attempts: list[ExpressionAttempt] = []
@@ -514,6 +645,8 @@ def _parse_syntax_of_expression_with_instantiated_type(
                     is_function_evaluation_present,
                     ensure_expression_invariant,
                     attempts,
+                    template_substitution,
+                    expansion_depth,
                 )
             )
             if ensure_expression_invariant(expressions_res, expr_type):
@@ -648,7 +781,15 @@ def _parse_syntax_of_expression_with_instantiated_type(
     if isinstance(expr_type, TemplateVariable):
         expressions_res.append(PossibleInstExpression())
     else:
-        inst_res = _check_instantiation_schema(json_value, expr_type, expr_template_context, validator, location_id)
+        inst_res = _check_instantiation_schema(
+            json_value,
+            expr_type,
+            expr_template_context,
+            validator,
+            location_id,
+            template_substitution,
+            expansion_depth,
+        )
         if inst_res.parsed is not None and inst_res.parsed.is_valid():
             expressions_res.append(InstExpression(inst_res.parsed, expr_type, True))
             if ensure_expression_invariant(expressions_res, expr_type):
@@ -719,6 +860,8 @@ def _check_instantiation_schema(
     expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
+    expansion_depth: int = 0,
 ) -> InstantiationSearch:
     instantiation_schema = validator.get_if_has_instantiation_schema(expr_type)
     if instantiation_schema is None or len(instantiation_schema) == 0:
@@ -754,7 +897,15 @@ def _check_instantiation_schema(
             type_template_instantiation_validator,
             location_id,
         )
-        parsed, errors = validator.validate_value_against_schema(substituted_schema_to_match, expr_value, location_id)
+        own_substitution = build_template_substitution(expr_type_template_context, expr_type)
+        if own_substitution:
+            # Only then is `substituted_schema_to_match` a fresh copy that may be mutated.
+            resolve_substituted_defaults(substituted_schema_to_match, own_substitution, validator, expansion_depth)
+        # The *caller's* mapping, not `own_substitution`: `expr_value` is text from the enclosing
+        # expression and names the enclosing concept's variables.
+        parsed, errors = validator.validate_value_against_schema(
+            substituted_schema_to_match, expr_value, location_id, template_substitution, expansion_depth
+        )
         groups.append(ConstraintGroupAttempt(type_application_constraint, matched=True, errors=tuple(errors)))
         return InstantiationSearch(parsed, tuple(errors), tuple(groups))
     raise RuntimeError(f"There should always be a fallback matching schema... This was not reached at {expr_type}!")
@@ -794,6 +945,8 @@ def parse_expression_of_json_object(
     is_function_evaluation_present: bool,
     ensure_expression_invariant: Callable[[list[ExpressionValue], TypeValue], bool | None],
     attempts: list[ExpressionAttempt],
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
+    expansion_depth: int = 0,
 ) -> list[ExpressionValue]:
     expressions_res = []
 
@@ -802,6 +955,17 @@ def parse_expression_of_json_object(
 
     try:
         key_type = validator.create_possibly_template_dependent_type(key, location_id)
+        if template_substitution:
+            # The key is written in source text, so it can name the enclosing concept's template
+            # variables (`{"Add<T>": ...}`); ground them before anything is decided from the type.
+            key_type = substitute_template_variables_in_value(
+                key_type,
+                template_substitution,
+                expr_template_context,
+                TemplateContext(),
+                validator.get_type_template_instantiation_validator(),
+                location_id,
+            )
     except CHSemanticError as e:
         if e.args[0] == f"ParsedType '{key}' is not a template variable (in this context) nor a concept!":
             # The single key is not a type at all, so neither an FEval nor a Narrow was ever possible.
@@ -899,6 +1063,8 @@ def parse_expression_of_json_object(
                         validator,
                         location_id + [key, f_arg_name],
                         parse_template_expressions_without_type_checks,
+                        template_substitution,
+                        expansion_depth,
                     )
                     if not arg_expr.is_valid:
                         assert isinstance(arg_expr.value, IllFormedExpression)
@@ -967,7 +1133,15 @@ def parse_expression_of_json_object(
                 return expressions_res
         else:
             # abstract Types do not have instantiation schemas
-            narrow_res = _check_instantiation_schema(value, key_type, expr_template_context, validator, location_id)
+            narrow_res = _check_instantiation_schema(
+                value,
+                key_type,
+                expr_template_context,
+                validator,
+                location_id,
+                template_substitution,
+                expansion_depth,
+            )
             if narrow_res.parsed is not None and narrow_res.parsed.is_valid():
                 expressions_res.append(NarrowExpression(narrow_res.parsed, key_type, key_type != expr_type))
                 if ensure_expression_invariant(expressions_res, expr_type):

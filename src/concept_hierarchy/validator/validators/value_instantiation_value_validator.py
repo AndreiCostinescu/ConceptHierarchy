@@ -45,6 +45,8 @@ class ValueValidator(ValueInstantiationContext):
         provenance: ExpressionProvenance,
         value: object,
         location_id: LocationId,
+        template_substitution: dict | None,
+        expansion_depth: int,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         expr = parse_expression(
             value,
@@ -54,6 +56,8 @@ class ValueValidator(ValueInstantiationContext):
             self.context.template_context,
             self.context.expression_parser_validator,
             location_id,
+            template_substitution=template_substitution,
+            expansion_depth=expansion_depth,
         )
         if expr.is_valid:
             return expr, []

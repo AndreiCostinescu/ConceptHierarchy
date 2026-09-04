@@ -27,7 +27,12 @@ from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.parsers.expression_parser import ExpressionParserValidator
 from concept_hierarchy.data.parsers.value_instantiation_parser import parse_value
 from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
-from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType, TemplateDependentType, TypeValue
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ConceptHierarchyTemplateArgument,
+    InstantiatedType,
+    TemplateDependentType,
+    TypeValue,
+)
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
 from concept_hierarchy.data.validators.type_validator import parse_convert_type, parse_convert_type_in_template_context
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
@@ -123,9 +128,24 @@ class ExpressionValidator(ExpressionParserValidator):
         return value_domain_instantiation
 
     def validate_value_against_schema(
-        self, schema: CHSchemaNode, value: object, location_id: LocationId
+        self,
+        schema: CHSchemaNode,
+        value: object,
+        location_id: LocationId,
+        template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
+        expansion_depth: int,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
-        return parse_value(value, schema, self.context.instantiation_values_validator, location_id)
+        return parse_value(
+            value,
+            schema,
+            self.context.instantiation_values_validator,
+            location_id,
+            template_substitution,
+            expansion_depth,
+        )
+
+    def get_default_expansion_depth_limit(self) -> int:
+        return self.context.ch.get_expansion_depth_limit_for_default_instantiation_expressions()
 
     def get_default_serialization_concept_name_for(self, json_value_type: str) -> str | None:
         return self.context.ch.default_serializations.get(json_value_type, None)

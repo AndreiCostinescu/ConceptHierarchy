@@ -94,8 +94,15 @@ class ValueInstantiationContext(ABC):
         provenance: ExpressionProvenance,
         value: object,
         location_id: LocationId,
+        template_substitution: dict | None,
+        expansion_depth: int,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         """Parse and validate ``value`` as an expression of ``custom_type``.
+
+        ``template_substitution`` and ``expansion_depth`` are carried through from the expression this
+        value belongs to.  The value is text from the *same source expression*, so it can still name the
+        enclosing concept's template variables even several schemas deep, and its own default expansions
+        count against the same depth bound.
 
         Returns:
             ``(expression, errors)``.  ``expression`` is ``None`` when parsing failed; ``errors`` lists *every* problem
@@ -137,6 +144,9 @@ class _State:
     context: ValueInstantiationContext
     errors: list[ConceptHierarchyError] = field(default_factory=list)
     collect_all_errors: bool = True
+    template_substitution: dict | None = None
+    """Carried to every custom-type leaf; see `ValueInstantiationContext.parse_value_against_custom_type_expression`."""
+    expansion_depth: int = 0
 
     def record(self, err: ConceptHierarchyError) -> None:
         """Record ``err`` globally; raises :class:`StopValidation` in fail-fast mode."""
@@ -144,7 +154,7 @@ class _State:
 
     def silent(self) -> _State:
         """A sub-state whose errors are collected in full and do not escape."""
-        return _State(self.context, [], True)
+        return _State(self.context, [], True, self.template_substitution, self.expansion_depth)
 
 
 # ===========================================================================================================
@@ -157,6 +167,8 @@ def parse_value(
     node: CHSchemaNode,
     context: ValueInstantiationContext,
     location_id: LocationId | None = None,
+    template_substitution: dict | None = None,
+    expansion_depth: int = 0,
     collect_all_errors: bool = True,
 ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
     """Parse ``value`` against ``node``.
@@ -167,6 +179,10 @@ def parse_value(
         context: Handles custom-type leaves.
         location_id: Starting location in the Concept Hierarchy (``[]`` at the root).
         collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
+        template_substitution: If not ``None``, stores the mapping of template parameters that could have been used
+            in this value and which must be substituted in the value to do a complete check of the value.
+        expansion_depth: how many default-instantiation-expressions were triggered.
+            This detects a possibly infinite expansion cycle.
 
     Returns:
         ``(result, errors)``.  ``result`` is always a tree, even on failure.  ``errors`` is the authoritative error
@@ -176,7 +192,7 @@ def parse_value(
     if location_id is None:
         location_id = []
 
-    state = _State(context, [], collect_all_errors)
+    state = _State(context, [], collect_all_errors, template_substitution, expansion_depth)
     result: ParsedValue | None = None
     try:
         result = _parse(node, value, True, location_id, state)
@@ -195,13 +211,17 @@ def validate_value(
     node: CHSchemaNode,
     context: ValueInstantiationContext,
     location_id: LocationId | None = None,
+    template_substitution: dict | None = None,
+    expansion_depth: int = 0,
     collect_all_errors: bool = True,
 ) -> list[ConceptHierarchyError]:
     """Error projection of :func:`parse_value`, for call sites that discard the result tree.
 
     This performs the full parse; it is not cheaper.
     """
-    _, errors = parse_value(value, node, context, location_id, collect_all_errors)
+    _, errors = parse_value(
+        value, node, context, location_id, template_substitution, expansion_depth, collect_all_errors
+    )
     return errors
 
 
@@ -291,7 +311,12 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
         expression = node.parsed_default_expr
     if not used_default:
         expression, errs = state.context.parse_value_against_custom_type_expression(
-            node.custom_type, node.provenance, value, location_id
+            node.custom_type,
+            node.provenance,
+            value,
+            location_id,
+            state.template_substitution,
+            state.expansion_depth,
         )
         for err in errs:
             local.append(err)
@@ -447,7 +472,12 @@ def _parse_object(
             # object's keys that are checked; there is no MISSING case for which a default value/expression can be used.
             for key in value:
                 _, errs = state.context.parse_value_against_custom_type_expression(
-                    pn.custom_type, pn.provenance, key, location_id + [key]
+                    pn.custom_type,
+                    pn.provenance,
+                    key,
+                    location_id + [key],
+                    state.template_substitution,
+                    state.expansion_depth,
                 )
                 for err in errs:
                     err.part = PathPart.KEY

@@ -23,7 +23,7 @@ import os
 from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
-from concept_hierarchy.errors import LocationId, LocationIdLike
+from concept_hierarchy.errors import CHSyntaxError, LocationId, LocationIdLike, PathPart
 
 
 class ConceptHierarchyDefinition:
@@ -35,9 +35,66 @@ class ConceptHierarchyDefinition:
     model_instances: str = "instances"
     model_concepts_external: str = "external"
     model_keywords: set[str] = {model_name, model_metadata, model_concepts, model_instances}
+
+    metadata_expansion_depth_limit_for_default_instantiation_expressions: str = (
+        "maxExpansionDepthForDefaultInstantiationExpressions"
+    )
+    """``metadata`` key bounding how deep nested instantiation-default expansion may go."""
+
+    default_expansion_depth_limit_for_default_instantiation_expressions: int = 1024
+    """
+    Used when the metadata does not set one. Matches the minimum depth of recursively nested template
+    instantiations that the C++ standard recommends (Annex B), and Clang's ``-ftemplate-depth`` default.
+    """
+
     default_root_concept_name: str = "Concept"
     default_value_domain_name: str = "ValueDomain"
     default_function_name: str = "Function"
+
+    def get_expansion_depth_limit_for_default_instantiation_expressions(self) -> int:
+        """
+        How many nested *default* expansions this hierarchy allows before a parse is rejected.
+
+        Materialising one instantiation default can force materialising another, and the applications it
+        generates can grow without ever repeating -- so a cycle check is not enough on its own and the
+        recursion needs a bound. Read once from ``metadata``, which is coerced to ``dict[str, str]``, so
+        the value arrives as text and has to be parsed and validated here.
+        """
+        if self._expansion_depth_limit_for_default_instantiation_expressions is not None:
+            return self._expansion_depth_limit_for_default_instantiation_expressions
+        raw = self.metadata.get(
+            ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions
+        )
+        if raw is None:
+            self._expansion_depth_limit_for_default_instantiation_expressions = (
+                ConceptHierarchyDefinition.default_expansion_depth_limit_for_default_instantiation_expressions
+            )
+            return self._expansion_depth_limit_for_default_instantiation_expressions
+        location_id = LocationId()
+        if self.file:
+            location_id.append(self.file)
+        location_id += [
+            ConceptHierarchyDefinition.model_metadata,
+            ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions,
+        ]
+        try:
+            limit = int(raw)
+        except ValueError:
+            raise CHSyntaxError(
+                f'"{ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions}" '
+                f"must be a positive integer, got {raw!r}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+            ) from None
+        if limit < 1:
+            raise CHSyntaxError(
+                f'"{ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions}" '
+                f"must be a positive integer, got {limit}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+            )
+        self._expansion_depth_limit_for_default_instantiation_expressions = limit
+        return self._expansion_depth_limit_for_default_instantiation_expressions
 
     @staticmethod
     def create_by_parser(
@@ -122,6 +179,7 @@ class ConceptHierarchyDefinition:
         via :meth:`resolved_type_alias`.
         """
         self.metadata: dict[str, str] = {}
+        self._expansion_depth_limit_for_default_instantiation_expressions: int | None = None
 
         self.domain_concepts: set[str] = set()
         self.value_domains: set[str] = set()
