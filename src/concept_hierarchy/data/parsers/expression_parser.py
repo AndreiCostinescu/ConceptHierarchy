@@ -1124,8 +1124,13 @@ def parse_expression_of_json_object(
             function_return_type, _ = substitute(
                 function_return_type,
                 f_substitution_mapping,
-                expr_template_context,
+                # `function_return_type` is written in the *Function's* context and `f_substitution_mapping`
+                # maps the Function's variables to values written in the enclosing one -- so the Function's
+                # context is `template_context_of_value`, not the other way round. Swapping them only shows
+                # when the two use different variable names, because the guard in `substitute` compares
+                # names against the mapping's keys.
                 f_template_context,
+                expr_template_context,
                 validator.get_type_template_instantiation_validator(),
                 location_id,
             )
@@ -1156,8 +1161,8 @@ def parse_expression_of_json_object(
                     f_arg_type, _ = substitute(
                         f_arg_type,
                         f_substitution_mapping,
-                        expr_template_context,
                         f_template_context,
+                        expr_template_context,
                         validator.get_type_template_instantiation_validator(),
                         location_id,
                     )
