@@ -309,6 +309,21 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
     expression, default_expr = None, node.default_expr if node.has_default else MISSING
     if node.has_default and node.parsed_default_expr is not None:
         expression = node.parsed_default_expr
+        if used_default and not expression.is_valid:
+            # The default is being *applied* here, and it does not parse -- which for a substituted schema
+            # means it does not type-check under this ground application even though it may under another.
+            # Report it only on materialisation: supplying the key instead is still perfectly valid, so
+            # failing at substitution time would reject applications that are entirely usable.
+            reason = getattr(expression.value, "reason", "the default expression is not valid")
+            err = CHSemanticError(
+                f"The default of this {node.custom_type} can not be used here: {reason}",
+                location_id,
+                part=PathPart.VALUE,
+            )
+            if hasattr(expression.value, "explanation_causes"):
+                err.causes.extend(expression.value.explanation_causes(location_id))
+            local.append(err)
+            state.record(err)
     if not used_default:
         expression, errs = state.context.parse_value_against_custom_type_expression(
             node.custom_type,
