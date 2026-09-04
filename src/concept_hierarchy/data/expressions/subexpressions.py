@@ -19,7 +19,7 @@ from enum import Enum
 from typing import Iterator
 
 from concept_hierarchy.data.expressions.expression import Expression, ExpressionValue
-from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedValue
+from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural, ParsedValue
 from concept_hierarchy.data.type_template_variables.constraint_formula import ConstraintGroup
 from concept_hierarchy.data.types.concept_hierarchy_types import ConceptHierarchyType, InstantiatedType, TypeValue
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId
@@ -43,6 +43,10 @@ class TemplateDependentExpression(ExpressionValue):
 
     @property
     def is_fully_parsed(self) -> bool:
+        """
+        Not because it is template dependent -- that is not what this property records -- but because
+        nothing was built: this class stands in for an expression the parser declined to walk into.
+        """
         return False
 
     @property
@@ -106,11 +110,12 @@ class LiteralTemplateVariableValue(TemplateDependentExpression):
         self.template_variable_name = template_variable_name
 
     @property
-    def is_value_template_dependent(self) -> bool:
-        return True
-
-    @property
     def is_fully_parsed(self) -> bool:
+        """
+        A leaf, and it was reached: the variable's name and its literal constraint are both known. What is
+        not known is its *value*, which this property does not ask about -- `is_template_dependent` does,
+        and is inherited as ``True`` here.
+        """
         return True
 
     def get_subexpressions(self) -> Iterator[Expression]:
@@ -141,6 +146,8 @@ class Variable(ExpressionValue):
 
 
 class VariableWithTemplateType(Variable, TemplateDependentExpression):
+    """A variable at a site of ground type, whose *own* type still mentions a template variable."""
+
     def __init__(self, variable_name: str, variable_type: TypeValue):
         super().__init__(variable_name, variable_type)
 
@@ -150,7 +157,11 @@ class VariableWithTemplateType(Variable, TemplateDependentExpression):
 
     @property
     def is_fully_parsed(self) -> bool:
-        return False
+        """
+        A variable reference is a leaf and this one was reached, its name resolved and its type known.
+        Whether that type fits the site is open, but this property does not ask that.
+        """
+        return True
 
 
 class PossibleVariableExpression(Variable, TemplateDependentExpression):
@@ -170,7 +181,12 @@ class PossibleVariableExpression(Variable, TemplateDependentExpression):
 
     @property
     def is_fully_parsed(self) -> bool:
-        return False
+        """
+        As for :class:`VariableWithTemplateType`: a leaf, reached, with its name and type known. What is
+        undecided is the *site's* type, so the parser could not check the variable against it -- an open
+        check, not an unbuilt leaf, and this property only reports the latter.
+        """
+        return True
 
 
 class InstancePropertyChain(Variable):
@@ -240,9 +256,20 @@ class InstExpression(ExpressionValue):
         """
         The value is template dependent if its own content is, or if any of its subexpressions is.
 
-        The content itself is template dependent when a custom-type leaf of the value was parsed against a
-        type that still mentions a template variable (``Box<T>`` rather than ``Box<Integer>``); such a leaf
-        contributes even when no expression could be parsed at it.
+        The content is template dependent in either of two ways, and both are read off the parsed value
+        rather than encoded in the class:
+
+        * a **custom-type leaf** was parsed against a type that still mentions a template variable
+          (``Box<T>`` rather than ``Box<Integer>``); such a leaf contributes even when no expression could
+          be parsed at it;
+        * a **keyword** that would have constrained one of the nodes is still written as an unsubstituted
+          literal template variable (``{"minItems": "N"}``). `jsonschema_parser` pops such a keyword out of
+          the schema, so the Draft-07 validator never saw it and the value passed that node unchecked -- it
+          is undecided in exactly the same sense as the leaf above, and invisible unless the schema node is
+          asked.
+
+        Only the nodes the parse actually visited are walked, so an ``anyOf`` branch the value never entered
+        holds anything against it.
 
         Values that *denote* a type -- a TypeValue or a ConceptValue -- are deliberately not inspected: the
         schema does not substitute those, so a template variable written there is not a template argument
@@ -253,24 +280,39 @@ class InstExpression(ExpressionValue):
         """
         if self.value is None:
             return False
-        content_is_template_dependent = any(
-            value_node.custom_type.depends_on_templates
-            for value_node in self.value.walk()
-            if isinstance(value_node, ParsedCustomValue)
-        )
-        return content_is_template_dependent or any(
-            expression.is_value_template_dependent for _, expression in self.value.iter_expressions()
-        )
+        for value_node in self.value.walk():
+            if isinstance(value_node, ParsedCustomValue):
+                if value_node.custom_type.depends_on_templates:
+                    return True
+            else:
+                assert isinstance(value_node, ParsedStructural)
+                if value_node.schema_node is not None and value_node.schema_node.undecided_literal_keywords_for(
+                    value_node.value
+                ):
+                    return True
+        return any(expression.is_value_template_dependent for _, expression in self.value.iter_expressions())
 
     @property
     def is_fully_parsed(self) -> bool:
-        """A value of None (a default-serialization expression) has nothing left to parse."""
+        """
+        Whether every custom-type leaf of this value was walked through to an expression, recursively.
+
+        A leaf with **no** expression counts against this. It used to be skipped, which read as "nothing to
+        check here" but means the opposite: a leaf with no expression is precisely a leaf the walk did not
+        finish, and it is exactly how an unresolved default site looks
+        (see :meth:`ParsedValue.unresolved_default_sites`).
+
+        Nothing here consults template dependence; :attr:`is_template_dependent` is the property for that.
+
+        A value of ``None`` (a default-serialization expression) has no leaves to walk.
+        """
         if self.value is None:
             return True
         for value_node in self.value.walk():
-            if isinstance(value_node, ParsedCustomValue):
-                if value_node.expression is not None and not value_node.expression.is_fully_parsed:
-                    return False
+            if isinstance(value_node, ParsedCustomValue) and (
+                value_node.expression is None or not value_node.expression.is_fully_parsed
+            ):
+                return False
         return True
 
     def get_subexpressions(self) -> Iterator[Expression]:

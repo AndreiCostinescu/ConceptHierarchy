@@ -38,12 +38,23 @@ class ExpressionValue(ABC):
     @abstractmethod
     def is_fully_parsed(self) -> bool:
         """
-        An expression can be not fully parsed if its type is a template variable:
-         - not a TemplateDependentType instance, a TemplateVariable instance
-         - e.g. Sequence<T> can be parsed as a sequence, but its individual elements (of type T) can not be parsed
-        IllFormedExpressions are considered fully parsed (even if
+        Whether the parser walked through to every leaf of this expression and built one.
 
-        :return:
+        That is the whole of it. **Template dependence is not recorded here at all** -- an expression can be
+        walked to the end and still be waiting on a template argument, and this property says nothing about
+        that. :attr:`is_template_dependent` is the property for that question, and neither implies the
+        other:
+
+        * a `FunctionEvaluation` of ``Add<T>`` whose arguments all parsed: every leaf was reached, and ``T``
+          is still open -- fully parsed *and* template dependent;
+        * a value holding an unresolved default site: nothing about it depends on a template, but a leaf has
+          no expression -- template independent *and* not fully parsed.
+
+        So anything deciding "can this be reused without reparsing?" has to ask both.
+
+        ``False`` therefore means one thing only: somewhere a leaf was left without an expression. That
+        happens when the parser could not decide an alternative and recorded a placeholder instead, and it
+        is why an :class:`IllFormedExpression` is not fully parsed -- parsing is what failed.
         """
 
     @property
