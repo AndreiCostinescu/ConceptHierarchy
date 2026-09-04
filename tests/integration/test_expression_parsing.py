@@ -24,7 +24,7 @@ parsed expressions back out of the places the checker stores them.
 
 Expressions are parsed in two places today (``expression_checks.check_expressions_in_concept_hierarchy``):
 
-- **Function default argument values** -- stored in ``FunctionData.evaluation_argument_default_value``;
+- **Function default argument values** -- stored in ``FunctionData.evaluation_argument_default_value_expressions``;
   read with :func:`function_default_expressions`.
 - **ValueDomain instantiation defaults** -- stored in ``CHSchemaNode.default_expr``, replaced in place;
   read with :func:`instantiation_default_expressions`.
@@ -145,7 +145,7 @@ def function_default_expressions(context: ConceptHierarchyContext, function_name
     assert function_name in context.model.functions, (
         f"{function_name!r} is not a Function of this hierarchy; available: {sorted(context.model.functions)}"
     )
-    return dict(context.model.functions[function_name].evaluation_argument_default_value)
+    return dict(context.model.functions[function_name].evaluation_argument_default_value_expressions)
 
 
 _SCHEMA_STRUCTURE_KEYWORDS = frozenset({"instantiation", "properties", "items", "type", "default", "oneOf", "anyOf"})

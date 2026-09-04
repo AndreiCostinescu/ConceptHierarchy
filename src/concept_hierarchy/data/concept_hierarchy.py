@@ -102,7 +102,15 @@ class FunctionData(ValueDomainData):
     evaluation_argument_types: frozendict[str, TypeValue]
     evaluation_argument_access_type: frozendict[str, FunctionArgumentAccessor]
     evaluation_argument_provenance_type: frozendict[str, FunctionArgumentProvenance]
-    evaluation_argument_default_value: frozendict[str, Expression]
+    evaluation_default_arguments: frozenset[str]
+    """
+    The whole collection of default arguments (also inherited ones from parent Functions).
+    Needed separately from `evaluation_argument_default_value_expressions`.
+    Because during parsing of expressions, the list of a Function's default arguments is needed.
+    So keep this `evaluation_default_arguments` member, and then, during expression parsing, 
+    populate the `evaluation_argument_default_value_expressions` member.
+    """
+    evaluation_argument_default_value_expressions: frozendict[str, Expression]
     evaluation_result_type: TypeValue | None
     evaluation_result_access_type: FunctionResultAccessor | None
     evaluation_result_provenance_type: ValueDomainArgumentProvenance | None

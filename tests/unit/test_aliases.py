@@ -702,7 +702,7 @@ class TestVariableAliases:
         name that was written and takes the canonical variable's type.
         """
         context = check_concepts(COUNTDOWN, instances={"origin": 5, "start": "origin"})
-        expression = context.model.functions["Countdown"].evaluation_argument_default_value["from"]
+        expression = context.model.functions["Countdown"].evaluation_argument_default_value_expressions["from"]
         assert isinstance(expression.value, Variable)
         assert expression.unparsed == "start"
         assert str(expression.value.value_type) == "Integer"

@@ -40,7 +40,6 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
 )
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
 from concept_hierarchy.data.validators.type_validator import parse_convert_type, parse_convert_type_in_template_context
-from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.errors import ConceptHierarchyError, LocationId
 
 
@@ -244,9 +243,7 @@ class ExpressionValidator(ExpressionParserValidator):
     def get_required_function_arguments(self, f_name) -> set[str]:
         assert f_name in self.context.model.functions
         f = self.context.model.functions[f_name]
-        f_def = self.context.ch.concepts[f_name]
-        assert isinstance(f_def, FunctionDefinition)
-        return set(f.evaluation_argument_types) - set(f_def.evaluation_argument_default_values)
+        return set(f.evaluation_argument_types) - set(f.evaluation_default_arguments)
 
     def get_function_argument_interface(
         self, f_name, f_arg_name

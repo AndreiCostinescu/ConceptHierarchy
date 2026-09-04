@@ -17,8 +17,8 @@ Integration tests: substituting a ground type application into an instantiation 
 
 A ValueDomain's instantiation schema is written in terms of its own template variables, so nothing in it
 is decided until a ground application picks values for them. ``expression_parser.substitute_schema``
-substitutes those values into every custom-type node, and ``resolve_substituted_defaults`` then re-parses
-every ``default`` against the substituted type -- re-parses rather than rewrites, because an expression's
+substitutes those values into every custom-type node, and ``resolve_substituted_defaults`` then reparses
+every ``default`` against the substituted type -- reparses rather than rewrites, because an expression's
 shape is decided by its type.
 
 **A template variable can be named in more places than the default's own type**, and that is what these
@@ -752,7 +752,7 @@ class TestFunctionDefaultArgumentsAreNotSubstitutedYet:
         context = check_concepts(
             {**function_with_default("Add2", {"arg2": 3}), **uses_feval("Add2<Integer>", {"arg1": 1})}
         )
-        declared = context.model.functions["Add2"].evaluation_argument_default_value["arg2"]
+        declared = context.model.functions["Add2"].evaluation_argument_default_value_expressions["arg2"]
         assert declared.is_value_template_dependent, "with T unbound the default can not be resolved yet"
 
     def test_an_unsupplied_argument_is_not_materialised_at_the_call_site(self):

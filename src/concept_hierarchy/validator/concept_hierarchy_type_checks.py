@@ -482,13 +482,16 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         function_evaluation_argument_provenance[f_eval_arg_name] = FunctionArgumentProvenance(
             c.evaluation_argument_provenance_types[f_eval_arg_name]
         )
-    # merge with arguments of parent Function(s) (but don't merge default argument expressions!)
+    # merge with arguments of parent Function(s) and collect all default arguments (not their expressions)
+    all_default_arguments: set[str] = set(c.evaluation_argument_default_values.keys())
     for p_name in c.parents:
         if p_name not in context.ch.functions:
             continue
         p = context.ch.concepts[p_name]
         assert isinstance(p, FunctionDefinition)
         p_model = context.model.functions[p_name]
+        assert isinstance(p_model, FunctionData)
+        all_default_arguments.update(p_model.evaluation_default_arguments)
         for f_eval_arg_name in c.evaluation_argument_types:
             assert f_eval_arg_name not in p_model.evaluation_argument_types, (
                 f"There shouldn't be an argument with a duplicate name {f_eval_arg_name} defined in {c.name}"
@@ -497,6 +500,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
         function_evaluation_argument_provenance.update(p_model.evaluation_argument_provenance_type)
         function_evaluation_argument_access.update(p_model.evaluation_argument_access_type)
 
+    datum.evaluation_default_arguments = frozenset(all_default_arguments)
     datum.evaluation_argument_types = frozendict(function_evaluation_argument_types)
     datum.evaluation_argument_access_type = frozendict(function_evaluation_argument_access)
     datum.evaluation_argument_provenance_type = frozendict(function_evaluation_argument_provenance)

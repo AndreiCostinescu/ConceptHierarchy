@@ -872,7 +872,7 @@ class TestSiblingResolutionOrder:
         pass repairs exactly one site and the whole chain takes as many passes as there are sites.
 
         Every one of them is finite, so the hierarchy must be accepted. This is also the shape that makes
-        the retry expensive -- it costs O(sites^2) re-parses -- which is why the guard wants replacing with
+        the retry expensive -- it costs O(sites^2) reparses -- which is why the guard wants replacing with
         a path-aware one rather than leaving the retry to sort it out.
         """
         sites = 8

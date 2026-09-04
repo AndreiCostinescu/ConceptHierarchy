@@ -219,14 +219,14 @@ def init_expressions(context: ConceptHierarchyContext):
             if p_name not in context.ch.functions:
                 continue
             assert isinstance(p_model, FunctionData)
-            for default_arg_name, default_arg_expr in p_model.evaluation_argument_default_value.items():
+            for default_arg_name, default_arg_expr in p_model.evaluation_argument_default_value_expressions.items():
                 if default_arg_name not in all_default_argument_values:
                     all_default_argument_values[default_arg_name] = default_arg_expr
                     assert default_arg_name not in default_argument_dependencies
                     default_argument_dependencies[default_arg_name] = p_model.default_argument_dependencies.get(
                         default_arg_name, set()
                     )
-        c.evaluation_argument_default_value = frozendict(all_default_argument_values)
+        c.evaluation_argument_default_value_expressions = frozendict(all_default_argument_values)
         c.default_argument_dependencies = frozendict(
             {x: frozenset(y) for x, y in default_argument_dependencies.items()}
         )

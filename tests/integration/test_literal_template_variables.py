@@ -38,7 +38,7 @@ lives in the site's type application instead. The conversion itself is covered b
 ``tests/unit/test_literal_value_conversion.py``.
 
 No rewrite of a parsed tree could do that -- the two are different classes reached through different
-branches -- which is why substitution re-parses. See ``TODO_DEFAULT_EXPANSION_CYCLES.md`` §4.2.
+branches -- which is why substitution reparses. See ``TODO_DEFAULT_EXPANSION_CYCLES.md`` §4.2.
 
 The four sorts are ``boolean`` / ``integer`` / ``number`` / ``string``; their literal forms are ``true`` /
 ``false``, ``-7``, ``3.5`` and ``"quoted"``.
