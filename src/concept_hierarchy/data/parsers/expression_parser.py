@@ -566,10 +566,12 @@ def _parse_syntax_of_expression(
     # A literal template variable stands for a value, not a type, so it is substituted in the JSON itself
     # and then interpreted from scratch -- under `N := 3` the string "N" *becomes* the literal 3, and the
     # expression changes class from LiteralTemplateVariableValue to InstExpression.
+    value_is_a_substituted_literal = False
     if template_substitution is not None and isinstance(json_value, str):
         substituted_literal: ConceptHierarchyTemplateArgument | None = template_substitution.get(json_value)
         if isinstance(substituted_literal, LiteralValue):
             json_value = substituted_literal.convert_to_value()
+            value_is_a_substituted_literal = True
 
     assert isinstance(expr_type, TYPE_VALUE_IS_INSTANCE_CHECK)
     if isinstance(expr_type, (ConceptHierarchyVariadicGroup, LiteralValue, ExpandedVariadicTemplateVariable)):
@@ -626,6 +628,7 @@ def _parse_syntax_of_expression(
             ensure_unmodified_json_value,
             template_substitution,
             expansion_depth,
+            value_is_a_substituted_literal,
         )
         ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
         assert isinstance(expr_type, TemplateVariable) or len(expr_value_res) == 1
@@ -689,6 +692,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
     ensure_unmodified_json_value: Callable[[object, bool, bool], None],
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
+    value_is_a_substituted_literal: bool = False,
 ) -> list[ExpressionValue]:
     expressions_res: list[ExpressionValue] = []
     attempts: list[ExpressionAttempt] = []
@@ -739,7 +743,14 @@ def _parse_syntax_of_expression_with_instantiated_type(
 
         ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
     # check Var expression
-    if isinstance(json_value, str):
+    #
+    # A string that came from substituting a literal template variable is skipped here: it is a *value*,
+    # and the alternatives below all interpret a string as a *name*. Letting them run means a string
+    # literal whose text happens to match something in scope stops being that string -- `H<"one">` with a
+    # variable `one` around parses as that variable, taking its type with it, and a dotted literal like
+    # `"a.b"` is read as an instance property chain. A literal is classified by what it *is*, so only the
+    # instantiation and defaultSerialization alternatives below apply to it.
+    if isinstance(json_value, str) and not value_is_a_substituted_literal:
         assert expressions_res == []
         # Prioritize variables over template variables if there is a name clash!
         if validator.is_variable(json_value):
@@ -863,7 +874,15 @@ def _parse_syntax_of_expression_with_instantiated_type(
                     return [IllFormedExpression(reason, tuple(attempts))]
 
     # check Inst expression (abstract Types do not have instantiation schemas)
-    if isinstance(expr_type, TemplateVariable):
+    #
+    # Skipped for a substituted literal, like the name alternatives above: a literal template argument is
+    # recognised *only* by defaultSerialization. Letting it match an instantiation schema as well would
+    # make the same literal mean different things at different sites -- `"s:hello"` would be a `String`
+    # built from String's schema at one site and a defaultSerialized `String` at another -- and would give
+    # a literal a structural reading it was never meant to have.
+    if value_is_a_substituted_literal:
+        pass
+    elif isinstance(expr_type, TemplateVariable):
         expressions_res.append(PossibleInstExpression())
     else:
         inst_res = _check_instantiation_schema(
