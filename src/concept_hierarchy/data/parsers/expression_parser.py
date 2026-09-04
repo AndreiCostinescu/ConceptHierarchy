@@ -294,6 +294,61 @@ def build_template_substitution(
     }
 
 
+LITERAL_KEYWORD_FIELDS: frozendict[str, str] = frozendict(
+    {
+        "min_properties_def": "minProperties",
+        "max_properties_def": "maxProperties",
+        "min_length_def": "minLength",
+        "max_length_def": "maxLength",
+        "min_items_def": "minItems",
+        "max_items_def": "maxItems",
+        "minimum_def": "minimum",
+        "maximum_def": "maximum",
+        "exclusive_minimum_def": "exclusiveMinimum",
+        "exclusive_maximum_def": "exclusiveMaximum",
+        "multiple_of_def": "multipleOf",
+    }
+)
+"""
+The `CHSchemaNode` fields holding a keyword written as a literal template variable, and the JSON Schema
+keyword each one came from.
+
+`jsonschema_parser` **pops** these keywords out of the schema when their value is the name of a literal
+template variable -- ``{"minItems": "N"}`` -- because a Draft-07 validator cannot be handed a name where it
+expects a number. Until they are put back, they constrain nothing at all.
+"""
+
+
+def _substitute_literal_keywords(
+    node: CHSchemaNode, template_substitution: dict[str, ConceptHierarchyTemplateArgument]
+) -> CHSchemaNode:
+    """
+    Put a keyword that was written as a literal template variable back into the schema, now that its value
+    is known.
+
+    ``node`` must already be a copy -- the caller hands one over -- so the declaration is never written to.
+
+    A keyword the mapping does not cover is left as it is: a partial substitution has not decided it yet,
+    and the field is what records that it is still waiting. Only the value being *known* moves it into
+    `shallow_canonical`, which is what `parse_value` hands to the Draft-07 validator.
+    """
+    for field_name, keyword in LITERAL_KEYWORD_FIELDS.items():
+        declared = getattr(node, field_name)
+        if declared is None:
+            continue
+        substituted = template_substitution.get(declared)
+        if not isinstance(substituted, LiteralValue):
+            continue
+        value = substituted.convert_to_value()
+        setattr(node, field_name, None)
+        node.extra_keywords[keyword] = value
+        # Only a custom-type node or a boolean schema gets a non-dict `shallow_canonical`, and neither can
+        # carry one of these keywords -- `jsonschema_parser` returns before the keyword loop for both.
+        assert isinstance(node.shallow_canonical, dict), f"{node.location_id} has no keyword dict to write to"
+        node.shallow_canonical[keyword] = value
+    return node
+
+
 def substitute_schema(
     instantiation_schema: CHSchemaNode,
     template_context_of_concept: TemplateContext,
@@ -303,12 +358,13 @@ def substitute_schema(
 ) -> CHSchemaNode:
     """
     The instantiation schema of ``expr_type``'s concept, with ``expr_type``'s template arguments
-    substituted into the type of every custom-type node.
+    substituted into the type of every custom-type node **and** into every keyword that was written as a
+    literal template variable (``{"minItems": "N"}``).
 
-    Types only. Grounding the ``default`` *expressions* of the result is
+    Types and literal keywords only. Grounding the ``default`` *expressions* of the result is
     :func:`resolve_substituted_defaults`, which is a separate step because it re-enters the expression
     parser -- it must be driven from `_check_instantiation_schema`, where it can be bounded and (in
-    stage 2) memoised per application, rather than from the middle of a schema walk.
+    stage 2) memoized per application, rather than from the middle of a schema walk.
 
     Returns ``instantiation_schema`` itself when there is nothing to substitute, so callers must not
     mutate the result without checking that a substitution actually happened.
@@ -321,8 +377,12 @@ def substitute_schema(
         if node.is_boolean_schema:
             return node
         if not node.is_custom_type:
-            return node.apply(_parse_and_substitute)
+            # `apply` returns a copy with copied containers, so writing the keywords into it is safe.
+            return _substitute_literal_keywords(node.apply(_parse_and_substitute), template_substitution)
         assert node.custom_type is not None
+        # No literal keywords here: `jsonschema_parser` builds a custom-type node in
+        # `_finish_custom_type_node`, which never reaches the keyword loop in `_finish_builtin_node`, so
+        # such a node carries no `*_def` field to substitute.
         res = copy(node)
         # substitute
         subst_res = substitute_template_variables_in_value(
