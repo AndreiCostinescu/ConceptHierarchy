@@ -574,6 +574,27 @@ def get_arg_str_formula_str_and_sub_location_id(
     return arg_str, formula_str, sub_location_id
 
 
+def _handle_template_variable(
+    t_arg: TemplateVariable, formula: NonStructureConstraintFormula, state: _State, sub_location_id: LocationId
+) -> None:
+    assert state.template_context.original.has_template_variable(t_arg.clean_name), (
+        f"{t_arg.full_name} is not a template variable of the context it is written in "
+        f"({list(sorted(state.template_context.original.variables))})"
+    )
+    if state.template_context.determined is None:
+        state.template_context.determined = TemplateContext(
+            state.template_context.original.variables,
+            state.template_context.original.variadic_variables,
+            state.template_context.original.create_unconstrained_except_with_constraint_at_name(
+                sub_location_id, t_arg.clean_name, formula
+            ),
+        )
+    else:
+        state.template_context.determined.set_constraint(
+            state.template_context.determined.add_and_constraint_to(t_arg.clean_name, formula, sub_location_id)
+        )
+
+
 def _validate_type(
     formula: TemplateConstraintHierarchyOperator, t_arg: ConceptHierarchyTemplateArgument, state: _State
 ):
@@ -624,21 +645,7 @@ def _validate_type(
     if isinstance(t_arg, TemplateVariable):
         if not state.in_variadic_context and isinstance(t_arg, ExpandedVariadicTemplateVariable):
             raise RuntimeError(f"Shouldn't use the expanded operator in non variadic context: {t_arg}!")
-        assert state.template_context.original.has_template_variable(t_arg.clean_name)
-        if state.template_context.determined is None:
-            state.template_context.determined = TemplateContext(
-                state.template_context.original.variables,
-                state.template_context.original.variadic_variables,
-                state.template_context.original.create_unconstrained_except_with_constraint_at_name(
-                    sub_location_id, t_arg.clean_name, check_formula
-                ),
-            )
-        else:
-            state.template_context.determined.set_constraint(
-                state.template_context.determined.add_and_constraint_to(
-                    t_arg.clean_name, check_formula, sub_location_id
-                )
-            )
+        _handle_template_variable(t_arg, check_formula, state, sub_location_id)
         return
     assert isinstance(t_arg, ConceptHierarchyType)
     if formula_names_context_template_variable:
@@ -793,19 +800,7 @@ def _validate_literal(
             state.errors.append(err)
         return
     if isinstance(t_arg, TemplateVariable):
-        assert state.template_context.original.has_template_variable(t_arg)
-        if state.template_context.determined is None:
-            state.template_context.determined = TemplateContext(
-                state.template_context.original.variables,
-                state.template_context.original.variadic_variables,
-                state.template_context.original.create_unconstrained_except_with_constraint_at_name(
-                    sub_location_id, t_arg.clean_name, formula
-                ),
-            )
-        else:
-            state.template_context.determined.set_constraint(
-                state.template_context.determined.add_and_constraint_to(t_arg.clean_name, formula, sub_location_id)
-            )
+        _handle_template_variable(t_arg, formula, state, sub_location_id)
         return
     assert isinstance(t_arg, LiteralValue)
     if not f_check(formula, t_arg) and state.collect_all_errors:
