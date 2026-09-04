@@ -41,7 +41,6 @@ from concept_hierarchy.definitions.concept_definition_functions import FunctionD
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
-from concept_hierarchy.definitions.definition import DefinitionInsideConceptHierarchy
 from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
 from concept_hierarchy.definitions.utils import check_ch_name
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError, LocationId, PathPart
@@ -182,24 +181,6 @@ class ConceptHierarchyChecker:
     def ch(self) -> ConceptHierarchyDefinition:
         return self.model.ch
 
-    @staticmethod
-    def resolve_aliases(
-        aliases: dict[str, DefinitionInsideConceptHierarchy], defined_data: dict, location_id: LocationId
-    ) -> dict[str, str]:
-        """
-        Map each alias name to the **canonical** entry it names, following chains and rejecting cycles.
-
-        Nothing is copied and no entry is added to ``defined_data``: an alias is a name, not an entity.
-        Resolving all the way to the canonical name rather than to the next link means that a later lookup
-        never has to walk a chain.
-        """
-        mapped_data = ConceptHierarchyChecker.check_cycles_in_references_based_on_defined(
-            aliases, defined_data, location_id
-        )
-        resolved = {alias_name: mapped_data[alias_name] for alias_name in aliases}
-        assert all(target is not None for target in resolved.values())
-        return resolved
-
     def check_structure(self):
         if self.ch.checked:
             return
@@ -297,7 +278,7 @@ class ConceptHierarchyChecker:
                 self.ch.concept_aliases[alias_name] = self.ch.canonical_concept_name(target.clean_name)
         # An alias is a name, so the name it stands for has to be the one every derived structure is keyed
         # by -- starting with `parents`, which the topological sort below reads.
-        for concept_def in defined_concepts.values():
+        for concept_def in defined_concepts.values():  # type: ConceptDefinition
             concept_def.canonicalize_concept_references(self.ch.canonical_concept_name)
 
         # -- instances (optional: default {}) --------------------------------
@@ -322,7 +303,9 @@ class ConceptHierarchyChecker:
                 variable_definition.is_reference_to = None
                 defined_instances[variable_name] = variable_definition
         # the same graph, for the kind whose targets are always plain names
-        variable_alias_dependencies = {name: (a.is_reference_to,) for name, a in variable_aliases.items()}
+        variable_alias_dependencies: dict[str, tuple[str]] = {
+            name: (a.is_reference_to,) for name, a in variable_aliases.items()
+        }
         for alias_name in self.order_aliases(variable_alias_dependencies, defined_instances, instances_location_id):
             self.ch.variable_aliases[alias_name] = self.ch.canonical_variable_name(
                 variable_aliases[alias_name].is_reference_to
