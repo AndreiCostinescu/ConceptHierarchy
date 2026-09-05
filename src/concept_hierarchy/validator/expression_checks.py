@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Iterator
+
 from concept_hierarchy.data.concept_hierarchy import (
     DomainConceptData,
     FunctionData,
@@ -23,14 +25,14 @@ from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, Tem
 from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import FunctionArgumentAccessor, FunctionArgumentProvenance
-from concept_hierarchy.data.expressions.subexpressions import IllFormedExpression, Variable
+from concept_hierarchy.data.expressions.subexpressions import FunctionEvaluation, IllFormedExpression, Variable
 from concept_hierarchy.data.parsers.expression_parser import get_expression_type, parse_expression
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, frozendict
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
-from concept_hierarchy.errors import CHSemanticError, PathPart
+from concept_hierarchy.errors import CHSemanticError, LocationId, PathPart
 
 
 def invalid_expression_error(expr: Expression, location_id) -> CHSemanticError:
@@ -309,13 +311,114 @@ def init_expressions(context: ConceptHierarchyContext):
         context.reset_template_context()
 
 
-def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
-    context.set_template_context(TemplateContext())
-    context.set_variable_context(VariableContext([]))
+def expression_dependencies(expression: Expression) -> Iterator[Expression]:
+    """
+    Everything ``expression`` really depends on: its sub-expressions, **plus** the defaults a Function
+    evaluation applied for the arguments its call site left out.
 
-    init_expressions(context)
+    `FunctionEvaluation.applied_defaults` is deliberately not yielded from `get_subexpressions` -- putting
+    it there fabricates edges in `FunctionData.default_argument_dependencies`, whose scan filters the names
+    it finds against one Function's arguments and would import a nested evaluation's (see the field's own
+    documentation). A traversal that wants them therefore has to add them itself, and this is that
+    traversal.
+    """
+    yield from expression.value.get_subexpressions()
+    if isinstance(expression.value, FunctionEvaluation):
+        yield from expression.value.applied_defaults.values()
 
-    # 1. process global variable expressions (aliases are already processed; process expressions of canonical variables)
+
+def is_a_custom_function_global_variable(context: ConceptHierarchyContext, global_variable_name: str) -> bool:
+    """
+    Whether a global variable holds a `CustomFunction`, which is the one exception to §1 below.
+
+    Such a variable's value is a *procedure*, and a procedure that names the variable it is stored in is
+    ordinary recursion -- `animal_kingdom.json`'s ``factorial`` is exactly that -- rather than a value whose
+    initialisation needs itself. These are never put on the resolution path and never descended into, so the
+    check can only fail to fire on them, never fire wrongly.
+    """
+    validator = context.expression_parser_validator
+    custom_function = DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions
+    if not validator.is_concept(custom_function):
+        # `CustomFunction` is a concept of the standard prelude rather than of the language, so a hierarchy
+        # is free not to define it -- and then no global can hold one.
+        return False
+    custom_function_type = validator.create_instantiated_type(custom_function, LocationId())
+    value_type = context.model.instances[global_variable_name].value_type
+    return validator.is_a_subtype_of_b(value_type, custom_function_type, LocationId())
+
+
+def find_recursive_global_variable_initialisation(
+    context: ConceptHierarchyContext, expression: Expression, chain: list[str]
+) -> list[str] | None:
+    """
+    Walk a global variable's value looking for a reference back to one whose value ``chain`` is determining.
+
+    ``chain`` is both the answer being built and the resolution path: a global is on the path exactly while
+    it is an entry of it, so there is no second structure to keep in step with it and nothing to clear when
+    a global's turn ends. It starts as the one global `check_global_variable_expressions` is resolving.
+
+    The reference is found by `expression_dependencies`, which is what makes this see the cases neither
+    existing graph does: the alias graph has an edge only where a variable's value *is* a bare name, and the
+    sibling-argument graph has one only between arguments of one Function -- so ``v = {"Loopy": {}}`` with
+    ``Loopy.x`` defaulting to ``v`` is an edge of neither, and is a genuine infinite regress.
+
+    A reference closes the cycle when it resolved **at the global scope** and its **canonical** name is on
+    the path. Both halves are needed: a Function argument or a nested call can introduce the same name in a
+    frame above the globals, and an alias is a second name for one variable. Neither is spelled by the name
+    alone, which is why `Variable.scope_index` is recorded at every usage and why the name is canonicalized here.
+
+    A reference to some *other* global is not itself a cycle, but the cycle may run through it, so its value
+    is walked in turn with its name appended -- which is what catches a cycle spanning two globals whatever
+    order they are declared in. A global this pass has not parsed yet has no value to walk; it walks the
+    other way round when its own turn comes, and by then both are parsed. The walk terminates because a
+    global already on the chain is returned rather than descended into, so no name is ever appended twice.
+
+    :return: the chain of global variable names closing the cycle, its last entry being the repeated one,
+        or ``None`` if the value is well-founded.
+    """
+    to_visit = [expression]
+    existing_chain_set: set[str] = set(chain)
+    """optimization variable: process once to speed up the `in existing_chain_set` check"""
+    while to_visit:
+        current = to_visit.pop()
+        value = current.value
+        if isinstance(value, Variable) and value.is_global_variable:
+            referenced_name = context.ch.canonical_variable_name(value.variable_name)
+            if referenced_name in existing_chain_set:
+                return chain + [referenced_name]
+            referenced = context.model.instances[referenced_name]
+            if referenced.is_value_initialized() and not is_a_custom_function_global_variable(context, referenced_name):
+                found = find_recursive_global_variable_initialisation(
+                    context, referenced.value, chain + [referenced_name]
+                )
+                if found is not None:
+                    return found
+        to_visit.extend(expression_dependencies(current))
+    return None
+
+
+def check_global_variable_expressions(context: ConceptHierarchyContext) -> None:
+    """
+    Parse the value expression of every global variable, and reject one that can not be determined.
+
+    Aliases need nothing here: an alias is a second *name* for a variable rather than a second variable, so
+    `ch.instances` holds only canonical entries and each is parsed once.
+
+    Two things are checked beyond the parse succeeding, and neither subsumes the other:
+
+    * **the value is decided** -- `is_value_template_dependent` is ``False`` and `is_fully_parsed` is
+      ``True``. There is no application still to come that could settle it, since the parse happens in the
+      empty template context, and no "materialise it, or supply the key instead" alternative of the kind
+      that makes an undecided instantiation *default* legitimate. Vacuous on every hierarchy today, and
+      cheap: what it buys is that a later change can not silently store a global nothing can read.
+    * **the value does not need itself** -- `find_recursive_global_variable_initialisation`. The invariant
+      above does not see this, because the recursion runs through an argument the call site never *wrote*
+      and `FunctionEvaluation.is_fully_parsed` quantifies over the ones it did: ``all([])`` is ``True``.
+
+    The resolution path lives in the ``chain`` handed to that walk and nowhere else -- there is no state
+    here that outlives one global, and nothing is written to the validator, which is an interface another
+    implementation is free to satisfy differently.
+    """
     global_template_context = TemplateContext()
     context.set_template_context(global_template_context)
     for global_variable_name, global_variable_definition in context.ch.instances.items():
@@ -335,8 +438,39 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         if not parsed_expr.is_valid:
             assert isinstance(parsed_expr.value, IllFormedExpression)
             raise invalid_expression_error(parsed_expr, expression_location)
+        if parsed_expr.is_value_template_dependent or not parsed_expr.is_fully_parsed:
+            raise CHSemanticError(
+                f"The value of the global variable {global_variable_name!r} is not decided: it is "
+                f"{'template dependent' if parsed_expr.is_value_template_dependent else 'only partially parsed'}"
+                f", and nothing later can decide it."
+                f"\n\tgot {definition_value!r}",
+                location_id=expression_location,
+                part=PathPart.VALUE,
+            )
+        # A `CustomFunction` global is the one kind whose value may name itself, so it is the one kind that
+        # never goes on the path -- see `is_a_custom_function_global_variable`.
+        if not is_a_custom_function_global_variable(context, global_variable_name):
+            cycle = find_recursive_global_variable_initialisation(context, parsed_expr, [global_variable_name])
+            if cycle is not None:
+                raise CHSemanticError(
+                    f"The global variable {cycle[-1]!r} can never be initialised: determining its value "
+                    f"requires determining it again."
+                    f"\n\tThe dependency runs {' -> '.join(cycle)}.",
+                    location_id=expression_location,
+                    part=PathPart.VALUE,
+                )
         global_variable.value = parsed_expr
     context.reset_template_context()
+
+
+def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
+    context.set_template_context(TemplateContext())
+    context.set_variable_context(VariableContext([]))
+
+    init_expressions(context)  # this mutates context to contain in its variable context all the global variables
+
+    # 1. process global variable expressions
+    check_global_variable_expressions(context)
 
     # 2. reprocess Function default argument expressions
     for c_name, c in context.model.functions.items():
