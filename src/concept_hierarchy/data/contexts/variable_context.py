@@ -128,12 +128,27 @@ class VariableContext:
                 return True
         return False
 
-    def get(self, var_name: str) -> TypeValue:
-        for frame in reversed(self.stack_frames):
-            if var_name in frame.variables:
-                return frame.get(var_name)
+    def resolve(self, var_name: str) -> tuple[TypeValue, int]:
+        """
+        The variable's type **and the index of the frame it was found in**, searching from the top down.
+
+        The index is what separates a global from a local: a name is only a global variable if it resolves
+        at `GLOBAL_VARIABLE_SCOPE_INDEX`. The same name can be introduced by a Function's arguments, or by a
+        nested call's, and those shadow the global -- so "does this expression mention the global `v`?"
+        cannot be answered by comparing names alone.
+        """
+        for index in reversed(range(len(self.stack_frames))):
+            if var_name in self.stack_frames[index].variables:
+                return self.stack_frames[index].get(var_name), index
         assert not self.has_variable(var_name)
         raise RuntimeError(f"Variable {var_name} not in scope:\n{self}")
+
+    def get(self, var_name: str) -> TypeValue:
+        return self.resolve(var_name)[0]
+
+    def frame_index_of(self, var_name: str) -> int:
+        """The frame `var_name` resolves in; see :meth:`resolve`."""
+        return self.resolve(var_name)[1]
 
     def set_inferred_type_for(
         self, var_name: str, inferred_value_domain: TypeValue, allow_new_variables: bool = False

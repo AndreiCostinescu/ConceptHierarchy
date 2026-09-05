@@ -145,6 +145,15 @@ class ExpressionParserValidator(ABC):
         pass
 
     @abstractmethod
+    def get_variable_scope_index(self, variable_name: str) -> int:
+        """
+        The index of the variable stack frame ``variable_name`` resolves in; 0 is the global variables.
+
+        Every `Variable` records it, because the name alone does not say which variable it is: a Function's
+        arguments and a nested call's introduce names above the globals and shadow them.
+        """
+
+    @abstractmethod
     def is_type_abstract(self, candidate_type: InstantiatedType | TemplateDependentType) -> bool:
         pass
 
@@ -866,13 +875,14 @@ def _parse_syntax_of_expression_with_instantiated_type(
                     f"expression {json_value!r}"
                 )
             var_type = validator.get_variable_type(json_value)
+            var_scope = validator.get_variable_scope_index(json_value)
             if not isinstance(expr_type, InstantiatedType):
-                return [PossibleVariableExpression(json_value, var_type)]
+                return [PossibleVariableExpression(json_value, var_type, scope_index=var_scope)]
             elif isinstance(var_type, TemplateDependent):
-                return [VariableWithTemplateType(json_value, var_type)]
+                return [VariableWithTemplateType(json_value, var_type, scope_index=var_scope)]
             assert isinstance(var_type, InstantiatedType), f"{var_type} of type {str(type(var_type))}"
             if _check_if_subtype(validator, var_type, expr_type, expr_template_context, location_id):
-                return [Variable(json_value, var_type, var_type != expr_type)]
+                return [Variable(json_value, var_type, var_type != expr_type, scope_index=var_scope)]
             else:
                 reason = f"Type {var_type} of variable {json_value} is not a subtype of {expr_type}!"
                 attempts.append(ExpressionAttempt(ExpressionKind.VARIABLE, reason, tried_type=var_type))
@@ -907,6 +917,8 @@ def _parse_syntax_of_expression_with_instantiated_type(
             if len(possible_instance_property_chain) > 1 and validator.is_variable(possible_instance_property_chain[0]):
                 # Validate that the instance property chain is actually a property chain.
                 types_in_property_chain = [validator.get_variable_type(possible_instance_property_chain[0])]
+                # The chain is rooted at its first name, so that is the reference whose scope it has.
+                var_scope = validator.get_variable_scope_index(possible_instance_property_chain[0])
                 for prop in possible_instance_property_chain[1:]:
                     # The below raises a CHSemanticError if:
                     #  - instance_type is not a subtype of InstanceBase
@@ -916,13 +928,14 @@ def _parse_syntax_of_expression_with_instantiated_type(
                 var_type = types_in_property_chain[-1]
                 assert isinstance(var_type, InstantiatedType)
                 if isinstance(expr_type, TemplateDependent):
-                    return [PossibleVariableExpression(json_value, var_type)]
+                    return [PossibleVariableExpression(json_value, var_type, scope_index=var_scope)]
                 if _check_if_subtype(validator, var_type, expr_type, expr_template_context, location_id):
                     return [
                         InstancePropertyChain(
                             possible_instance_property_chain,
                             types_in_property_chain,
                             var_type != expr_type,
+                            scope_index=var_scope,
                         )
                     ]
                 else:

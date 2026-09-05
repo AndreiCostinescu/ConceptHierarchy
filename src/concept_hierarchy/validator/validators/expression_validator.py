@@ -95,6 +95,9 @@ class ExpressionValidator(ExpressionParserValidator):
         # concept function sharing a global variable's name is rejected in `check_after_parsing_concepts`.
         return self.context.variable_context.get(self.context.ch.canonical_variable_name(variable_name))
 
+    def get_variable_scope_index(self, variable_name: str) -> int:
+        return self.context.variable_context.frame_index_of(self.context.ch.canonical_variable_name(variable_name))
+
     def is_type_abstract(self, candidate_type: InstantiatedType | TemplateDependentType) -> bool:
         return not self.context.model.value_domains[candidate_type.clean_name].instantiable
 

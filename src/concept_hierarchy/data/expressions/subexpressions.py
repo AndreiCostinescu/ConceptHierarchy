@@ -124,9 +124,30 @@ class LiteralTemplateVariableValue(TemplateDependentExpression):
 
 
 class Variable(ExpressionValue):
-    def __init__(self, variable_name: str, variable_type: TypeValue, is_strict_subtype: bool | None = None):
+    def __init__(
+        self,
+        variable_name: str,
+        variable_type: TypeValue,
+        is_strict_subtype: bool | None = None,
+        *,
+        scope_index: int,
+    ):
         super().__init__(value_type=variable_type, is_strict_subtype=is_strict_subtype)
         self.variable_name = variable_name
+
+        self.scope_index = scope_index
+        """
+        The index of the variable stack frame this name resolved in, 0 being the global variables.
+
+        Recorded at every usage because the name alone does not identify the variable: a Function's
+        arguments, and a nested call's, introduce names into scopes above the globals and shadow them. Only
+        a reference that resolved at `GLOBAL_VARIABLE_SCOPE_INDEX` is a reference to the global.
+        """
+
+    @property
+    def is_global_variable(self) -> bool:
+        """Whether this reference resolved to a global variable rather than to something more local."""
+        return self.scope_index == 0
 
     @property
     def variable_type(self) -> TypeValue:
@@ -148,8 +169,8 @@ class Variable(ExpressionValue):
 class VariableWithTemplateType(Variable, TemplateDependentExpression):
     """A variable at a site of ground type, whose *own* type still mentions a template variable."""
 
-    def __init__(self, variable_name: str, variable_type: TypeValue):
-        super().__init__(variable_name, variable_type)
+    def __init__(self, variable_name: str, variable_type: TypeValue, *, scope_index: int):
+        super().__init__(variable_name, variable_type, scope_index=scope_index)
 
     @property
     def is_template_dependent(self) -> bool:
@@ -172,8 +193,8 @@ class PossibleVariableExpression(Variable, TemplateDependentExpression):
         a template variable or a template-dependent instantiation
     """
 
-    def __init__(self, variable_name: str, variable_type: TypeValue):
-        super().__init__(variable_name, variable_type)
+    def __init__(self, variable_name: str, variable_type: TypeValue, *, scope_index: int):
+        super().__init__(variable_name, variable_type, scope_index=scope_index)
 
     @property
     def is_template_dependent(self) -> bool:
@@ -195,6 +216,8 @@ class InstancePropertyChain(Variable):
         instance_prop_chain: list[str],
         instance_prop_chain_types: list[InstantiatedType],
         is_strict_subtype: bool | None = None,
+        *,
+        scope_index: int,
     ):
         if len(instance_prop_chain) == 0:
             raise RuntimeError("Can not have an empty instance property chain!")
@@ -202,7 +225,9 @@ class InstancePropertyChain(Variable):
             raise RuntimeError(
                 "Tried to create a single-element property chain; please create a Variable expression instead!"
             )
-        super().__init__(instance_prop_chain[0], instance_prop_chain_types[-1], is_strict_subtype)
+        super().__init__(
+            instance_prop_chain[0], instance_prop_chain_types[-1], is_strict_subtype, scope_index=scope_index
+        )
         self.prop_chain = instance_prop_chain
         self.prop_chain_types = instance_prop_chain_types
 
