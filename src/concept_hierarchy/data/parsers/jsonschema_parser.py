@@ -58,6 +58,7 @@ from concept_hierarchy.data.jsonschema.parsed_schema import (
     CHSchemaNode,
     CrossSchemaReference,
     CustomConceptDataConstraint,
+    find_reference_cycle,
 )
 from concept_hierarchy.data.parsers.string_parser import StringParser
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
@@ -255,6 +256,7 @@ def parse_schema(
             location_id = []
         node = _build_node(schema, location_id, state, allow_x_as_template_variable=False)
         _resolve_local_refs(node, state)
+        _report_reference_cycle(node, state)
         _check_meta_schema(node, state)
     except StopValidation:
         pass
@@ -1025,6 +1027,33 @@ def parse_cross_schema_reference(written: str) -> tuple[CrossSchemaReference | N
             written=written,
         ),
         None,
+    )
+
+
+def describe_reference_cycle(cycle: list[CHSchemaNode]) -> str:
+    """The chain of a reference cycle, by the location of each schema on it."""
+    return " -> ".join(str(node.location_id) for node in cycle)
+
+
+def _report_reference_cycle(root: CHSchemaNode, state: _State) -> None:
+    """
+    Reject a schema that applies to a value by applying to the same value again -- see
+    `find_reference_cycle`.
+
+    Diagnosed here rather than left to happen: without it the parse re-enters the same node forever and
+    the failure arrives as "Ran out of stack while parsing this expression", naming the *value* being
+    parsed and nothing at all about the schema that cannot be satisfied.
+    """
+    cycle = find_reference_cycle(root)
+    if cycle is None:
+        return
+    state.record(
+        CHSemanticError(
+            f"The schema at {cycle[0].location_id} can never be applied: applying it requires applying it "
+            f"again, with none of the value consumed in between."
+            f"\n\tThe cycle runs {describe_reference_cycle(cycle)}.",
+            location_id=cycle[0].location_id,
+        )
     )
 
 

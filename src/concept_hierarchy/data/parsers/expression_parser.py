@@ -52,8 +52,8 @@ from concept_hierarchy.data.expressions.subexpressions import (
     VerifiedTemplateDependentExpression,
 )
 from concept_hierarchy.data.jsonschema import CHSchemaNode
-from concept_hierarchy.data.jsonschema.parsed_schema import LITERAL_KEYWORD_FIELDS
-from concept_hierarchy.data.parsers.jsonschema_parser import resolve_schema_pointer
+from concept_hierarchy.data.jsonschema.parsed_schema import LITERAL_KEYWORD_FIELDS, find_reference_cycle
+from concept_hierarchy.data.parsers.jsonschema_parser import describe_reference_cycle, resolve_schema_pointer
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     HierarchyCheckType,
@@ -588,6 +588,7 @@ def build_resolved_instantiation_schema(
     # complete already, since only the *defaults* are still outstanding.
     validator.put_resolved_instantiation_schema(cache_key, resolved)
     bind_cross_schema_references(resolved, validator, location_id, expansion_depth)
+    _report_cross_schema_reference_cycle(resolved, location_id)
 
     # Registered, not resolved. A default is parsed the first time something materialises it, which is
     # what makes "already being resolved" (a cycle) distinguishable from "not resolved yet" (merely not
@@ -631,6 +632,33 @@ def resolved_instantiation_schema_of(
         location_id,
         cache_key,
         expansion_depth,
+    )
+
+
+def _report_cross_schema_reference_cycle(resolved: CHSchemaNode, location_id: LocationId) -> None:
+    """
+    The same well-formedness rule as `_report_reference_cycle`, once the ``#ch#`` references are bound.
+
+    `parse_schema` runs that check on one schema in isolation, which is everything it can see: a
+    cross-schema reference has no target until the application it names is resolved. So the check runs a
+    second time here, over the same edge relation, now that `ref_resolved` is filled in on both kinds --
+    and it is the *outer* build that sees a mutual pair whole, since the inner one ran while this tree's
+    own references were still unbound.
+
+    A cycle that crosses schemas is no more satisfiable than one inside a single schema: ``A``'s ``allOf``
+    reaching ``B`` whose ``allOf`` reaches ``A`` again applies both to the same value forever. It is
+    distinct from the *reference resolution* cycle the memo already handles, which is about building the
+    schemas rather than applying them.
+    """
+    cycle = find_reference_cycle(resolved)
+    if cycle is None:
+        return
+    raise CHSemanticError(
+        f"The schema at {cycle[0].location_id} can never be applied: applying it requires applying it "
+        f"again, with none of the value consumed in between."
+        f"\n\tThe cycle runs {describe_reference_cycle(cycle)}.",
+        location_id=location_id,
+        part=PathPart.VALUE,
     )
 
 

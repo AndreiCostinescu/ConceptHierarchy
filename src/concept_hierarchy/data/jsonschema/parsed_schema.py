@@ -125,6 +125,77 @@ def json_type_family_of(value: object) -> str | None:
     return None
 
 
+NON_VALUE_CONSUMING_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "not", "if", "then", "else", "dependencies"})
+"""
+The keywords whose subschemas are applied to the **same** value the parent was applied to.
+
+`value_instantiation_parser` descends into these without moving through the value, so a cycle among them
+never terminates. Every other subschema-bearing keyword -- ``properties``, ``patternProperties``,
+``additionalProperties``, ``propertyNames``, ``items``, ``additionalItems``, ``contains`` -- consumes a
+step of value structure, which is finite, so recursion through those is ordinary and legitimate.
+
+``definitions``/``$defs`` is absent on purpose, and is not merely "consuming": the parser never descends
+into it at all. A definition is reached only by a ``$ref``, and that edge is followed explicitly below.
+"""
+
+
+def non_value_consuming_children(node: CHSchemaNode) -> Iterator[CHSchemaNode]:
+    """
+    The schemas ``node`` hands the same value on to, which is the edge relation of :func:`find_reference_cycle`.
+
+    Mirrors `value_instantiation_parser._parse` exactly, including that a ``$ref`` node has **only** the
+    one edge: that function returns the reference's result outright and never looks at the node's other
+    keywords, so modelling them here would invent edges the parser cannot take.
+    """
+    if node.ref_resolved is not None:
+        yield node.ref_resolved
+        return
+    for path, child in node.iter_children():
+        if path[0] in NON_VALUE_CONSUMING_KEYWORDS:
+            yield child
+
+
+def find_reference_cycle(root: CHSchemaNode) -> list[CHSchemaNode] | None:
+    """
+    A cycle among the schemas that are applied to one value without any of it being consumed, or ``None``.
+
+    Such a cycle describes no value and cannot be parsed against: the parser re-enters the same node with
+    the same value forever. Left undetected it surfaces as "Ran out of stack", which arrives far from the
+    schema at fault and says nothing about it.
+
+    Every node is an entry point, not only the root, so a cycle that sits inside an unreferenced ``$defs``
+    entry is still reported -- it is ill-formed whether or not anything happens to point at it yet.
+
+    :return: the nodes of the cycle, the first repeated one appearing at both ends, or ``None``.
+    """
+    IN_PROGRESS, DONE = 0, 1
+    status: dict[int, int] = {}
+    path: list[CHSchemaNode] = []
+
+    def visit(node: CHSchemaNode) -> list[CHSchemaNode] | None:
+        state = status.get(id(node))
+        if state == DONE:
+            return None
+        if state == IN_PROGRESS:
+            start = next(index for index, on_path in enumerate(path) if on_path is node)
+            return path[start:] + [node]
+        status[id(node)] = IN_PROGRESS
+        path.append(node)
+        for child in non_value_consuming_children(node):
+            found = visit(child)
+            if found is not None:
+                return found
+        path.pop()
+        status[id(node)] = DONE
+        return None
+
+    for node in root.walk():
+        found = visit(node)
+        if found is not None:
+            return found
+    return None
+
+
 @dataclass
 class CHSchemaNode:
     # --- provenance -------------------------------------------------

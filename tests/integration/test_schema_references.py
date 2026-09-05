@@ -760,3 +760,140 @@ class TestConsumeUntilUnnested:
     def test_an_unbalanced_closer_does_not_make_the_depth_negative(self):
         """A malformed type is the type parser's to report; the scanner must not compound it."""
         assert self._scan("A>B/rest") == ("A>B", "/rest")
+
+
+# ==================================================================================================
+# 10. A schema that applies to a value by applying to the same value again
+# ==================================================================================================
+
+
+def cycle_rejection(concepts: dict, instances: dict | None = None) -> str:
+    """
+    The hierarchy must be rejected, and rejected *as a diagnosed cycle*.
+
+    The distinction is the point. Every one of these used to arrive as "Ran out of stack while parsing
+    this expression", which names the value being parsed and says nothing about the schema that cannot be
+    satisfied -- and which a bare ``raises`` would accept just as happily.
+    """
+    text = rejection(concepts, instances)
+    assert "can never be applied" in text, f"expected a diagnosed cycle, got: {text[:400]}"
+    assert "Ran out of stack" not in text, "the cycle must be diagnosed, not left to the interpreter"
+    assert "levels deep" not in text, "the cycle must be diagnosed, not left to the depth bound"
+    return text
+
+
+def with_defs(defs: dict, pointer: str = "#/$defs/a", name: str = "V") -> dict:
+    return vd(name, {"type": "object", "properties": {"w": {"$ref": pointer}}, "required": ["w"], "$defs": defs})
+
+
+class TestNonConsumingReferenceCyclesAreRejected:
+    """
+    A cycle among schemas applied to the *same* value describes no value at all.
+
+    The edge relation is the one `value_instantiation_parser` documents: the keywords that hand the value
+    straight on -- ``allOf``, ``anyOf``, ``oneOf``, ``not``, ``if``/``then``/``else``, ``dependencies`` --
+    plus ``$ref`` itself. A cycle among those re-enters the same node with the same value forever.
+    """
+
+    def test_a_reference_to_itself(self):
+        cycle_rejection({**LEAF, **with_defs({"a": {"$ref": "#/$defs/a"}})}, {"p": {"V": {"w": 1}}})
+
+    def test_a_two_step_reference_cycle(self):
+        defs = {"a": {"$ref": "#/$defs/b"}, "b": {"$ref": "#/$defs/a"}}
+        cycle_rejection({**LEAF, **with_defs(defs)}, {"p": {"V": {"w": 1}}})
+
+    @pytest.mark.parametrize("keyword", ["allOf", "anyOf", "oneOf"])
+    def test_a_cycle_through_a_composition_keyword(self, keyword):
+        cycle_rejection({**LEAF, **with_defs({"a": {keyword: [{"$ref": "#/$defs/a"}]}})}, {"p": {"V": {"w": 1}}})
+
+    def test_a_cycle_through_if_then(self):
+        defs = {"a": {"if": {"type": "object"}, "then": {"$ref": "#/$defs/a"}}}
+        cycle_rejection({**LEAF, **with_defs(defs)}, {"p": {"V": {"w": 1}}})
+
+    def test_the_diagnosis_names_the_schema_and_the_chain(self):
+        text = cycle_rejection({**LEAF, **with_defs({"a": {"$ref": "#/$defs/a"}})}, {"p": {"V": {"w": 1}}})
+        assert '"$defs": "a"' in text, "the schema at fault must be located"
+        assert "The cycle runs" in text, "and the chain that closes on it named"
+
+    def test_it_is_reported_even_when_nothing_points_at_it(self):
+        """
+        A definition is ill-formed whether or not anything happens to reference it yet, and reporting it
+        only on use would let it sit until some later hierarchy reached it.
+        """
+        defs = {"a": {"type": "Leaf"}, "unused": {"$ref": "#/$defs/unused"}}
+        cycle_rejection({**LEAF, **with_defs(defs)}, {"p": {"V": {"w": {}}}})
+
+
+class TestRecursionThatConsumesValueIsAccepted:
+    """
+    The passing guards, and they are what make the rule a rule rather than a ban on recursion.
+
+    A reference under ``properties`` or ``items`` steps through the value before it comes back round, and
+    the value is finite -- so the recursion terminates. Rejecting these would outlaw every recursive
+    schema, which is most of the point of ``$ref``.
+    """
+
+    def test_a_reference_under_properties(self):
+        defs = {"a": {"type": "object", "properties": {"c": {"$ref": "#/$defs/a"}}}}
+        check_quietly({**LEAF, **with_defs(defs)}, {"p": {"V": {"w": {}}}})
+
+    def test_a_reference_under_items(self):
+        defs = {"a": {"type": "array", "items": {"$ref": "#/$defs/a"}}}
+        check_quietly({**LEAF, **with_defs(defs)}, {"p": {"V": {"w": []}}})
+
+    def test_a_nested_recursive_value_still_parses(self):
+        """Not merely accepted at definition time: a value that actually recurses must parse."""
+        defs = {"a": {"type": "object", "properties": {"c": {"$ref": "#/$defs/a"}}}}
+        check_quietly({**LEAF, **with_defs(defs)}, {"p": {"V": {"w": {"c": {"c": {}}}}}})
+
+    def test_a_chain_of_references_that_ends(self):
+        defs = {"a": {"$ref": "#/$defs/b"}, "b": {"type": "Leaf"}}
+        check_quietly({**LEAF, **with_defs(defs)}, {"p": {"V": {"w": {}}}})
+
+
+class TestCrossSchemaCyclesAreRejectedToo:
+    """
+    The same rule once ``#ch#`` references are bound, which `parse_schema` cannot see: a cross-schema
+    reference has no target until the application it names is resolved.
+
+    Distinct from the reference-*resolution* cycle the memo already handles -- that one is about building
+    the schemas, this one about applying them.
+    """
+
+    def test_two_schemas_whose_all_of_reach_each_other(self):
+        a = vd(
+            "A",
+            {
+                "type": "object",
+                "properties": {"a": {"$ref": "#/$defs/x"}},
+                "$defs": {"x": {"allOf": [{"$ref": "#ch#/B/#/$defs/y"}]}},
+            },
+        )
+        b = vd(
+            "B",
+            {
+                "type": "object",
+                "properties": {"b": {"type": "Integer"}},
+                "$defs": {"y": {"allOf": [{"$ref": "#ch#/A/#/$defs/x"}]}},
+            },
+        )
+        cycle_rejection({**LEAF, **a, **b}, {"p": {"A": {"a": 1}}})
+
+    def test_two_schemas_referencing_each_other_directly(self):
+        c = vd(
+            "C",
+            {
+                "type": "object",
+                "properties": {"a": {"$ref": "#/$defs/x"}},
+                "$defs": {"x": {"$ref": "#ch#/D/#/$defs/y"}},
+            },
+        )
+        d = vd(
+            "D",
+            {
+                "type": "object",
+                "properties": {"b": {"type": "Integer"}},
+                "$defs": {"y": {"$ref": "#ch#/C/#/$defs/x"}},
+            },
+        )
+        cycle_rejection({**LEAF, **c, **d}, {"p": {"C": {"a": 1}}})
