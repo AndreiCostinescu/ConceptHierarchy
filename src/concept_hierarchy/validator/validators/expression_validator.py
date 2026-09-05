@@ -172,6 +172,7 @@ class ExpressionValidator(ExpressionParserValidator):
         schema: CHSchemaNode,
         value: object,
         location_id: LocationId,
+        template_context: TemplateContext,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
@@ -179,6 +180,7 @@ class ExpressionValidator(ExpressionParserValidator):
             value,
             schema,
             self.context.instantiation_values_validator,
+            template_context,
             location_id,
             template_substitution,
             expansion_depth,

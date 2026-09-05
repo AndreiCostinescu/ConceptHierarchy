@@ -84,6 +84,7 @@ from typing import Callable
 
 from jsonschema import Draft7Validator
 
+from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural, ParsedValue
@@ -116,6 +117,7 @@ class ValueInstantiationContext(ABC):
         provenance: ExpressionProvenance,
         value: object,
         location_id: LocationId,
+        template_context: TemplateContext,
         template_substitution: dict | None,
         expansion_depth: int,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
@@ -129,6 +131,44 @@ class ValueInstantiationContext(ABC):
         Returns:
             ``(expression, errors)``.  ``expression`` is ``None`` when parsing failed; ``errors`` lists *every* problem
             found, not just the first.
+        """
+
+    @abstractmethod
+    def parse_function_evaluation(
+        self,
+        function_name: str,
+        arguments: object,
+        schema_node: CHSchemaNode,
+        location_id: LocationId,
+        template_context: TemplateContext,
+        template_substitution: dict | None,
+        expansion_depth: int,
+    ) -> tuple[ParsedValue | None, list[ConceptHierarchyError]]:
+        """Parse ``{function_name: arguments}`` as a **Function evaluation**, which is the only thing it
+        may be.
+
+        ``location_id`` is the location of the **object**, i.e. of ``{function_name: arguments}`` -- not of
+        the arguments. That is the convention the expression parser uses wherever a single-key object is
+        parsed, and it is what makes ``location_id + [function_name]`` the arguments and
+        ``location_id + [function_name, <argument>]`` one of them. Passing the arguments' own location
+        instead spells the key twice.
+
+        This is what ``"properties": "args"`` means: the legal keys of ``arguments`` are the Function's
+        arguments, which only the Function's interface knows, so the schema cannot spell them and this
+        module cannot check them.  Everything that makes an evaluation well-formed is decided here --
+        the argument expressions, the required arguments, the grounding of the defaults the site leaves
+        unsupplied, and the acyclicity of the dependencies between those defaults.
+
+        A single method rather than the pieces to rebuild it with: the alternative is exporting the
+        expression parser's type resolution and template substitution through this interface and
+        reimplementing the evaluation logic on top of them, which is the same coupling with more of it.
+
+        Returns:
+            ``(parsed, errors)``, in the shape of `parse_value_against_custom_type_expression`.  ``parsed``
+            is ``None`` when the value is not a valid evaluation -- including when ``function_name`` does
+            not name a Function at all, which is an error *here* though it is merely another alternative
+            to the expression parser.  **Errors are returned, never raised**: this runs inside ``anyOf`` /
+            ``oneOf`` trial branches, whose errors must be able to be discarded with the branch.
         """
 
     @abstractmethod
@@ -173,6 +213,7 @@ class _State:
     """
 
     context: ValueInstantiationContext
+    template_context: TemplateContext
     errors: list[ConceptHierarchyError] = field(default_factory=list)
     collect_all_errors: bool = True
     template_substitution: dict | None = None
@@ -186,7 +227,7 @@ class _State:
 
     def silent(self) -> _State:
         """A substate whose errors are collected in full and do not escape."""
-        return _State(self.context, [], True, self.template_substitution, self.expansion_depth)
+        return replace(self, errors=[], collect_all_errors=True)
 
     def new_state(self, upper_level_object_key: str | None = None) -> _State:
         return replace(self, upper_level_object_key=upper_level_object_key)
@@ -201,6 +242,7 @@ def parse_value(
     value: object,
     node: CHSchemaNode,
     context: ValueInstantiationContext,
+    template_context: TemplateContext,
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
@@ -212,6 +254,8 @@ def parse_value(
         value: The Python object to parse (JSON-decoded).
         node: Schema AST from ``parse_schema``, which should itself have parsed without errors.
         context: Handles custom-type leaves.
+        template_context: The template context in which this value (and especially the used template variables in it)
+            is to be interpreted/parsed.
         location_id: Starting location in the Concept Hierarchy (``[]`` at the root).
         collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
         template_substitution: If not ``None``, stores the mapping of template parameters that could have been used
@@ -227,7 +271,7 @@ def parse_value(
     if location_id is None:
         location_id = []
 
-    state = _State(context, [], collect_all_errors, template_substitution, expansion_depth)
+    state = _State(context, template_context, [], collect_all_errors, template_substitution, expansion_depth)
     result: ParsedValue | None = None
     try:
         result = _parse(node, value, True, location_id, state)
@@ -245,6 +289,7 @@ def validate_value(
     value: object,
     node: CHSchemaNode,
     context: ValueInstantiationContext,
+    template_context: TemplateContext,
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
@@ -255,7 +300,7 @@ def validate_value(
     This performs the full parse; it is not cheaper.
     """
     _, errors = parse_value(
-        value, node, context, location_id, template_substitution, expansion_depth, collect_all_errors
+        value, node, context, template_context, location_id, template_substitution, expansion_depth, collect_all_errors
     )
     return errors
 
@@ -366,6 +411,7 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             node.provenance,
             value,
             location_id,
+            state.template_context,
             state.template_substitution,
             state.expansion_depth,
         )
@@ -483,7 +529,7 @@ def _parse_object(
     # process "properties": "args"
     if node.custom_object_properties is not None:
         if node.custom_object_properties == "args":
-            _parse_evaluation_arguments_of_function(node, value, location_id, structural, rec, state)
+            _parse_evaluation_arguments_of_function(node, value, location_id, structural, matched_keys, rec, state)
         else:
             raise RuntimeError(
                 f'Unknown custom_object_properties "{node.custom_object_properties}" that was correctly parsed?!'
@@ -542,6 +588,7 @@ def _parse_object(
                     pn.provenance,
                     key,
                     location_id + [key],
+                    state.template_context,
                     state.template_substitution,
                     state.expansion_depth,
                 )
@@ -579,12 +626,45 @@ def _parse_evaluation_arguments_of_function(
     value: dict,
     location_id: LocationId,
     structural: ParsedStructural,
+    matched_keys: set[str],
     rec: Callable[[ConceptHierarchyError], None],
     state: _State,
 ):
+    """
+    Handle ``"properties": "args"``: the object being parsed is a Function evaluation's argument list.
+
+    **Every key is claimed, whatever the outcome.** ``"properties": "args"`` stands in for a ``properties``
+    block that only the Function's interface could have written, so it owes `_parse_object` the same thing a
+    ``properties`` block owes it -- the set of keys it accounts for -- or the ``additionalProperties: false``
+    beside it rejects each argument in turn. Claiming them on failure too is deliberate: the evaluation
+    parser has already said what is wrong, and it names the Function and the argument, which
+    "Additional property is not allowed" does not.
+
+    Claiming *all* of them is exact rather than approximate: an argument the Function does not have makes
+    the evaluation ill-formed, so a value that parses has none, and a value, that does not, has an error of its own.
+    """
     if state.upper_level_object_key is None:
         raise RuntimeError('Can\'t happen that an "args" argument is specified in a non-object key')
-    print(f"Validating function arguments of function: {state.upper_level_object_key}...")
+    matched_keys.update(value)
+    # The location of the *object* the key belongs to, not of the arguments. This node is reached through
+    # `additionalProperties`, so `location_id` already ends with the Function name -- and the evaluation
+    # parser appends the key itself, to the convention every expression caller uses. Handing it the
+    # location it is standing on spelled the key twice: `.../procedure/Condition/Condition/condition`.
+    assert location_id and str(location_id[-1]) == state.upper_level_object_key, (location_id, state)
+    parsed, errors = state.context.parse_function_evaluation(
+        state.upper_level_object_key,
+        value,
+        node,
+        location_id[:-1],
+        state.template_context,
+        state.template_substitution,
+        state.expansion_depth,
+    )
+    for error in errors:
+        rec(error)  # may raise StopValidation in fail-fast mode
+    if parsed is not None:
+        # One entry, keyed by the Function name -- see `ParsedStructural.custom_expressions`.
+        structural.custom_expressions[state.upper_level_object_key] = [("args", parsed)]
 
 
 # ===========================================================================================================

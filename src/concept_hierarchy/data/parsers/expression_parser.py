@@ -211,11 +211,14 @@ class ExpressionParserValidator(ABC):
         schema: CHSchemaNode,
         value: object,
         location_id: LocationId,
+        template_context: TemplateContext,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
         """
         Parse ``value`` against ``schema``, returning the result tree **and** the authoritative error list.
+
+        ``template_context`` is the template context in which this value is to be interpreted/parsed.
 
         ``template_substitution`` is the *caller's* mapping, not this schema's: ``value`` is text from the
         enclosing expression, so it names the enclosing concept's template variables however many schemas
@@ -1308,7 +1311,12 @@ def _check_instantiation_schema(
         # The *caller's* mapping, not `own_substitution`: `expr_value` is text from the enclosing
         # expression and names the enclosing concept's variables.
         parsed, errors = validator.validate_value_against_schema(
-            substituted_schema_to_match, expr_value, location_id, template_substitution, expansion_depth
+            substituted_schema_to_match,
+            expr_value,
+            location_id,
+            expr_template_context,
+            template_substitution,
+            expansion_depth,
         )
         groups.append(ConstraintGroupAttempt(type_application_constraint, matched=True, errors=tuple(errors)))
         return InstantiationSearch(parsed, tuple(errors), tuple(groups))
