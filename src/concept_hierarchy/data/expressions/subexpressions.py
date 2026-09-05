@@ -263,7 +263,7 @@ class FunctionEvaluation(ExpressionValue):
         What each argument the call site left out fell back on, grounded for *this* application.
 
         A **second** field rather than entries in :attr:`arguments`, and that is not tidiness.
-        `parse_expression_of_json_object` derives ``supplied_arguments = set(f_args)`` from `arguments`, so a
+        `_parse_expression_of_json_object` derives ``supplied_arguments = set(f_args)`` from `arguments`, so a
         default recorded there would make the acyclicity check believe every argument was supplied and skip
         the graph exactly where it is needed. Keeping the two apart lets an evaluation record what it depends
         on without lying about what was written.

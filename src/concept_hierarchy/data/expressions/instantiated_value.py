@@ -194,6 +194,15 @@ class ParsedStructural(ParsedValue):
     properties_parsed: dict[str, ParsedValue] = field(default_factory=dict)
     pattern_properties_parsed: dict[str, list[tuple[str, ParsedValue]]] = field(default_factory=dict)
     additional_properties_parsed: dict[str, ParsedValue] = field(default_factory=dict)
+    custom_expressions: dict[str, list[tuple[str | int, ParsedValue]]] = field(default_factory=dict)
+    """
+    Used to store the parsed values produced by 
+    `\"properties\": \"args\"` and `\"properties\": [(\"props\", \"x\", True), (\"funcs\", \"x\", False)]`.
+    
+    Data structure is: "key_in_JSON_object": [(discriminator, ParsedValue), (discriminator, ParsedValue), ...]
+    discriminator is either "args" or the index of the constraint in `custom_concept_data_constraints`.
+    If discriminator is args, then the whole list should have only one element
+    """
 
     # array structure
     items_parsed: list[ParsedValue | None] = field(default_factory=list)

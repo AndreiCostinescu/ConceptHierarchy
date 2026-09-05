@@ -179,7 +179,7 @@ class TestFailuresAreReportedAtTheRightPlace:
 
 
 class TestMessagesThatAreAlreadyGood:
-    """These are raised directly by `parse_expression_of_json_object` and are already specific."""
+    """These are raised directly by `_parse_expression_of_json_object` and are already specific."""
 
     def test_unknown_function_argument_names_it_and_the_alternatives(self):
         value = {"Add<Integer>": {"nope": 1}}

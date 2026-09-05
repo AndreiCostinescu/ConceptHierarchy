@@ -869,7 +869,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
 
         if is_concept_hierarchy_expression:
             expressions_res.extend(
-                parse_expression_of_json_object(
+                _parse_expression_of_json_object(
                     key,
                     value,
                     expr_type,
@@ -1527,22 +1527,67 @@ def _rejected_default(
     return IllFormedExpression(reason, tuple(attempts))
 
 
-def parse_expression_of_json_object(
+def _check_function_return(
+    f_type: TypeValue,
+    expr_type: TypeValue,
+    validator: ExpressionParserValidator,
+    f_template_context: TemplateContext,
+    expr_template_context: TemplateContext,
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument],
+    location_id: LocationId,
+) -> tuple[TypeValue | None, bool | None, bool | None, bool]:
+    function_return = validator.get_function_return_interface(f_type.clean_name)
+    if function_return is None and expr_type is not None:
+        raise CHSemanticError(
+            f"Function {f_type.full_name} does not return anything; expected a return type of {expr_type}!",
+            location_id=location_id + [f_type.full_name],
+            part=PathPart.KEY,
+        )
+    if function_return is None:
+        return None, None, None, True
+
+    function_result_type = function_return[0]
+    is_result_modifiable = function_return[1] != FunctionResultAccessor.GET
+    is_result_addressable = function_return[2] == ValueDomainArgumentProvenance.ADDR
+
+    # substitute `function_return_type` with template instantiation of Function
+    function_return_type, _ = substitute(
+        function_return[0],
+        template_substitution,
+        # `function_return_type` is written in the *Function's* context and `f_substitution_mapping`
+        # maps the Function's variables to values written in the enclosing one -- so the Function's
+        # context is `template_context_of_value`, not the other way round. Swapping them only shows
+        # when the two use different variable names, because the guard in `substitute` compares
+        # names against the mapping's keys.
+        f_template_context,
+        expr_template_context,
+        validator.get_type_template_instantiation_validator(),
+        location_id,
+    )
+    assert isinstance(function_return_type, TYPE_VALUE_IS_INSTANCE_CHECK)
+    check_passed = (
+        expr_type is None
+        or isinstance(expr_type, TemplateVariable)
+        or _check_if_subtype(validator, function_return_type, expr_type, expr_template_context, location_id)
+    )
+    return function_result_type, is_result_modifiable, is_result_addressable, check_passed
+
+
+def parse_function_evaluation_expression(
     key: str,
     value: object,
-    expr_type: TypeValue,
+    expr_type: TypeValue | None,
     expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     recursively_parse: bool,
     parse_template_expressions_without_type_checks: bool,
     is_function_evaluation: bool,
-    is_function_evaluation_present: bool,
     ensure_expression_invariant: Callable[[list[ExpressionValue], TypeValue], bool | None],
     attempts: list[ExpressionAttempt],
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
-) -> list[ExpressionValue]:
+) -> tuple[list[ExpressionValue], TypeValue | None, bool]:
     expressions_res = []
 
     function_composition_type = validator.create_instantiated_type("FunctionComposition", location_id)
@@ -1567,7 +1612,7 @@ def parse_expression_of_json_object(
             reason = f'"{key}" is not a concept or a template variable of this Concept Hierarchy'
             attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason))
             attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason))
-            return expressions_res
+            return expressions_res, None, True
         raise e
     if not isinstance(key_type, TemplateVariable) and validator.is_type_abstract(key_type):
         raise CHSemanticError(
@@ -1576,186 +1621,204 @@ def parse_expression_of_json_object(
             location_id=location_id + [key],
             part=PathPart.KEY,
         )
-    function_evaluation = isinstance(expr_type, TemplateVariable) or (
-        not _check_if_subtype(validator, expr_type, function_composition_type, expr_template_context, location_id)
-        and is_function_evaluation
+    function_evaluation = (
+        expr_type is None
+        or isinstance(expr_type, TemplateVariable)
+        or (
+            not _check_if_subtype(validator, expr_type, function_composition_type, expr_template_context, location_id)
+            and is_function_evaluation
+        )
     )
     is_function_subtype = _check_if_subtype(validator, key_type, function_type, expr_template_context, location_id)
-    if function_evaluation and is_function_subtype:
-        function_return = validator.get_function_return_interface(key_type.clean_name)
-        if function_return is None:
-            raise CHSemanticError(
-                f"Function {key} does not return anything; expected a return type of {expr_type}!",
-                location_id=location_id + [key],
-                part=PathPart.KEY,
-            )
-        if not isinstance(value, dict):
-            reason = (
-                f"Function evaluation expression should have the value of the json object an other json object, "
-                f"not {value}!"
-            )
-            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
-            expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-            if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res
-        else:
-            function_return_type, function_return_access, function_return_provenance = function_return
-            is_result_addressable = function_return_provenance == ValueDomainArgumentProvenance.ADDR
+    if not function_evaluation or not is_function_subtype:
+        return expressions_res, key_type, is_function_subtype
 
-            # create substitution mapping
-            f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument] = {}
-            f_template_context: TemplateContext = validator.get_template_context(key_type.clean_name)
-            for t_arg_name, t_arg_val in zip(f_template_context.variables, key_type.template_arguments):
-                f_substitution_mapping[t_arg_name] = t_arg_val
-            # substitute `function_return_type` with template instantiation of Function
-            function_return_type, _ = substitute(
-                function_return_type,
+    if not isinstance(value, dict):
+        reason = (
+            f"Function evaluation expression should have the value of the json object an other json object, "
+            f"not {value}!"
+        )
+        attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+        return expressions_res, key_type, True
+
+    # create substitution mapping
+    f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument] = {}
+    f_template_context: TemplateContext = validator.get_template_context(key_type.clean_name)
+    for t_arg_name, t_arg_val in zip(f_template_context.variables, key_type.template_arguments):
+        f_substitution_mapping[t_arg_name] = t_arg_val
+
+    # check function result type (if any)
+    function_return_type, is_result_modifiable, is_result_addressable, function_subtype_check = _check_function_return(
+        key_type, expr_type, validator, f_template_context, expr_template_context, template_substitution, location_id
+    )
+    if not function_subtype_check:
+        reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
+        attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+        return expressions_res, key_type, True
+
+    # check function arguments
+    f_args: dict[str, Expression] = {}
+    applied_defaults: dict[str, Expression] = {}
+    if recursively_parse:
+        # verify sub-expressions + make sure that the Function arguments are actually correct ones
+        all_arguments = validator.get_function_arguments(key_type.clean_name)
+        for f_arg_name, f_arg_expr_val in value.items():
+            if not validator.is_function_argument(key_type.clean_name, f_arg_name):
+                raise CHSemanticError(
+                    f'Function {key} does not have the argument "{f_arg_name}"; only {all_arguments}',
+                    location_id=location_id,
+                    part=PathPart.KEY,
+                )
+            f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(
+                key_type.clean_name, f_arg_name
+            )
+            # substitute `f_arg_type` with template instantiation of Function
+            f_arg_type, _ = substitute(
+                f_arg_type,
                 f_substitution_mapping,
-                # `function_return_type` is written in the *Function's* context and `f_substitution_mapping`
-                # maps the Function's variables to values written in the enclosing one -- so the Function's
-                # context is `template_context_of_value`, not the other way round. Swapping them only shows
-                # when the two use different variable names, because the guard in `substitute` compares
-                # names against the mapping's keys.
                 f_template_context,
                 expr_template_context,
                 validator.get_type_template_instantiation_validator(),
                 location_id,
             )
-            assert isinstance(function_return_type, TYPE_VALUE_IS_INSTANCE_CHECK)
-            if not isinstance(expr_type, TemplateVariable) and not _check_if_subtype(
-                validator, function_return_type, expr_type, expr_template_context, location_id
-            ):
-                reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
-                attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
-                expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-                if ensure_expression_invariant(expressions_res, expr_type):
-                    return expressions_res
-            f_args: dict[str, Expression] = {}
-            applied_defaults: dict[str, Expression] = {}
-            if recursively_parse:
-                # verify sub-expressions + make sure that the Function arguments are actually correct ones
-                all_arguments = validator.get_function_arguments(key_type.clean_name)
-                for f_arg_name, f_arg_expr_val in value.items():
-                    if not validator.is_function_argument(key_type.clean_name, f_arg_name):
-                        raise CHSemanticError(
-                            f'Function {key} does not have the argument "{f_arg_name}"; only {all_arguments}',
-                            location_id=location_id,
-                            part=PathPart.KEY,
-                        )
-                    f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(
-                        key_type.clean_name, f_arg_name
-                    )
-                    # substitute `f_arg_type` with template instantiation of Function
-                    f_arg_type, _ = substitute(
-                        f_arg_type,
-                        f_substitution_mapping,
-                        f_template_context,
-                        expr_template_context,
-                        validator.get_type_template_instantiation_validator(),
-                        location_id,
-                    )
-                    assert isinstance(f_arg_type, TYPE_VALUE_IS_INSTANCE_CHECK)
-                    arg_expr = parse_expression(
-                        f_arg_expr_val,
-                        f_arg_type,
-                        f_arg_prov,
-                        f_arg_access,
-                        expr_template_context,
-                        validator,
-                        location_id + [key, f_arg_name],
-                        parse_template_expressions_without_type_checks,
-                        template_substitution,
-                        expansion_depth,
-                    )
-                    if not arg_expr.is_valid:
-                        assert isinstance(arg_expr.value, IllFormedExpression)
-                        reason = (
-                            f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid: {arg_expr.value.reason}"
-                        )
-                        attempts.append(
-                            ExpressionAttempt(
-                                ExpressionKind.FUNCTION_EVALUATION,
-                                f'argument "{f_arg_name}" is not a valid {f_arg_type} expression',
-                                tried_type=key_type,
-                                cause=arg_expr.value,
-                            )
-                        )
-                        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-                        if ensure_expression_invariant(expressions_res, expr_type):
-                            return expressions_res
-                    f_args[f_arg_name] = arg_expr
-                # verify required arguments are present
-                required_arguments: set[str] = validator.get_required_function_arguments(key_type.clean_name)
-                missing_arguments: set[str] = set(
-                    required_arg for required_arg in required_arguments if required_arg not in f_args
-                )
-                if missing_arguments:
-                    raise CHSemanticError(
-                        f"Argument(s) {missing_arguments} are missing from the Function evaluation interface of {key}!",
-                        location_id=location_id + [key],
-                        part=PathPart.VALUE,
-                    )
-                # verify that the dependencies between the remaining default arguments are not cyclic
-                supplied_arguments = set(f_args)
-                unsupplied_arguments: set[str] = all_arguments - supplied_arguments
-                default_argument_dependencies = validator.get_default_argument_dependencies(key_type.clean_name)
-                # Ground first, then check the graph. Once the application is ground, each unsupplied
-                # default has to be a valid expression *for it* -- and grounding is also the only place the
-                # complete dependency set exists, because the definition-time scan stops wherever the type
-                # stopped being decidable. Only `InstantiatedType` is ground; a call site still inside a
-                # template gets its turn when the enclosing schema is built for an application (stage 1).
-                if isinstance(key_type, InstantiatedType):
-                    grounding_res = _ground_unsupplied_argument_defaults_in_instantiated_context(
-                        key,
-                        key_type,
-                        all_arguments,
-                        unsupplied_arguments,
-                        f_substitution_mapping,
-                        f_template_context,
-                        expr_template_context,
-                        validator,
-                        location_id,
-                        attempts,
-                        expansion_depth,
-                    )
-                    default_failure, grounded_dependencies, applied_defaults = grounding_res
-                    if default_failure is not None:
-                        expressions_res.append(default_failure)
-                        if ensure_expression_invariant(expressions_res, expr_type):
-                            return expressions_res
-                    elif default_argument_dependencies is not None and grounded_dependencies:
-                        # Union rather than replacement. Grounding sees strictly more than the
-                        # definition-time scan did -- the only way it could see *less* is if substitution
-                        # turned a sibling reference into something else, which needs an argument and a
-                        # template variable of the same name, and those cannot collide (arguments start
-                        # lowercase, template variables uppercase). So the two agree today and no test can
-                        # tell the union from a replacement; it is kept because losing an edge is the
-                        # failure that matters, and the union cannot lose one if that ever changes.
-                        merged = dict(default_argument_dependencies)
-                        for argument, argument_dependencies in grounded_dependencies.items():
-                            merged[argument] = merged.get(argument, frozenset()) | argument_dependencies
-                        default_argument_dependencies = frozendict(merged)
-                if default_argument_dependencies is not None and not _validate_acyclic_default_argument_dependencies(
-                    default_argument_dependencies, supplied_arguments
-                ):
-                    raise CHSemanticError(
-                        f"The dependency graph between the remaining default arguments {unsupplied_arguments} of "
-                        f"the Function evaluation of {key} is not acyclic!",
-                        location_id=location_id + [key],
-                        part=PathPart.VALUE,
-                    )
-            expressions_res.append(
-                FunctionEvaluation(
-                    key_type,
-                    function_return_type,
-                    f_args,
-                    is_result_addressable,
-                    function_return_type != expr_type,
-                    applied_defaults,
-                )
+            assert isinstance(f_arg_type, TYPE_VALUE_IS_INSTANCE_CHECK)
+            arg_expr = parse_expression(
+                f_arg_expr_val,
+                f_arg_type,
+                f_arg_prov,
+                f_arg_access,
+                expr_template_context,
+                validator,
+                location_id + [key, f_arg_name],
+                parse_template_expressions_without_type_checks,
+                template_substitution,
+                expansion_depth,
             )
-            if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res
+            if not arg_expr.is_valid:
+                assert isinstance(arg_expr.value, IllFormedExpression)
+                reason = f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid: {arg_expr.value.reason}"
+                attempts.append(
+                    ExpressionAttempt(
+                        ExpressionKind.FUNCTION_EVALUATION,
+                        f'argument "{f_arg_name}" is not a valid {f_arg_type} expression',
+                        tried_type=key_type,
+                        cause=arg_expr.value,
+                    )
+                )
+                expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+                return expressions_res, key_type, True
+            f_args[f_arg_name] = arg_expr
+        # verify required arguments are present
+        required_arguments: set[str] = validator.get_required_function_arguments(key_type.clean_name)
+        missing_arguments: set[str] = set(
+            required_arg for required_arg in required_arguments if required_arg not in f_args
+        )
+        if missing_arguments:
+            raise CHSemanticError(
+                f"Argument(s) {missing_arguments} are missing from the Function evaluation interface of {key}!",
+                location_id=location_id + [key],
+                part=PathPart.VALUE,
+            )
+        # verify that the dependencies between the remaining default arguments are not cyclic
+        supplied_arguments = set(f_args)
+        unsupplied_arguments: set[str] = all_arguments - supplied_arguments
+        default_argument_dependencies = validator.get_default_argument_dependencies(key_type.clean_name)
+        # Ground first, then check the graph. Once the application is ground, each unsupplied
+        # default has to be a valid expression *for it* -- and grounding is also the only place the
+        # complete dependency set exists, because the definition-time scan stops wherever the type
+        # stopped being decidable. Only `InstantiatedType` is ground; a call site still inside a
+        # template gets its turn when the enclosing schema is built for an application (stage 1).
+        if isinstance(key_type, InstantiatedType):
+            grounding_res = _ground_unsupplied_argument_defaults_in_instantiated_context(
+                key,
+                key_type,
+                all_arguments,
+                unsupplied_arguments,
+                f_substitution_mapping,
+                f_template_context,
+                expr_template_context,
+                validator,
+                location_id,
+                attempts,
+                expansion_depth,
+            )
+            default_failure, grounded_dependencies, applied_defaults = grounding_res
+            if default_failure is not None:
+                expressions_res.append(default_failure)
+                if ensure_expression_invariant(expressions_res, expr_type):
+                    return expressions_res, key_type, True
+            elif default_argument_dependencies is not None and grounded_dependencies:
+                # Union rather than replacement. Grounding sees strictly more than the
+                # definition-time scan did -- the only way it could see *less* is if substitution
+                # turned a sibling reference into something else, which needs an argument and a
+                # template variable of the same name, and those cannot collide (arguments start
+                # lowercase, template variables uppercase). So the two agree today and no test can
+                # tell the union from a replacement; it is kept because losing an edge is the
+                # failure that matters, and the union cannot lose one if that ever changes.
+                merged = dict(default_argument_dependencies)
+                for argument, argument_dependencies in grounded_dependencies.items():  # type: str, frozenset[str]
+                    merged[argument] = merged.get(argument, frozenset()) | argument_dependencies
+                default_argument_dependencies = frozendict(merged)
+        if default_argument_dependencies is not None and not _validate_acyclic_default_argument_dependencies(
+            default_argument_dependencies, supplied_arguments
+        ):
+            raise CHSemanticError(
+                f"The dependency graph between the remaining default arguments {unsupplied_arguments} of "
+                f"the Function evaluation of {key} is not acyclic!",
+                location_id=location_id + [key],
+                part=PathPart.VALUE,
+            )
+
+    # is the access character not relevant here? it should be...
+    expressions_res.append(
+        FunctionEvaluation(
+            key_type,
+            function_return_type,
+            f_args,
+            is_result_addressable,
+            is_result_modifiable,
+            function_return_type != expr_type,
+            applied_defaults,
+        )
+    )
+    return expressions_res, key_type, True
+
+
+def _parse_expression_of_json_object(
+    key: str,
+    value: object,
+    expr_type: TypeValue,
+    expr_template_context: TemplateContext,
+    validator: ExpressionParserValidator,
+    location_id: LocationId,
+    recursively_parse: bool,
+    parse_template_expressions_without_type_checks: bool,
+    is_function_evaluation: bool,
+    is_function_evaluation_present: bool,
+    ensure_expression_invariant: Callable[[list[ExpressionValue], TypeValue], bool | None],
+    attempts: list[ExpressionAttempt],
+    template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
+    expansion_depth: int = 0,
+) -> list[ExpressionValue]:
+    expressions_res, key_type, is_function_subtype = parse_function_evaluation_expression(
+        key,
+        value,
+        expr_type,
+        expr_template_context,
+        validator,
+        location_id,
+        recursively_parse,
+        parse_template_expressions_without_type_checks,
+        is_function_evaluation,
+        ensure_expression_invariant,
+        attempts,
+        template_substitution,
+        expansion_depth,
+    )
+    if key_type is None or ensure_expression_invariant(expressions_res, expr_type):
+        return expressions_res
 
     if _check_if_subtype(validator, key_type, expr_type, expr_template_context, location_id):
         if is_function_evaluation_present and not is_function_subtype:
