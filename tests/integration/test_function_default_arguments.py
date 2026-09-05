@@ -41,7 +41,7 @@ import re
 
 import pytest
 
-from concept_hierarchy.data.expressions.subexpressions import FunctionEvaluation
+from concept_hierarchy.data.expressions.subexpressions import FunctionEvaluation, Variable
 from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError
 from tests.integration.test_expression_parsing import build_hierarchy, check_concepts, check_hierarchy
@@ -90,6 +90,9 @@ def add_like(name: str, defaults: dict, arg1_type: str = "T", arg2_type: str = "
     """``name<T: Numeric>(arg1: arg1_type, arg2: arg2_type) -> T`` with the given declared defaults."""
     return function(name, {"arg1": [arg1_type], "arg2": [arg2_type], "res": "T"}, defaults)
 
+
+GROUND = {"order": [], "substitution": {"FunctionReturning:T": "Integer"}}
+"""No template variables at all: everything about such a Function is decided at its declaration."""
 
 ANY_T = {"order": ["T"], "T": "ValueDomain", "substitution": {"FunctionReturning:T": "T"}}
 """An unconstrained template variable, for the Functions that must take a `String` or an `Integer`."""
@@ -385,21 +388,21 @@ class TestTheDefaultIsGroundedInTheFunctionsOwnScope:
         )
         check_hierarchy(hierarchy)
 
-    def test_the_call_sites_variables_do_not_leak_into_the_default(self):
+    def test_the_scope_is_exactly_the_globals_and_this_functions_arguments(self):
         """
-        The grounding frame is pushed on top, so a call-site variable of the same name is shadowed by the
-        Function's argument. ``arg1`` here means ``Mismatch``'s `String` argument, never the site's
-        `Integer` instance -- which is why this is still rejected.
+        Two frames, never more -- which is what "replaced, not extended" means, stated as a measurement.
+
+        `Inner`'s default names a sibling and is grounded *inside* `Outer`'s own grounding, so if the scope
+        were pushed rather than rebuilt the sibling would resolve one frame deeper for every level of
+        nesting. It resolves at 1 either way round.
         """
-        hierarchy = build_hierarchy(
-            {
-                **add_like("Mismatch", {"arg2": "arg1"}, arg1_type="String"),
-                **uses_feval("Mismatch<Integer>", {"arg1": "s:x"}),
-            },
-            instances={"arg1": {"Integer": 7}},
-        )
-        with pytest.raises(ConceptHierarchyError, match=grounding_failed("arg2", "Mismatch<Integer>")):
-            check_hierarchy(hierarchy)
+        inner = function("Inner", {"x": ["T"], "other": ["T"], "res": "T"}, {"x": "other"})
+        outer = function("Outer", {"y": ["T"], "res": "T"}, {"y": {"Inner<T>": {"other": 1}}})
+        context = check_concepts({**inner, **outer, **uses_feval("Outer<Integer>", {})})
+        grounded = grounded_defaults(context)[("Inner<Integer>", "x")].expression
+        assert grounded.value.variable_name == "other"
+        assert grounded.value.scope_index == 1, "the Function's own arguments sit directly on the globals"
+        assert grounded.value.is_global_variable is False
 
 
 SUB_ADD = {
@@ -828,3 +831,328 @@ class TestTheSiblingDependenciesAreCompletedByGrounding:
             **uses_feval("H2<Integer>", {}),
         }
         check_concepts(hierarchy)
+
+
+class TestTheSecondPassOverFunctionDefaults:
+    """
+    `init_expressions` fills each Function's `default_argument_dependencies` one Function at a time, so a
+    default parsed early can evaluate a Function the loop has not reached yet. For that one,
+    `get_default_argument_dependencies` answers ``None`` and the acyclicity check is **skipped** rather than
+    failed -- deliberately, since answering from an empty set would invent a verdict.
+
+    `check_expressions_in_concept_hierarchy` step 2 reparses those defaults once every answer exists. That
+    pass is what turns the skip into a real check, and these are the hierarchies that show it: nothing else
+    in the suite has a forward reference of this shape, so without them the pass looks like a duplicate of
+    the parse in `init_expressions` and invites deletion.
+    """
+
+    def _pair(self, order: str) -> dict:
+        """``User``'s default evaluates ``Cyclic``, whose own two defaults name each other."""
+        user = function("User", {"x": ["Integer"], "res": "Integer"}, {"x": {"Cyclic": {}}}, template=GROUND)
+        cyclic = function(
+            "Cyclic",
+            {"a": ["Integer"], "b": ["Integer"], "res": "Integer"},
+            {"a": "b", "b": "a"},
+            template=GROUND,
+        )
+        return {**user, **cyclic} if order == "user first" else {**cyclic, **user}
+
+    @pytest.mark.parametrize("order", ["user first", "cyclic first"])
+    def test_the_cycle_is_caught_whichever_order_they_are_declared_in(self, order):
+        """
+        Declaration order decides which pass catches it -- "cyclic first" is caught in `init_expressions`,
+        "user first" only on the second pass -- and must not decide *whether* it is caught.
+        """
+        with pytest.raises(CHSemanticError, match="not acyclic"):
+            check_concepts(self._pair(order))
+
+    def test_the_acyclic_version_is_accepted_in_both_orders(self):
+        """The control: the same forward reference, with nothing cyclic about it."""
+        for order in ("user first", "cyclic first"):
+            fine = function(
+                "Fine", {"a": ["Integer"], "b": ["Integer"], "res": "Integer"}, {"a": 1, "b": "a"}, template=GROUND
+            )
+            user = function("User", {"x": ["Integer"], "res": "Integer"}, {"x": {"Fine": {}}}, template=GROUND)
+            check_concepts({**user, **fine} if order == "user first" else {**fine, **user})
+
+
+def declaration_parses(context) -> dict:
+    """
+    The validator's cache of groundings handed back to the declaration, keyed ``(Function, argument)``.
+
+    Private for the same reason `grounded_defaults` is, and pinned for the same one: what it holds and what
+    it *declines* to hold are both behaviour, and neither is visible from the outside.
+    """
+    return dict(context.expression_parser_validator._declared_defaults_parsed_early)
+
+
+class TestAGroundingIsHandedBackToTheDeclaration:
+    """
+    The other half of the window above: what `init_expressions` has not parsed yet, grounding sometimes has.
+
+    An earlier Function's default evaluating a later one makes the loop parse that later Function's default
+    twice -- once here, to decide the call site, and once when the loop reaches its Function. Where the two
+    parses cannot come out differently the second is dropped and the first is reused.
+
+    They cannot differ when the declaring Function has **no template variables**: everything grounding adds
+    is substitution, and there is then nothing to substitute. A templated Function's grounding is a
+    different expression from its declaration's parse -- that is the whole of stage 2.5 -- and is refused,
+    as is a default only *inherited* by the Function whose call site grounded it. See
+    `_offer_grounding_as_the_declarations_parse`.
+    """
+
+    def _pair(self, order: str) -> dict:
+        """``User``'s default evaluates ``Fine``, whose own default `b` names its sibling `a`."""
+        fine = function(
+            "Fine", {"a": ["Integer"], "b": ["Integer"], "res": "Integer"}, {"a": 1, "b": "a"}, template=GROUND
+        )
+        user = function("User", {"x": ["Integer"], "res": "Integer"}, {"x": {"Fine": {}}}, template=GROUND)
+        return {**user, **fine} if order == "user first" else {**fine, **user}
+
+    def test_the_declaration_holds_the_expression_grounding_built(self):
+        """Object identity is the assertion: an equal reparse would satisfy anything weaker."""
+        context = check_concepts(self._pair("user first"))
+        assert sorted(declaration_parses(context)) == [("Fine", "a"), ("Fine", "b")]
+        declared = context.model.functions["Fine"].evaluation_argument_default_value_expressions
+        for argument in ("a", "b"):
+            grounded = grounded_defaults(context)[("Fine", argument)].expression
+            assert declared[argument] is grounded, f'"{argument}" was parsed a second time'
+
+    def test_nothing_is_handed_back_when_the_declaration_comes_first(self):
+        """
+        The control, and the reason this is an optimisation rather than a mechanism: declared first,
+        ``Fine`` is parsed by the loop before anything evaluates it, and the call site then takes the
+        decided-default shortcut instead of grounding at all.
+        """
+        context = check_concepts(self._pair("fine first"))
+        assert declaration_parses(context) == {}
+        assert grounded_defaults(context) == {}
+
+    def test_the_sibling_edges_are_the_same_either_way(self):
+        """
+        What is skipped is the *parse*, not the walk over it: `init_expressions` still collects the siblings
+        the default names, so `b`'s edge to `a` is recorded whichever order the two were declared in. The
+        acyclicity check downstream reads those edges, and a reuse that dropped them would switch it off.
+        """
+        edges = {}
+        for order in ("user first", "fine first"):
+            context = check_concepts(self._pair(order))
+            edges[order] = dict(context.model.functions["Fine"].default_argument_dependencies)
+        assert edges["user first"] == edges["fine first"] == {"a": frozenset(), "b": frozenset({"a"})}
+
+    def test_a_templated_functions_grounding_is_not_handed_back(self):
+        """
+        `Add2<Integer>`'s grounding is substituted work -- `arg2: T` became `arg2: Integer` to produce it --
+        so it is that application's answer and not the declaration's, which is still template dependent.
+        """
+        caller = function(
+            "Caller", {"y": ["Integer"], "res": "Integer"}, {"y": {"Add2<Integer>": {"arg1": 1}}}, template=GROUND
+        )
+        context = check_concepts({**caller, **add_like("Add2", {"arg2": 3})})
+        assert declaration_parses(context) == {}
+        assert sorted(grounded_defaults(context)) == [("Add2<Integer>", "arg2")]
+        declared = context.model.functions["Add2"].evaluation_argument_default_value_expressions["arg2"]
+        assert declared is not grounded_defaults(context)[("Add2<Integer>", "arg2")].expression
+
+    def test_a_grounding_of_an_inherited_default_is_not_handed_back(self):
+        """
+        ``SubG`` is what the call site evaluates, so grounding read *its* argument type and *its* scope --
+        but ``BaseG`` is what declares the text and what parses it in the loop. Keying the entry to the
+        Function that produced it would hand ``BaseG`` a parse made somewhere else, so it is declined and
+        ``BaseG`` parses its own; the child's model entry is that one, as inheritance always makes it.
+        """
+        base = function(
+            "BaseG", {"arg1": ["Integer"], "arg2": ["Integer"], "res": "Integer"}, {"arg2": 3}, template=GROUND
+        )
+        sub = {
+            "SubG": {
+                "directParents": ["BaseG"],
+                "data": {"templateContext": {"order": []}, "interface": {"res": "Integer"}},
+            }
+        }
+        user = function("UserG", {"x": ["Integer"], "res": "Integer"}, {"x": {"SubG": {"arg1": 1}}}, template=GROUND)
+        context = check_concepts({**user, **sub, **base})
+        assert sorted(grounded_defaults(context)) == [("SubG", "arg2")], "the child's call site grounded it"
+        assert declaration_parses(context) == {}
+        declared = context.model.functions["BaseG"].evaluation_argument_default_value_expressions["arg2"]
+        assert declared is not grounded_defaults(context)[("SubG", "arg2")].expression
+        assert context.model.functions["SubG"].evaluation_argument_default_value_expressions["arg2"] is declared
+
+
+class TestTheScopeAVariableResolvedIn:
+    """
+    Every `Variable` records the stack frame its name resolved in, and only frame 0 is the globals.
+
+    A Function's arguments sit in the frame above the globals while its defaults are parsed, and
+    `function_argument_scope` rebuilds the same two frames at a call site. So "is this reference to a global?"
+    is a question about *where the name resolved*, and the expression carries the answer rather than making
+    every consumer look the name up in the hierarchy.
+    """
+
+    def _default_of(self, context, function_name: str, argument: str):
+        return context.model.functions[function_name].evaluation_argument_default_value_expressions[argument]
+
+    def test_a_default_naming_a_global_resolves_at_frame_zero(self):
+        hierarchy = build_hierarchy(
+            function("UsesGlobal", {"x": ["Integer"], "res": "Integer"}, {"x": "g"}, template=GROUND),
+            instances={"g": {"Integer": 7}},
+        )
+        context = check_hierarchy(hierarchy)
+        variable = self._default_of(context, "UsesGlobal", "x").value
+        assert variable.variable_name == "g"
+        assert variable.scope_index == 0
+        assert variable.is_global_variable is True
+
+    def test_a_default_naming_a_sibling_argument_resolves_above_it(self):
+        """The sibling is in the Function's own frame, which sits on top of the globals."""
+        context = check_concepts(add_like("Copy", {"arg2": "arg1"}))
+        variable = self._default_of(context, "Copy", "arg2").value
+        assert variable.variable_name == "arg1"
+        assert variable.scope_index > 0
+        assert variable.is_global_variable is False
+
+    def test_an_argument_may_not_share_a_global_variables_name(self):
+        """
+        The guard that keeps a *written* name unambiguous. It reads `evaluation_argument_types`; reading
+        `evaluation_interface`, which is never populated, made it silently do nothing.
+
+        The index does not depend on this holding -- it records where the name actually resolved, which is
+        the expression's own knowledge rather than a lookup in the hierarchy -- but while it does hold, a
+        name is a global exactly when it resolves at frame 0.
+        """
+        local = function(
+            "Local", {"shared": ["Integer"], "y": ["Integer"], "res": "Integer"}, {"y": "shared"}, template=GROUND
+        )
+        with pytest.raises(CHSemanticError, match="also the name of a defined global variable"):
+            check_hierarchy(build_hierarchy(local, instances={"shared": {"Integer": 1}}))
+
+
+# ==================================================================================================
+# What the evaluation records about the defaults it applied
+# ==================================================================================================
+
+
+def walk_including_applied_defaults(expression) -> list[str]:
+    """
+    Every variable name reachable from ``expression``, following applied defaults as well as arguments.
+
+    The traversal a consumer has to write for itself, because `applied_defaults` is deliberately not part of
+    `get_subexpressions` -- see `TestAppliedDefaultsAreNotSubexpressions`.
+    """
+    seen, stack, names = set(), [expression], []
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current.value, Variable):
+            names.append(current.value.variable_name)
+        stack.extend(current.value.get_subexpressions())
+        if isinstance(current.value, FunctionEvaluation):
+            stack.extend(current.value.applied_defaults.values())
+    return names
+
+
+def site_evaluation(context, prop: str = "p") -> FunctionEvaluation:
+    evaluation = default_site_expression(context, "Site", prop).value
+    assert isinstance(evaluation, FunctionEvaluation)
+    return evaluation
+
+
+class TestAppliedDefaultsAreRecorded:
+    """
+    `FunctionEvaluation.applied_defaults` is what each argument the call site left out fell back on. It is a
+    *second* field: `arguments` still means "what was written", because the acyclicity check reads
+    ``supplied_arguments`` off it.
+    """
+
+    def test_an_unsupplied_argument_records_its_default(self):
+        context = check_concepts({**add_like("Add2", {"arg2": 3}), **uses_feval("Add2<Integer>", {"arg1": 1})})
+        evaluation = site_evaluation(context)
+        assert sorted(evaluation.arguments) == ["arg1"], "still only what the site wrote"
+        assert sorted(evaluation.applied_defaults) == ["arg2"]
+        assert evaluation.applied_defaults["arg2"].is_valid
+
+    def test_a_supplied_argument_records_nothing(self):
+        context = check_concepts(
+            {**add_like("Add2", {"arg2": 3}), **uses_feval("Add2<Integer>", {"arg1": 1, "arg2": 2})}
+        )
+        evaluation = site_evaluation(context)
+        assert sorted(evaluation.arguments) == ["arg1", "arg2"]
+        assert evaluation.applied_defaults == {}
+
+    def test_an_argument_with_no_default_records_nothing(self):
+        """Only a default that was *applied* is recorded; an absent one is not an empty entry."""
+        maybe = function("Maybe", {"arg1": ["T"], "arg2": ["T"], "res": "T"}, {"arg1": 1})
+        context = check_concepts({**maybe, **uses_feval("Maybe<Integer>", {"arg2": 2})})
+        assert sorted(site_evaluation(context).applied_defaults) == ["arg1"]
+
+    def test_several_at_once(self):
+        context = check_concepts({**add_like("Both", {"arg1": 1, "arg2": 2}), **uses_feval("Both<Integer>", {})})
+        assert sorted(site_evaluation(context).applied_defaults) == ["arg1", "arg2"]
+
+    def test_the_reparsed_branch_records_the_grounded_expression(self):
+        """
+        A template-dependent default is reparsed for this application, so what is recorded is the *new*
+        tree -- not the declaration, which was parsed with `T` unbound.
+        """
+        context = check_concepts({**add_like("Add2", {"arg2": 3}), **uses_feval("Add2<Integer>", {"arg1": 1})})
+        declared = context.model.functions["Add2"].evaluation_argument_default_value_expressions["arg2"]
+        applied = site_evaluation(context).applied_defaults["arg2"]
+        assert applied is not declared
+        assert declared.is_value_template_dependent and not applied.is_value_template_dependent
+
+    def test_the_decided_branches_record_the_declaration(self):
+        """
+        A default that needed no work is still a default this site applied. Both shortcut branches record
+        the declaration, which for them *is* the grounded expression -- so the field is never empty merely
+        because the answer was already known.
+        """
+        mixed = function("Mixed", {"arg1": ["Integer"], "arg2": ["T"], "res": "T"}, {"arg1": 1, "arg2": 2})
+        context = check_concepts({**mixed, **uses_feval("Mixed<Integer>", {})})
+        declared = context.model.functions["Mixed"].evaluation_argument_default_value_expressions["arg1"]
+        assert site_evaluation(context).applied_defaults["arg1"] is declared
+
+    def test_the_walk_finds_what_the_default_depends_on(self):
+        """
+        The point of recording them: a global named only inside an unsupplied argument's default is
+        reachable from the evaluation, which is what any dependency check needs.
+        """
+        loopy = function("Loopy", {"x": ["Integer"], "res": "Integer"}, {"x": "g"}, template=GROUND)
+        context = check_hierarchy(
+            build_hierarchy({**loopy, **uses_feval("Loopy", {})}, instances={"g": {"Integer": 7}})
+        )
+        evaluation = default_site_expression(context, "Site", "p")
+        assert [e.value.variable_name for e in evaluation.all_subexpressions(Variable)] == []
+        assert walk_including_applied_defaults(evaluation) == ["g"]
+
+
+class TestAppliedDefaultsAreNotSubexpressions:
+    """
+    They are kept out of `get_subexpressions` on purpose, and this is the hierarchy that says why.
+
+    `init_expressions` computes `default_argument_dependencies` with `all_subexpressions(Variable)` and
+    filters the names against *this* Function's arguments. `G`'s default names `G`'s own `p`; `F` also has an
+    argument called `p`. Descending into `G`'s applied defaults from inside `F`'s would import that name and
+    invent an edge ``b -> p`` that does not exist -- and `F`'s two defaults would then look mutually
+    recursive.
+    """
+
+    def _pair(self) -> dict:
+        return {
+            **function(
+                "G", {"p": ["Integer"], "q": ["Integer"], "res": "Integer"}, {"p": 1, "q": "p"}, template=GROUND
+            ),
+            **function(
+                "F", {"p": ["Integer"], "b": ["Integer"], "res": "Integer"}, {"p": "b", "b": {"G": {}}}, template=GROUND
+            ),
+        }
+
+    def test_the_dependency_graph_is_not_polluted(self):
+        context = check_concepts(self._pair())
+        dependencies = {k: sorted(v) for k, v in context.model.functions["F"].default_argument_dependencies.items()}
+        assert dependencies == {"p": ["b"], "b": []}
+
+    def test_the_call_site_that_leaves_both_unsupplied_is_accepted(self):
+        """The consequence of the row above: an invented `b -> p` closes a cycle and rejects this."""
+        check_concepts({**self._pair(), **uses_feval("F", {})})

@@ -76,6 +76,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TemplateVariable,
     TypeValue,
 )
+from concept_hierarchy.data.utils import MISSING
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
     TemplateContextDeterminator,
     TypeTemplateInstantiationValidator,
@@ -257,13 +258,42 @@ class ExpressionParserValidator(ABC):
         pass
 
     @abstractmethod
-    def get_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
+    def get_function_argument_default_source(self, f_name: str, f_arg_name: str) -> object:
         """
-        The declared default of one Function argument, or ``None`` when it has none.
+        The JSON a Function argument's default was written as, or `MISSING` when it has none.
 
-        The default was parsed once in the Function's *own* template context with its variables unbound, so
-        `Expression.value` there decided nothing about types; `Expression.unparsed` holds the JSON it was
-        written as, and that is what a ground call site reparses under its own template arguments.
+        Read from the **definitions**, including inherited ones, rather than from the parsed model, because
+        it has to be answerable before the model has it. Parsing a Function's own default can reach an
+        evaluation of that same Function -- `MakeT1`'s default instantiating a `T1` whose schema evaluates
+        `MakeT1` again -- and at that moment its parsed defaults are empty by construction. Answering
+        "no default" there would drop the one edge that closes such a cycle, at the one moment the
+        resolution path still holds it.
+        """
+
+    @abstractmethod
+    def get_parsed_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
+        """
+        The *parsed* form of that default, if it has been parsed yet; ``None`` if it has not.
+
+        ``None`` means "not yet", never "no default" -- `get_function_argument_default_source` answers that.
+        Without a parsed form there is nothing to shortcut against, so the call site simply reparses.
+
+        A parse recorded by `put_parsed_function_argument_default` answers this too: it is the declaration's
+        own parse, produced early, and there is no sense in which it is less parsed than the one the
+        declaring Function's pass will store.
+        """
+
+    @abstractmethod
+    def put_parsed_function_argument_default(self, f_name: str, f_arg_name: str, expression: Expression) -> None:
+        """
+        Record ``expression`` as the parse of that declared default, for the declaration itself to reuse.
+
+        Only for an expression that **is** what parsing the declaration produces -- see the conditions at
+        the one call site. The declaring Function's own pass then has nothing left to do for that argument,
+        which is the point: without this it reparses the same source into an identical tree.
+
+        Whether to keep the entry is the implementation's to decide; a Function that only *inherits* the
+        default is not the one whose pass will look for it.
         """
 
     @abstractmethod
@@ -293,7 +323,10 @@ class ExpressionParserValidator(ABC):
 
     @abstractmethod
     def put_grounded_function_default(self, application: str, argument: str, grounded: GroundedArgumentDefault) -> None:
-        """Record a grounding, or (with `GroundedArgumentDefault.in_progress`) that one has begun."""
+        """
+        Record a grounding, or (with `GroundedArgumentDefault.in_progress`) that one has begun.
+        Overwrites existing content.
+        """
 
     @abstractmethod
     def get_template_context(self, type_name_clean) -> TemplateContext:
@@ -1164,7 +1197,7 @@ def get_json_type_as_string(json_value: object, location_id: LocationId) -> str:
     )
 
 
-def _ground_unsupplied_argument_defaults(
+def _ground_unsupplied_argument_defaults_in_instantiated_context(
     key: str,
     key_type: InstantiatedType,
     all_arguments: set[str],
@@ -1176,7 +1209,7 @@ def _ground_unsupplied_argument_defaults(
     location_id: LocationId,
     attempts: list[ExpressionAttempt],
     expansion_depth: int,
-) -> tuple[IllFormedExpression | None, dict[str, frozenset[str]]]:
+) -> tuple[IllFormedExpression | None, dict[str, frozenset[str]], dict[str, Expression]]:
     """
     Check the defaults this call site leaves unsupplied, under *this* application's template arguments.
 
@@ -1194,17 +1227,22 @@ def _ground_unsupplied_argument_defaults(
     -- materialising defaults into it would tell that check every argument was supplied, and switch it off
     exactly where it is needed. It is cached on the validator instead, per application.
 
-    Returns the failure to report (or ``None``) and the grounded dependencies of every default it decided.
+    Returns the failure to report (or ``None``), the grounded dependencies of every default it decided,
+    and the expression each unsupplied argument fell back on -- which the caller keeps on the evaluation
+    as `FunctionEvaluation.applied_defaults`. Every branch below records one, including the two that
+    decide without reparsing: a default that needed no work is still a default this site applied.
     """
     dependencies: dict[str, frozenset[str]] = {}
-    to_ground: dict[str, Expression] = {}
     applied: dict[str, Expression] = {}
+    to_ground: dict[str, object] = {}
+    declaration_unparsed: set[str] = set()
+    """The arguments whose *declaration* has no parse yet -- the only ones this pass can hand one back."""
     for argument in sorted(unsupplied_arguments):
         # A missing default here is not an omission: a *required* argument left unsupplied was already
         # reported above, and an optional one with no default has nothing to ground.
-        declared_default = validator.get_function_argument_default(key_type.clean_name, argument)
-        if declared_default is None:
-            continue
+        declared_source = validator.get_function_argument_default_source(key_type.clean_name, argument)
+        assert declared_source is not MISSING  # unsupplied arguments must be default; verified before this _ground call
+        declared_default = validator.get_parsed_function_argument_default(key_type.clean_name, argument)
         declared_type, _, _ = validator.get_function_argument_interface(key_type.clean_name, argument)
         # Two *independent* things can still be waiting on the application, and they are settled
         # differently -- which is why this is two questions rather than one condition:
@@ -1219,7 +1257,11 @@ def _ground_unsupplied_argument_defaults(
         #   2. how the expression's type relates to the *site's* type. That was left open whenever the site
         #      mentioned a template variable, however decided the expression itself is -- an expression
         #      reports its own dependence, never its type's.
-        contents_are_decided = declared_default.is_fully_parsed and not declared_default.is_value_template_dependent
+        contents_are_decided = (
+            declared_default is not None
+            and declared_default.is_fully_parsed
+            and not declared_default.is_value_template_dependent
+        )
         site_type_is_decided = isinstance(declared_type, InstantiatedType)
         if contents_are_decided and site_type_is_decided:
             # Nothing was left open, so the declaration already holds the whole verdict -- which is
@@ -1248,11 +1290,16 @@ def _ground_unsupplied_argument_defaults(
             # expression itself is unchanged by the subtype check, so the declaration is what was applied.
             applied[argument] = declared_default
             continue
-        cached = validator.get_grounded_function_default(key_type.full_name, argument)
+        # From here on, a reparsing of the argument is needed; because the default-expression is not decided (or parsed)
+        cached: GroundedArgumentDefault | None = validator.get_grounded_function_default(key_type.full_name, argument)
         if cached is None:
-            to_ground[argument] = declared_default
+            # then the default argument of that Function was not parsed yet! Schedule it for parsing!
+            to_ground[argument] = declared_source
+            if declared_default is None:
+                declaration_unparsed.add(argument)
             continue
         if cached.in_progress:
+            # this is what represents a (possibly-nested) dependency cycle
             reason = (
                 f'the default of argument "{argument}" of {key_type} can never be applied: grounding it '
                 f"requires grounding it again"
@@ -1261,11 +1308,12 @@ def _ground_unsupplied_argument_defaults(
             return IllFormedExpression(reason, tuple(attempts)), dependencies, applied
         # A cached failure is re-reported rather than passed over: the entry is the verdict for this
         # application, and a second call site reaching it is in exactly the position the first one was.
-        assert cached.expression is not None
+        assert cached.expression is not None  # equivalent to `not cached.in_progress`
         if not cached.expression.is_valid:
             return _rejected_default(key, key_type, argument, cached.expression, attempts), dependencies, applied
         dependencies[argument] = cached.sibling_dependencies
         applied[argument] = cached.expression
+    # if there's nothing to parse, finish
     if not to_ground:
         return None, dependencies, applied
 
@@ -1285,7 +1333,7 @@ def _ground_unsupplied_argument_defaults(
         argument_types[argument] = argument_type
 
     with validator.function_argument_scope(argument_types):
-        for argument, declared_default in to_ground.items():
+        for argument, declared_source in to_ground.items():
             argument_type = argument_types[argument]
             assert isinstance(argument_type, TYPE_VALUE_IS_INSTANCE_CHECK)
             # Published before the parse, not after, so that a default which reaches itself finds the
@@ -1293,7 +1341,7 @@ def _ground_unsupplied_argument_defaults(
             # behind, which is harmless: it aborts the whole check.)
             validator.put_grounded_function_default(key_type.full_name, argument, GroundedArgumentDefault(None))
             grounded = parse_expression(
-                declared_default.unparsed,
+                declared_source,
                 argument_type,
                 # ANY/GET, matching how the default was parsed where it was declared. Whether a default
                 # may satisfy an ADDR or MOD argument is a question about defaults, not about
@@ -1324,11 +1372,61 @@ def _ground_unsupplied_argument_defaults(
             validator.put_grounded_function_default(
                 key_type.full_name, argument, GroundedArgumentDefault(grounded, grounded_dependencies)
             )
+            _offer_grounding_as_the_declarations_parse(
+                key_type, argument, grounded, f_template_context, declaration_unparsed, validator
+            )
             if not grounded.is_valid:
                 return _rejected_default(key, key_type, argument, grounded, attempts), dependencies, applied
             dependencies[argument] = grounded_dependencies
             applied[argument] = grounded
     return None, dependencies, applied
+
+
+def _offer_grounding_as_the_declarations_parse(
+    key_type: InstantiatedType,
+    argument: str,
+    grounded: Expression,
+    f_template_context: TemplateContext,
+    declaration_unparsed: set[str],
+    validator: ExpressionParserValidator,
+) -> None:
+    """
+    Hand a grounding back to the declaration, when the two parses cannot differ.
+
+    Grounding reaches a default the declaration has not parsed yet in exactly one window: `init_expressions`
+    fills the Functions' parsed defaults one at a time, and parsing one Function's default can evaluate a
+    Function later in that loop (§7). The default is then parsed here -- and parsed *again*, from the same
+    source, when the loop reaches its Function. Sometimes those two parses cannot come out differently, and
+    then the second one is pure waste; this is where that is noticed.
+
+    They cannot differ when **the declaring Function has no template variables**. Everything grounding does
+    over and above the declaration's parse is substitution, and with no variables to substitute every one of
+    them is the identity: the argument type is the declared type, the sibling types put back in scope are
+    the declared ones, the Function's template context is the declaration's, and the mapping is empty. What
+    is left is the same source parsed against the same type in the same scope.
+
+    That leaves two differences, and neither can change the tree:
+
+    * ``parse_template_expressions_without_type_checks`` is set at the declaration and not here. It decides
+      one thing only -- whether a *non-ground* site is walked into or cut off with a placeholder -- so it
+      can only matter where something is template dependent, and such a parse is refused below.
+    * The enclosing concept's template context and identifier are still the current ones here, so a bare
+      name that happens to be an *enclosing* Function's template variable is read as one, which the
+      declaration's pass would not do. It cannot slip through: with this Function's mapping empty that
+      variable is not substituted either, so the expression is template dependent, and is refused below.
+
+    Hence the conditions: the expression must be valid, fully parsed and template independent -- the same
+    pair of questions the decided-default shortcut asks, for the same reason (`Expression.is_fully_parsed`).
+    Anything less is an expression the declaration's parse could still build differently, and it is dropped.
+
+    What the declaration's pass does with the parse -- record the sibling edges it names, store it on the
+    Function -- it still does; only the reparse is skipped.
+    """
+    if argument not in declaration_unparsed or f_template_context.variables:
+        return
+    if not grounded.is_valid or not grounded.is_fully_parsed or grounded.is_value_template_dependent:
+        return
+    validator.put_parsed_function_argument_default(key_type.clean_name, argument, grounded)
 
 
 def _recheck_decided_default(
@@ -1607,7 +1705,7 @@ def parse_expression_of_json_object(
                 # stopped being decidable. Only `InstantiatedType` is ground; a call site still inside a
                 # template gets its turn when the enclosing schema is built for an application (stage 1).
                 if isinstance(key_type, InstantiatedType):
-                    default_failure, grounded_dependencies, applied_defaults = _ground_unsupplied_argument_defaults(
+                    grounding_res = _ground_unsupplied_argument_defaults_in_instantiated_context(
                         key,
                         key_type,
                         all_arguments,
@@ -1620,6 +1718,7 @@ def parse_expression_of_json_object(
                         attempts,
                         expansion_depth,
                     )
+                    default_failure, grounded_dependencies, applied_defaults = grounding_res
                     if default_failure is not None:
                         expressions_res.append(default_failure)
                         if ensure_expression_invariant(expressions_res, expr_type):

@@ -43,8 +43,10 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TemplateDependentType,
     TypeValue,
 )
+from concept_hierarchy.data.utils import MISSING
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
 from concept_hierarchy.data.validators.type_validator import parse_convert_type, parse_convert_type_in_template_context
+from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.errors import ConceptHierarchyError, LocationId
 
 
@@ -67,6 +69,14 @@ class ExpressionValidator(ExpressionParserValidator):
         `GroundedArgumentDefault.in_progress`, so a default that reaches itself finds it there. Keyed by
         application rather than by the declaring Function so that two call sites evaluating the same
         application share the work, and two different applications of it do not.
+        """
+
+        self._declared_defaults_parsed_early: dict[tuple[str, str], Expression] = {}
+        """
+        Declared Function argument defaults already parsed *as the declaration would parse them*, keyed
+        ``(declaring Function, argument)`` -- see `put_parsed_function_argument_default`. Populated only by
+        grounding, and only while `init_expressions` has not come to the declaring Function yet, which is
+        the one window in which grounding meets a default the declaration has not parsed.
         """
 
         self._resolving: set[int] = set()
@@ -282,9 +292,49 @@ class ExpressionValidator(ExpressionParserValidator):
             return f.default_argument_dependencies
         return None
 
-    def get_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
+    def get_function_argument_default_source(self, f_name: str, f_arg_name: str) -> object:
         assert f_name in self.context.model.functions, f_name
-        return self.context.model.functions[f_name].evaluation_argument_default_value_expressions.get(f_arg_name)
+        # Breadth-first over the Function and its Function parents, mirroring the merge `init_expressions`
+        # performs -- but off the *definitions*, which hold the declared JSON from the start.
+        to_visit, seen = [f_name], set()
+        while to_visit:
+            name = to_visit.pop(0)
+            if name in seen:
+                continue
+            seen.add(name)
+            definition = self.context.ch.concepts.get(name)
+            if (
+                isinstance(definition, FunctionDefinition)
+                and f_arg_name in definition.evaluation_argument_default_values
+            ):
+                return definition.evaluation_argument_default_values[f_arg_name]
+            model = self.context.model.functions.get(name)
+            if model is not None:
+                to_visit.extend(parent for parent in model.parents if parent in self.context.ch.functions)
+        return MISSING
+
+    def get_parsed_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
+        assert f_name in self.context.model.functions, f_name
+        parsed = self.context.model.functions[f_name].evaluation_argument_default_value_expressions.get(f_arg_name)
+        if parsed is not None:
+            return parsed
+        # The model is filled one Function at a time; before this one's turn, a parse that *is* the
+        # declaration's may already exist because grounding produced it.
+        return self._declared_defaults_parsed_early.get((f_name, f_arg_name), None)
+
+    def put_parsed_function_argument_default(self, f_name: str, f_arg_name: str, expression: Expression) -> None:
+        definition = self.context.ch.concepts.get(f_name)
+        assert isinstance(definition, FunctionDefinition)
+        if f_arg_name not in definition.evaluation_argument_default_values:
+            # `f_name` only *inherits* this default. The declaring Function parses it in its own scope and against
+            # its own argument type, and this parse used `f_name`'s scope -- which is the same today, but nothing here
+            # guarantees it, so the entry is declined rather than keyed to a Function that did not produce it.
+            return
+        # There is exactly one writer per key. Every later visit to this default is not reparsed because of this entry!
+        assert (f_name, f_arg_name) not in self._declared_defaults_parsed_early, (
+            f'the declared default of argument "{f_arg_name}" of {f_name} was parsed a second time'
+        )
+        self._declared_defaults_parsed_early[(f_name, f_arg_name)] = expression
 
     @contextmanager
     def function_argument_scope(self, arguments: dict[str, TypeValue]) -> Iterator[None]:

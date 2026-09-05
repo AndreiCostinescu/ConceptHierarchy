@@ -195,23 +195,34 @@ def init_expressions(context: ConceptHierarchyContext):
         if c_def.has_location_of(FunctionDefinition.function_default_argument_values):
             default_args_location_id = c_def.location_id(FunctionDefinition.function_default_argument_values)
             for default_arg_name, default_arg_expr_value in c_def.evaluation_argument_default_values.items():
+                # A default this loop has not reached yet can still have been parsed already: an earlier
+                # Function's default may evaluate this one, and grounding that call site parses it (see
+                # `_offer_grounding_as_the_declarations_parse`). It is handed back here only when the two
+                # parses cannot differ, so reparsing the source would rebuild the very same tree.
+                parsed_default_value_expr = context.expression_parser_validator.get_parsed_function_argument_default(
+                    c_name, default_arg_name
+                )
                 print(
-                    f"Parsing Function default argument expression (at {c_name} {default_arg_name} "
+                    f"{'Reusing the grounding of the' if parsed_default_value_expr is not None else 'Parsing the'} "
+                    f"Function default argument expression (at {c_name} {default_arg_name} "
                     f"of type {c.evaluation_argument_types[default_arg_name]}):",
                     default_args_location_id + [default_arg_name],
                     default_arg_expr_value,
                     sep="\n",
                 )
-                parsed_default_value_expr = parse_expression(
-                    default_arg_expr_value,
-                    c.evaluation_argument_types[default_arg_name],
-                    FunctionArgumentProvenance.ANY,
-                    FunctionArgumentAccessor.GET,
-                    c.template_context,
-                    context.expression_parser_validator,
-                    default_args_location_id + [default_arg_name],
-                    parse_template_expressions_without_type_checks=True,
-                )
+                if parsed_default_value_expr is None:
+                    parsed_default_value_expr = parse_expression(
+                        default_arg_expr_value,
+                        c.evaluation_argument_types[default_arg_name],
+                        FunctionArgumentProvenance.ANY,
+                        FunctionArgumentAccessor.GET,
+                        c.template_context,
+                        context.expression_parser_validator,
+                        default_args_location_id + [default_arg_name],
+                        parse_template_expressions_without_type_checks=True,
+                    )
+                else:
+                    assert parsed_default_value_expr.is_valid
                 if not parsed_default_value_expr.is_valid:
                     assert isinstance(parsed_default_value_expr.value, IllFormedExpression)
                     raise invalid_expression_error(

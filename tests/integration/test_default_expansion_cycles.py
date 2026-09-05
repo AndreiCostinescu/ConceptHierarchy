@@ -380,9 +380,6 @@ class TestAcyclicDefaultsResolve:
 # --------------------------------------------------------------------------------------------------
 
 
-CYCLE_XFAIL = pytest.mark.xfail(reason="no cycle check over instantiation default expansion exists yet", strict=False)
-
-
 class TestDefaultExpansionCyclesAreRejected:
     """
     Every hierarchy here describes an infinite value and must be rejected.
@@ -421,32 +418,207 @@ class TestDefaultExpansionCyclesAreRejected:
         """
         assert_rejected_as_a_cycle(value_domain("Opt", "p", "Opt", default={}, required=False), "Opt")
 
-    @CYCLE_XFAIL
     def test_cycle_through_an_unsupplied_function_argument_is_rejected(self):
         """
         The cycle runs ``T1.q -> T2.r -> MakeT1.a -> T1.q``, where ``MakeT1.a`` is an *unsupplied*
         Function argument falling back on its own default.
 
-        Unsupplied arguments never appear in ``FunctionEvaluation.arguments``, so this edge is invisible
-        to any graph built purely from the parsed value tree. Catching it needs the Function
-        default-argument sites to be nodes of the same graph -- the check that
-        ``_validate_acyclic_default_argument_dependencies`` already performs for the Function-internal
-        sub-case.
+        Unsupplied arguments never appear in ``FunctionEvaluation.arguments``, so this edge is invisible to
+        any graph built purely from the parsed value tree. What makes it visible is stage 2.5: grounding an
+        unsupplied argument's default parses it, and parsing it materialises whatever it forces -- so the
+        Function-argument default site joins the same resolution path the instantiation defaults are on,
+        without a second graph.
         """
-        with pytest.raises(ConceptHierarchyError):
-            check_concepts(
-                {
-                    **value_domain("T1", "q", "T2", default={}),
-                    **value_domain("T2", "r", "T1", default={"MakeT1": {}}),
-                    "MakeT1": {
-                        "directParents": ["FunctionReturning"],
-                        "data": {
-                            "templateContext": {"order": [], "substitution": {"FunctionReturning:T": "T1"}},
-                            "interface": {"a": ["T1"], "res": "T1", "_defaultArgumentValues": {"a": {}}},
-                        },
+        assert_rejected_as_a_cycle(
+            {
+                **value_domain("T1", "q", "T2", default={}),
+                **value_domain("T2", "r", "T1", default={"MakeT1": {}}),
+                "MakeT1": {
+                    "directParents": ["FunctionReturning"],
+                    "data": {
+                        "templateContext": {"order": [], "substitution": {"FunctionReturning:T": "T1"}},
+                        "interface": {"a": ["T1"], "res": "T1", "_defaultArgumentValues": {"a": {}}},
                     },
-                }
-            )
+                },
+            }
+        )
+
+
+NUMERIC_FREE_T = {"order": ["T"], "T": "ValueDomain", "substitution": {"FunctionReturning:T": "T"}}
+"""An unconstrained template variable, so the Function can be applied to any of the domains below."""
+
+
+def maker(
+    name: str,
+    argument: str,
+    argument_type: str,
+    default: object,
+    returns: str,
+    template: object = None,
+) -> dict:
+    """A Function with one defaulted argument, used to route a cycle through an *unsupplied* argument."""
+    if template is None:
+        template = {"order": [], "substitution": {"FunctionReturning:T": returns}}
+    return {
+        name: {
+            "directParents": ["FunctionReturning"],
+            "data": {
+                "templateContext": template,
+                "interface": {
+                    argument: [argument_type],
+                    "res": returns,
+                    "_defaultArgumentValues": {argument: default},
+                },
+            },
+        }
+    }
+
+
+class TestCyclesThroughUnsuppliedFunctionArguments:
+    """
+    The second kind of default site: a Function argument the call site leaves out.
+
+    Such an argument never appears in `FunctionEvaluation.arguments`, so the edge it contributes is
+    invisible to anything reading the parsed value tree. It becomes visible because grounding an unsupplied
+    default (stage 2.5) *parses* it, and parsing materialises whatever it forces -- which puts the
+    Function-argument site on the same resolution path as the instantiation defaults, rather than needing a
+    second graph beside it.
+
+    **Where** it is caught depends on whether the Function is templated, and the two cases are separated
+    below. A ground Function's default has a ground type, so it is parsed and expanded where it is
+    *declared* -- a cycle there is unconditional and no call site is needed to find it. A templated
+    Function's default is deferred at the declaration, so only an application closes the loop, and only for
+    that application.
+    """
+
+    def test_a_templated_functions_default_closes_a_cycle_at_one_application(self):
+        """
+        The case that needed stage 3. Nothing about `MakeW`'s declaration is wrong -- its default is
+        deferred there, with ``T`` bound to nothing. ``MakeW<C1>`` is what closes
+        ``C1.q -> C2.r -> MakeW<C1>.a -> C1.q``.
+        """
+        assert_rejected_as_a_cycle(
+            {
+                **value_domain("C1", "q", "C2", default={}),
+                **value_domain("C2", "r", "C1", default={"MakeW<C1>": {}}),
+                **maker("MakeW", "a", "T", {}, "T", template=NUMERIC_FREE_T),
+            }
+        )
+
+    def test_the_same_function_at_another_application_is_fine(self):
+        """
+        The pair of the test above, and the reason the edge is per-application: the identical declaration,
+        applied to a `Leaf`, forces nothing. A check that condemned `MakeW` itself would reject this.
+        """
+        check_concepts(
+            {
+                **LEAF,
+                **value_domain("Holder", "h", "Leaf", default={"MakeW<Leaf>": {}}),
+                **maker("MakeW", "a", "T", {}, "T", template=NUMERIC_FREE_T),
+            }
+        )
+
+    def test_both_applications_in_one_hierarchy(self):
+        """The benign application must not be rescued by, nor rescue, the cyclic one."""
+        assert_rejected_as_a_cycle(
+            {
+                **LEAF,
+                **value_domain("C1", "q", "C2", default={}),
+                **value_domain("C2", "r", "C1", default={"MakeW<C1>": {}}),
+                **value_domain("Holder", "h", "Leaf", default={"MakeW<Leaf>": {}}),
+                **maker("MakeW", "a", "T", {}, "T", template=NUMERIC_FREE_T),
+            }
+        )
+
+    def test_a_ground_functions_cyclic_default_is_caught_at_its_declaration(self):
+        """
+        With a ground argument type the default is parsed and expanded where it is written, so the cycle is
+        reported against the declaration rather than against any call site. Still the same edge:
+        ``MakeT1.a`` forces ``T1.q``.
+        """
+        text = assert_rejected_as_a_cycle(
+            {
+                **value_domain("T1", "q", "T2", default={}),
+                **value_domain("T2", "r", "T1", default={"MakeT1": {}}),
+                **maker("MakeT1", "a", "T1", {}, "T1"),
+            }
+        )
+        assert "_defaultArgumentValues" in text, f"expected the declaration to be named: {text[:400]}"
+
+    def test_a_self_cycle_through_a_function_argument(self):
+        """``Selfy.p`` evaluates a Function whose unsupplied argument instantiates a `Selfy` again."""
+        assert_rejected_as_a_cycle(
+            {
+                **value_domain("Selfy", "p", "Selfy", default={"MakeSelfy": {}}),
+                **maker("MakeSelfy", "a", "Selfy", {}, "Selfy"),
+            }
+        )
+
+    def test_a_cycle_through_two_functions(self):
+        assert_rejected_as_a_cycle(
+            {
+                **value_domain("U1", "q", "U2", default={"MakeU2<U2>": {}}),
+                **value_domain("U2", "r", "U1", default={"MakeU1<U1>": {}}),
+                **maker("MakeU1", "a", "T", {}, "T", template=NUMERIC_FREE_T),
+                **maker("MakeU2", "b", "T", {}, "T", template=NUMERIC_FREE_T),
+            }
+        )
+
+    def test_a_finite_chain_through_an_unsupplied_argument_is_accepted(self):
+        """
+        The edge is real but the chain terminates: the default instantiates a `Leaf`, which forces nothing.
+        The check must find cycles, not Function arguments.
+        """
+        check_concepts(
+            {
+                **LEAF,
+                **value_domain("Holder", "h", "Leaf", default={"MakeLeaf": {}}),
+                **maker("MakeLeaf", "a", "Leaf", {}, "Leaf"),
+            }
+        )
+
+    def test_an_argument_with_no_default_forces_nothing(self):
+        """An argument that is merely *required* contributes no edge; the call site has to write it."""
+        check_concepts(
+            {
+                **LEAF,
+                **value_domain("Holder", "h", "Leaf", default={"Identity": {"a": {}}}),
+                "Identity": {
+                    "directParents": ["FunctionReturning"],
+                    "data": {
+                        "templateContext": {"order": [], "substitution": {"FunctionReturning:T": "Leaf"}},
+                        "interface": {"a": ["Leaf"], "res": "Leaf"},
+                    },
+                },
+            }
+        )
+
+    def test_an_inherited_default_argument_closes_the_cycle_too(self):
+        """
+        The child declares no defaults at all; the cycle runs through one it inherits. The declared JSON is
+        looked up over the Function's parents for exactly this.
+        """
+        assert_rejected_as_a_cycle(
+            {
+                **value_domain("V1", "q", "V2", default={}),
+                **value_domain("V2", "r", "V1", default={"SubMake": {}}),
+                **maker("BaseMake", "a", "V1", {}, "V1"),
+                "SubMake": {
+                    "directParents": ["BaseMake"],
+                    "data": {"templateContext": {"order": []}, "interface": {}},
+                },
+            }
+        )
+
+    def test_the_diagnosis_says_what_repeats(self):
+        text = assert_rejected_as_a_cycle(
+            {
+                **value_domain("C1", "q", "C2", default={}),
+                **value_domain("C2", "r", "C1", default={"MakeW<C1>": {}}),
+                **maker("MakeW", "a", "T", {}, "T", template=NUMERIC_FREE_T),
+            }
+        )
+        assert "materialising it requires materialising it again" in text, text[:400]
 
 
 # --------------------------------------------------------------------------------------------------
