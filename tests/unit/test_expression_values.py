@@ -138,7 +138,7 @@ class TestInstExpressionIsTemplateDependent:
         assert InstExpression(value, INTEGER).is_template_dependent is True
 
     def test_a_ground_subexpression_does_not(self):
-        inner = expression(Variable("v", INTEGER), INTEGER)
+        inner = expression(Variable("v", INTEGER, scope_index=0), INTEGER)
         value = structural(properties={"x": custom_leaf(INTEGER, inner)})
         assert InstExpression(value, INTEGER).is_template_dependent is False
 
@@ -146,7 +146,7 @@ class TestInstExpressionIsTemplateDependent:
         """Aggregation is `any`, not `all`: a single dependent part makes the whole value dependent."""
         value = structural(
             properties={
-                "ground": custom_leaf(INTEGER, expression(Variable("v", INTEGER), INTEGER)),
+                "ground": custom_leaf(INTEGER, expression(Variable("v", INTEGER, scope_index=0), INTEGER)),
                 "dependent": custom_leaf(BOX_T),
             }
         )
@@ -186,7 +186,7 @@ class TestInstExpressionIsFullyParsed:
 
     def test_a_leaf_with_a_parsed_expression_is_fully_parsed(self):
         """The control: the same shape, with the leaf's expression actually built."""
-        value = structural(properties={"x": custom_leaf(INTEGER, expression(Variable("v", INTEGER)))})
+        value = structural(properties={"x": custom_leaf(INTEGER, expression(Variable("v", INTEGER, scope_index=0)))})
         assert InstExpression(value, INTEGER).is_fully_parsed is True
 
 
@@ -202,7 +202,7 @@ class TestTheTwoPropertiesAreIndependent:
 
     def test_fully_parsed_but_template_dependent(self):
         """A leaf typed `Box<T>` whose expression *was* built: nothing missing, but `T` is still open."""
-        value = structural(properties={"x": custom_leaf(BOX_T, expression(Variable("v", INTEGER)))})
+        value = structural(properties={"x": custom_leaf(BOX_T, expression(Variable("v", INTEGER, scope_index=0)))})
         subject = InstExpression(value, INTEGER)
         assert subject.is_fully_parsed is True
         assert subject.is_template_dependent is True
@@ -221,7 +221,7 @@ class TestTheTwoPropertiesAreIndependent:
         assert subject.is_template_dependent is True
 
     def test_both(self):
-        value = structural(properties={"x": custom_leaf(INTEGER, expression(Variable("v", INTEGER)))})
+        value = structural(properties={"x": custom_leaf(INTEGER, expression(Variable("v", INTEGER, scope_index=0)))})
         subject = InstExpression(value, INTEGER)
         assert subject.is_fully_parsed is True
         assert subject.is_template_dependent is False
@@ -239,7 +239,7 @@ class TestIsValid:
         values = [
             InstExpression(structural(10), INTEGER),
             NarrowExpression(structural(10), INTEGER),
-            Variable("v", INTEGER),
+            Variable("v", INTEGER, scope_index=0),
             IllFormedExpression("nope"),
             VerifiedTemplateDependentExpression([]),
             VerifiedTemplateDependentExpression([InstExpression(structural(10), INTEGER)]),
@@ -272,7 +272,7 @@ class TestIsValid:
 # The contract, for every ExpressionValue subclass
 # --------------------------------------------------------------------------------------------------
 
-GROUND_EXPRESSION = expression(Variable("v", INTEGER))
+GROUND_EXPRESSION = expression(Variable("v", INTEGER, scope_index=0))
 """A parsed, ground sub-expression, for the classes that need one."""
 
 CONTRACT: list[tuple[str, ExpressionValue, bool, bool]] = [
@@ -283,10 +283,10 @@ CONTRACT: list[tuple[str, ExpressionValue, bool, bool]] = [
     ("PossibleNarrowExpression", PossibleNarrowExpression(INTEGER), True, False),
     ("PossibleFunctionEvaluationExpression", PossibleFunctionEvaluationExpression(INTEGER), True, False),
     ("LiteralTemplateVariableValue", LiteralTemplateVariableValue("N", INTEGER, False), True, True),
-    ("Variable", Variable("v", INTEGER), False, True),
-    ("VariableWithTemplateType", VariableWithTemplateType("v", BOX_T), True, True),
-    ("PossibleVariableExpression", PossibleVariableExpression("v", INTEGER), True, True),
-    ("InstancePropertyChain", InstancePropertyChain(["a", "b"], [INTEGER, INTEGER]), False, True),
+    ("Variable", Variable("v", INTEGER, scope_index=0), False, True),
+    ("VariableWithTemplateType", VariableWithTemplateType("v", BOX_T, scope_index=1), True, True),
+    ("PossibleVariableExpression", PossibleVariableExpression("v", INTEGER, scope_index=1), True, True),
+    ("InstancePropertyChain", InstancePropertyChain(["a", "b"], [INTEGER, INTEGER], scope_index=0), False, True),
     ("FunctionEvaluation (ground)", FunctionEvaluation(INTEGER, INTEGER, {"x": GROUND_EXPRESSION}, False), False, True),
     ("FunctionEvaluation (templated type)", FunctionEvaluation(BOX_T, INTEGER, {}, False), True, True),
     ("InstExpression (literal)", InstExpression(structural(10), INTEGER), False, True),
@@ -337,3 +337,38 @@ class TestTheContractOfEverySubclass:
         covered = {type(value) for _label, value, _td, _fp in CONTRACT}
         missing = sorted(cls.__name__ for cls in set(concrete(ExpressionValue)) - covered)
         assert not missing, f"not pinned by the contract table: {missing}"
+
+
+# --------------------------------------------------------------------------------------------------
+# The scope a variable reference resolved in
+# --------------------------------------------------------------------------------------------------
+
+
+class TestVariableScopeIndex:
+    """
+    Every `Variable` records the stack frame its name resolved in, and `is_global_variable` is the question
+    that motivates it: a Function's arguments, and a nested call's, introduce names above the globals and
+    shadow them, so "does this expression mention the global `v`?" cannot be answered by comparing names.
+    """
+
+    def test_frame_zero_is_the_global_frame(self):
+        assert Variable("v", INTEGER, scope_index=0).is_global_variable is True
+
+    @pytest.mark.parametrize("index", [1, 2, 7])
+    def test_any_other_frame_is_local(self, index):
+        assert Variable("v", INTEGER, scope_index=index).is_global_variable is False
+
+    def test_the_subclasses_carry_it_too(self):
+        assert VariableWithTemplateType("v", BOX_T, scope_index=0).is_global_variable is True
+        assert PossibleVariableExpression("v", INTEGER, scope_index=3).is_global_variable is False
+
+    def test_a_property_chain_takes_the_scope_of_its_root(self):
+        """``a.b.c`` is a reference to ``a``; the properties after it are not variables at all."""
+        chain = InstancePropertyChain(["a", "b"], [INTEGER, INTEGER], scope_index=0)
+        assert chain.variable_name == "a"
+        assert chain.is_global_variable is True
+
+    def test_it_must_be_given(self):
+        """Not defaulted: an unrecorded scope would silently read as "global"."""
+        with pytest.raises(TypeError, match="scope_index"):
+            Variable("v", INTEGER)
