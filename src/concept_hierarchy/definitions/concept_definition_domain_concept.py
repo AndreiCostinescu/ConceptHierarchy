@@ -751,16 +751,23 @@ class DomainConceptDefinition(ConceptDefinition):
             if for_specialization and not specialize_for_sub:
                 assert isinstance(prop_def_val, tuple)
                 prop_def_val = prop_def_val[0]
-            if not isinstance(prop_def_val, dict):
+            expected_json_type_of_computations = list
+            if not isinstance(prop_def_val, expected_json_type_of_computations) or not all(
+                isinstance(x, dict) for x in prop_def_val
+            ):
                 # only allow string-values if this is a specialization
                 if not for_specialization or (
                     not isinstance(prop_def_val, str) or not prop_def_val.startswith(INHERIT_FROM_KEYWORD)
                 ):
                     raise CHSyntaxError(
-                        f"The definition of property computations must be a JSON object, not {prop_def_val!r}",
+                        f"The definition of property {PropertyDefinitionKeywords.COMPUTATIONS} must be a "
+                        f"JSON array of JSON objects, not {prop_def_val!r}",
                         location_id=location_id + [PropertyDefinitionKeywords.COMPUTATIONS],
                         part=PathPart.VALUE,
                     )
+            # missing checks:
+            #  - check that the entries in prop_def_val are all valid FunctionComposition expressions.
+            #    EXPRESSION CHECK
         if PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING in prop_data:
             prop_def_val = prop_data[PropertyDefinitionKeywords.DEFAULT_INSTANCE_NAMING]
             if for_specialization and not specialize_for_sub:
@@ -972,7 +979,7 @@ class DomainConceptDefinition(ConceptDefinition):
         #    STRUCTURE CHECK
         #    TYPE CHECK
         #    EXPRESSION CHECK
-        #  - computations: valid FunctionComposition expression
+        #  - computations: each entry in the JSON array is a valid FunctionComposition expression
         #    EXPRESSION CHECK
         #  - confidenceHalfDecayTime: valid Duration expression
         #    EXPRESSION CHECK

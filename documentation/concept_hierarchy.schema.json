@@ -628,7 +628,7 @@
                 "default": { "$ref": "#/$defs/concepts/$defs/anyValue" },
                 "assumptions": { "$ref": "#/$defs/concepts/$defs/anyValue" },
                 "hooks": { "$ref": "#/$defs/concepts/$defs/propertyHooks" },
-                "computations": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+                "computations": { "$ref": "#/$defs/concepts/$defs/propertyComputations" },
                 "confidenceHalfDecayTime": { "$ref": "#/$defs/concepts/$defs/durationValue" },
                 "static": { "type": "boolean" },
                 "nameDefaultInstanceValuesWithThisInstanceName": { "type": "boolean" }
@@ -661,6 +661,7 @@
           },
           "additionalProperties": false
         },
+        "propertyComputations": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/functionProcedure" } },
 
         "topLevelPropertySpecializationContent": {
           "type": "object",
@@ -717,7 +718,7 @@
             },
             "computations": {
               "oneOf": [
-                { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+                { "$ref": "#/$defs/concepts/$defs/propertyComputations" },
                 { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
               ]
             },

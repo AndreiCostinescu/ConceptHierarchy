@@ -74,23 +74,26 @@ PropertyDomainDefinitionElement
           | (ws '"constraint"' ws ':' (TypeAppliedValueDomain | ValueDomainCreation))
           | (ws '"default"' ws ':' ValueDomainSerialization)
           | (ws '"assumptions"' ws ':' ValueDomainSerialization)
-          | (ws '"hooks"' ws ':' ws '{' DefinitionOfHookForProperty (',' DefinitionOfHookForProperty)* '}' ws)
-          | (ws '"computations"' ws ':' FunctionComposition)
+          | (ws '"hooks"' ws ':' AllHooksDefinitionForProperty)
+          | (ws '"computations"' ws ':' AllComputationsDefinitionForProperty)
           | (ws '"confidenceHalfDecayTime"' ws ':' DurationSerialization)
           | (ws '"nameDefaultInstanceValuesWithThisInstanceName"' ws ':' ws boolean ws)
+AllHooksDefinitionForProperty
+        ::= ws '{' DefinitionOfHookForProperty (',' DefinitionOfHookForProperty)* '}' ws
 DefinitionOfHookForProperty
         ::= InstantiatedFunctionReference ':' ws '{'
                 DefinitionOfHookForPropertyGivenFunction (',' DefinitionOfHookForPropertyGivenFunction)*
             '}' ws
 DefinitionOfHookForPropertyGivenFunction
         ::= FunctionArgumentReference ':' ws '{'
-                ((PreHookDefinition (',' PostHookDefinition)?) |
-                 (PostHookDefinition (',' PreHookDefinition)?))
+                ((PreHookDefinition (',' PostHookDefinition)?) | (PostHookDefinition (',' PreHookDefinition)?))
             '}' ws
 PreHookDefinition
         ::= ws '"pre"' ws ':' FunctionComposition
 PostHookDefinition
         ::= ws '"post"' ws ':' FunctionComposition
+AllComputationsDefinitionForProperty
+        ::= ws '[' FunctionComposition (',' FunctionComposition)* ']' ws
 
 PropertiesSpecializationDefinitionContainer
         ::= ws '"_specializations"' ws ':' ws '{'
@@ -109,9 +112,8 @@ SpecializablePropertyDefinitionElement
                                        InheritedValueDisambiguation)))
           | (ws '"default"' ws ':' (ValueDomainSerialization | InheritedValueDisambiguation))
           | (ws '"assumptions"' ws ':' (ValueDomainSerialization | InheritedValueDisambiguation))
-          | (ws '"hooks"' ws ':' ((ws '{' DefinitionOfHookForProperty (',' DefinitionOfHookForProperty)* '}' ws) |
-                                  InheritedValueDisambiguation))
-          | (ws '"computations"' ws ':' (FunctionComposition | InheritedValueDisambiguation))
+          | (ws '"hooks"' ws ':' (AllHooksDefinitionForProperty | InheritedValueDisambiguation))
+          | (ws '"computations"' ws ':' (AllComputationsDefinitionForProperty | InheritedValueDisambiguation))
           | (ws '"confidenceHalfDecayTime"' ws ':' (DurationSerialization | InheritedValueDisambiguation))
           | (ws '"nameDefaultInstanceValuesWithThisInstanceName"' ws ':' ((ws boolean ws) |
                                                                           InheritedValueDisambiguation))

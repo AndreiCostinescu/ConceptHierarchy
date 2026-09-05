@@ -31,10 +31,10 @@ model_data = {
             "directParents": ["Animal"],
             "data": {
                 "properties": {
-                    "breed": {"valueDomain": "String", "confidenceHalfDecayTime": [1, "y"]},
+                    "breed": {"valueDomain": "String", "confidenceHalfDecayTime": [1, "y"], "computations": [{}]},
                     "_specializations": {
-                        "age": {"confidenceHalfDecayTime": [1, "d"], "hooks": "inheritFrom:"},
-                        "_forThis": {"breed": {"confidenceHalfDecayTime": "inheritFrom:"}},
+                        "age": {"confidenceHalfDecayTime": [1, "d"], "hooks": "inheritFrom:", "computations": [{}]},
+                        "_forThis": {"breed": {"confidenceHalfDecayTime": "inheritFrom:", "computations": [{}, {}]}},
                     },
                 },
                 "functions": {
@@ -273,6 +273,53 @@ class TestLocationOf:
                     rf"found in the .* definition of {c_name}",
                 ):
                     c.location_of(HiddenImplementationDefinition.hidden_template_arguments)
+
+    def test_location_of_computations(self):
+        dog = _model().concepts["Dog"]
+        with pytest.raises(
+            RuntimeError, match=r"Keyword\(s\) \('computations',\) not found in the Domain Concept definition of Dog"
+        ):
+            dog.location_of("computations")  # fails because the property name is required
+        assert dog.location_of("breed", "computations") == [
+            "concepts",
+            "Dog",
+            "data",
+            "properties",
+            "breed",
+            "computations",
+        ]
+        with pytest.raises(
+            RuntimeError,
+            match=r"Keyword\(s\) \('specializations', 'breed', 'computations'\) not found in the Domain Concept "
+            r"definition of Dog",
+        ):
+            dog.location_of("specializations", "breed", "computations")
+        assert dog.location_of("properties", "_specializations", "age", "computations") == [
+            "concepts",
+            "Dog",
+            "data",
+            "properties",
+            "_specializations",
+            "age",
+            "computations",
+        ]
+        with pytest.raises(
+            RuntimeError,
+            match=r"Keyword\(s\) \('_specializations', 'age', 'computations'\) not found in the Domain Concept "
+            r"definition of Dog",
+        ):
+            # _specialization appears in functions as well => ambiguous => must be disambiguated by previous keyword
+            dog.location_of("_specializations", "age", "computations")
+        assert dog.location_of("properties", "_specializations", "_forThis", "breed", "computations") == [
+            "concepts",
+            "Dog",
+            "data",
+            "properties",
+            "_specializations",
+            "_forThis",
+            "breed",
+            "computations",
+        ]
 
 
 class TestAliasLocations:
