@@ -771,27 +771,13 @@ def parse_expression(
             location_id=location_id,
             part=PathPart.VALUE,
         ) from None
-    is_strict_subtype = expr_candidate_value.is_strict_subtype
-    is_addressable = isinstance(expr_candidate_value, Variable)
-    if not is_addressable and isinstance(expr_candidate_value, FunctionEvaluation):
-        is_addressable = expr_candidate_value.is_result_addressable
-    if expr_provenance != FunctionArgumentProvenance.ANY and not is_addressable:
-        # The expression parsed, but not into something that can be addressed. Say what it *is*: a bare
-        # "got False" leaves the reader to work out which of the alternatives matched.
-        expr_candidate_value = IllFormedExpression(
-            f"Provenance violation: {expr_provenance.value} provenance requires an addressable expression "
-            f"(a variable, an instance property chain, or a Function evaluation whose result is "
-            f"{ValueDomainArgumentProvenance.ADDR.value}); got a "
-            f"{_describe_expression_kind(expr_candidate_value)} of type {expr_candidate_value.value_type}"
-        )
-    elif expr_access != FunctionArgumentAccessor.GET and is_strict_subtype:
-        expr_candidate_value = IllFormedExpression(
-            f"Access violation: {expr_access.value} access requires the exact type {expr_type}, but this "
-            f"{_describe_expression_kind(expr_candidate_value)} has type {expr_candidate_value.value_type}, "
-            f"which is a strict subtype"
-        )
-
     expression = Expression(expr_type, expr_provenance, expr_access, json_value, expr_candidate_value)
+    # The static-semantic rules of `documentation/[CH].md` 10.3, which the expression asks itself -- see
+    # `Expression.static_semantic_violation`. Asked here rather than written here so that the other
+    # constructions of an `Expression` are held to the same rules instead of assuming the unconstrained pair.
+    violation = expression.static_semantic_violation()
+    if violation is not None:
+        expression.value = IllFormedExpression(violation)
     return expression
 
     # TODO: check the types // semantic of the expression:
@@ -807,27 +793,6 @@ def parse_expression(
     #     somewhere; if it is not registered, then it can't be used!
     #     if it is registered, interpret the template variable value as the type that registers
     raise NotImplementedError
-
-
-_EXPRESSION_KIND_NAMES: tuple[tuple[type, str], ...] = (
-    # Most specific first: NarrowExpression and DefaultSerializationExpression subclass InstExpression,
-    # InstancePropertyChain subclasses Variable, so a plain isinstance sweep in the wrong order reports the base class.
-    (NarrowExpression, "narrowed value domain instantiation"),
-    (DefaultSerializationExpression, "default-serialized value"),
-    (InstExpression, "value domain instantiation"),
-    (FunctionEvaluation, "Function evaluation"),
-    (InstancePropertyChain, "instance property chain"),
-    (LiteralTemplateVariableValue, "literal template variable"),
-    (Variable, "variable"),
-)
-
-
-def _describe_expression_kind(expr_value: ExpressionValue) -> str:
-    """A reader-facing name for what an expression turned out to be, for provenance/access messages."""
-    for kind, name in _EXPRESSION_KIND_NAMES:
-        if isinstance(expr_value, kind):
-            return name
-    return type(expr_value).__name__
 
 
 def get_expression_type(

@@ -101,6 +101,7 @@ class PossibleFunctionEvaluationExpression(TemplateDependentExpression):
 
 
 class LiteralTemplateVariableValue(TemplateDependentExpression):
+    kind_name = "literal template variable"
     """The value of the expression is a TemplateVariable with a literal constraint."""
 
     def __init__(
@@ -124,6 +125,8 @@ class LiteralTemplateVariableValue(TemplateDependentExpression):
 
 
 class Variable(ExpressionValue):
+    kind_name = "variable"
+
     def __init__(
         self,
         variable_name: str,
@@ -148,6 +151,11 @@ class Variable(ExpressionValue):
     def is_global_variable(self) -> bool:
         """Whether this reference resolved to a global variable rather than to something more local."""
         return self.scope_index == 0
+
+    @property
+    def is_addressable(self) -> bool:
+        """A variable names a place, which is the whole of what makes it addressable."""
+        return True
 
     @property
     def variable_type(self) -> TypeValue:
@@ -231,6 +239,8 @@ class InstancePropertyChain(Variable):
         self.prop_chain = instance_prop_chain
         self.prop_chain_types = instance_prop_chain_types
 
+    kind_name = "instance property chain"
+
     @property
     def is_template_dependent(self) -> bool:
         return False
@@ -241,6 +251,8 @@ class InstancePropertyChain(Variable):
 
 
 class FunctionEvaluation(ExpressionValue):
+    kind_name = "Function evaluation"
+
     def __init__(
         self,
         f_type: ConceptHierarchyType,
@@ -289,6 +301,16 @@ class FunctionEvaluation(ExpressionValue):
         """
 
     @property
+    def is_addressable(self) -> bool:
+        """Declared by the Function's result provenance: only an `Addr` result denotes a place."""
+        return bool(self.is_result_addressable)
+
+    @property
+    def is_modifiable(self) -> bool:
+        """Declared by the Function's result accessor. ``None`` -- a Function returning nothing -- is not."""
+        return bool(self.is_result_modifiable)
+
+    @property
     def is_fully_parsed(self) -> bool:
         return all(arg.is_fully_parsed for arg in self.arguments.values())
 
@@ -304,6 +326,8 @@ class FunctionEvaluation(ExpressionValue):
 
 
 class InstExpression(ExpressionValue):
+    kind_name = "value domain instantiation"
+
     def __init__(
         self, value: ParsedValue = None, value_type: TypeValue | None = None, is_strict_subtype: bool | None = None
     ):
@@ -383,6 +407,7 @@ class InstExpression(ExpressionValue):
 
 
 class DefaultSerializationExpression(InstExpression):
+    kind_name = "default-serialized value"
     """
     A value recognised by its concept's ``defaultSerialization`` rather than by an instantiation schema.
 
@@ -402,6 +427,8 @@ class DefaultSerializationExpression(InstExpression):
 
 
 class NarrowExpression(InstExpression):
+    kind_name = "narrowed value domain instantiation"
+
     def __init__(self, value: ParsedValue, value_type: TypeValue | None = None, is_strict_subtype: bool | None = None):
         super().__init__(value, value_type, is_strict_subtype)
 

@@ -57,8 +57,36 @@ class ExpressionValue(ABC):
         is why an :class:`IllFormedExpression` is not fully parsed -- parsing is what failed.
         """
 
+    kind_name: str = ""
+    """A reader-facing name for this kind of expression, used in diagnostics."""
+
     @property
     def is_valid(self) -> bool:
+        return True
+
+    @property
+    def is_addressable(self) -> bool:
+        """
+        Whether this expression denotes a *place* rather than a fresh value.
+
+        ``False`` for everything that constructs: an `Inst`, a `Narrow`, a default serialization, and a
+        Function evaluation whose result is not declared `Addr`. Only a place can satisfy an argument whose
+        provenance is `Addr`, and only a place makes the exactness rule bite -- writing through an alias
+        typed as a supertype could store a value of the wrong type, whereas modifying a fresh value
+        modifies a copy and harms nobody.
+        """
+        return False
+
+    @property
+    def is_modifiable(self) -> bool:
+        """
+        Whether what this expression denotes may be written to.
+
+        Only meaningful together with :attr:`is_addressable`: a fresh value is always modifiable, because
+        modifying it modifies the copy the expression just produced. Variables are modifiable
+        unconditionally -- the exception would be a ``Constant<T>``, which this hierarchy does not have --
+        and a Function evaluation is modifiable exactly when its result accessor says so.
+        """
         return True
 
     @abstractmethod
@@ -115,6 +143,50 @@ class Expression:
     @property
     def is_valid(self) -> bool:
         return self.value.is_valid
+
+    def static_semantic_violation(self) -> str | None:
+        """
+        Why :attr:`value` can not satisfy the required provenance, access and type -- or ``None``.
+
+        The rules of ``documentation/[CH].md`` §10.3 in one place, so that *every* construction of an
+        `Expression` is checked rather than only the one the parser makes. There are two independent axes,
+        and reading them as one is what made the previous implementation reject three legitimate shapes:
+
+        * **provenance** -- `Addr` demands a *place*, so only a variable, an instance property chain, or a
+          Function evaluation with an `Addr` result can satisfy it. Everything else constructs a fresh
+          value, which has no address to give.
+        * **access** -- `Modify` demands that what is written to is of the exact expected type, *and* that
+          it may be written to at all. Both apply only to a place. An `Inst`, a `Narrow`, a default
+          serialization or a non-`Addr` evaluation may be a strict subtype under `Modify`, because the
+          modification lands on the value the expression just built. The default serialization is why that
+          matters in practice: ``1`` written at a `Number` site serializes to `Integer`, a strict subtype,
+          and is perfectly legal to modify.
+
+        Every violation is reported, not the first: a value can fail both axes, and hearing about only one
+        of them sends the reader looking in the wrong place.
+        """
+        violations: list[str] = []
+        kind = self.value.kind_name or type(self.value).__name__
+        if self.required_provenance_type != FunctionArgumentProvenance.ANY and not self.value.is_addressable:
+            violations.append(
+                f"Provenance violation: {self.required_provenance_type.value} provenance requires an "
+                f"addressable expression (a variable, an instance property chain, or a Function evaluation "
+                f"whose result is {FunctionArgumentProvenance.ADDR.value}); got a "
+                f"{kind} of type {self.value.value_type}"
+            )
+        if self.required_access_type != FunctionArgumentAccessor.GET and self.value.is_addressable:
+            if self.is_strict_subtype:
+                violations.append(
+                    f"Access violation: {self.required_access_type.value} access requires the exact type "
+                    f"{self.required_expression_type}, but this {kind} has type {self.value.value_type}, "
+                    f"which is a strict subtype"
+                )
+            if not self.value.is_modifiable:
+                violations.append(
+                    f"Access violation: {self.required_access_type.value} access requires an expression that "
+                    f"may be written to; this {kind} of type {self.value.value_type} is not modifiable"
+                )
+        return "; ".join(violations) if violations else None
 
     def all_subexpressions(
         self, filter_f: Type[ExpressionValue] | Callable[[Expression], bool] | None = None

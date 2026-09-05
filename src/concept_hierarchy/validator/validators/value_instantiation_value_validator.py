@@ -141,6 +141,9 @@ class ValueValidator(ValueInstantiationContext):
             {function_name: arguments},
             expression_value,
         )
+        violation = expression.static_semantic_violation()
+        if violation is not None:
+            return None, [CHSemanticError(violation, location_id=arguments_location_id, part=PathPart.VALUE)]
         parsed = ParsedCustomValue(
             location_id=arguments_location_id,
             schema_node=schema_node,
