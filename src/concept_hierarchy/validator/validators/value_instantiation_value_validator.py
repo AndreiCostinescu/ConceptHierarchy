@@ -129,6 +129,7 @@ class ValueValidator(ValueInstantiationContext):
             error = CHSemanticError(expression_value.reason, location_id=arguments_location_id, part=PathPart.VALUE)
             error.causes.extend(expression_value.explanation_causes(arguments_location_id))
             return None, [error]
+        # create expression with permissive provenance and access characters
         expression = Expression(
             function_type,
             FunctionArgumentProvenance.ANY,
