@@ -1321,6 +1321,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
     # site *did* supply, and what it sees there is the argument's declared type, not the supplied value.
     argument_types: dict[str, TypeValue] = {}
     for argument in sorted(all_arguments):
+        arg_location_id = location_id + [argument]
         argument_type, _, _ = validator.get_function_argument_interface(f_type.clean_name, argument)
         argument_type, _ = substitute(
             argument_type,
@@ -1328,13 +1329,14 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
             f_template_context,
             expr_template_context,
             validator.get_type_template_instantiation_validator(),
-            location_id,
+            arg_location_id,
         )
         argument_types[argument] = argument_type
 
     with validator.function_argument_scope(argument_types):
         for argument, declared_source in to_ground.items():
             argument_type = argument_types[argument]
+            arg_location_id = location_id + [argument]
             assert isinstance(argument_type, TYPE_VALUE_IS_INSTANCE_CHECK)
             # Published before the parse, not after, so that a default which reaches itself finds the
             # in-progress entry instead of recursing. (An exception escaping the parse leaves the marker
@@ -1356,7 +1358,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
                 # substitution below lands in the empty context either way.
                 f_template_context,
                 validator,
-                location_id + [f_name, argument],
+                arg_location_id,
                 template_substitution=f_substitution_mapping,
                 # Counted like an instantiation default, and for the same reason: each level here is a
                 # *new application*, because a level that repeated one is the in-progress case above. So a
@@ -1540,7 +1542,7 @@ def _check_function_return(
     if function_return is None and expr_type is not None:
         raise CHSemanticError(
             f"Function {f_type.full_name} does not return anything; expected a return type of {expr_type}!",
-            location_id=location_id + [f_type.full_name],
+            location_id=location_id,
             part=PathPart.KEY,
         )
     if function_return is None:
@@ -1589,11 +1591,12 @@ def parse_function_evaluation_expression(
 ) -> tuple[list[ExpressionValue], TypeValue | None, bool]:
     expressions_res = []
 
-    function_composition_type = validator.create_instantiated_type("FunctionComposition", location_id)
-    function_type = validator.create_instantiated_type("Function", location_id)
+    f_location_id = location_id + [key]
+    function_composition_type = validator.create_instantiated_type("FunctionComposition", f_location_id)
+    function_type = validator.create_instantiated_type("Function", f_location_id)
 
     try:
-        key_type = validator.create_possibly_template_dependent_type(key, location_id)
+        key_type = validator.create_possibly_template_dependent_type(key, f_location_id)
         if template_substitution:
             # The key is written in source text, so it can name the enclosing concept's template
             # variables (`{"Add<T>": ...}`); ground them before anything is decided from the type.
@@ -1603,7 +1606,7 @@ def parse_function_evaluation_expression(
                 expr_template_context,
                 TemplateContext(),
                 validator.get_type_template_instantiation_validator(),
-                location_id,
+                f_location_id,
             )
     except CHSemanticError as e:
         if e.args[0] == f"ParsedType '{key}' is not a template variable (in this context) nor a concept!":
@@ -1625,11 +1628,11 @@ def parse_function_evaluation_expression(
         expr_type is None
         or isinstance(expr_type, TemplateVariable)
         or (
-            not _check_if_subtype(validator, expr_type, function_composition_type, expr_template_context, location_id)
+            not _check_if_subtype(validator, expr_type, function_composition_type, expr_template_context, f_location_id)
             and is_function_evaluation
         )
     )
-    is_function_subtype = _check_if_subtype(validator, key_type, function_type, expr_template_context, location_id)
+    is_function_subtype = _check_if_subtype(validator, key_type, function_type, expr_template_context, f_location_id)
     if not function_evaluation or not is_function_subtype:
         return expressions_res, key_type, is_function_subtype
 
@@ -1650,7 +1653,7 @@ def parse_function_evaluation_expression(
 
     # check function result type (if any)
     function_return_type, is_result_modifiable, is_result_addressable, function_subtype_check = _check_function_return(
-        key_type, expr_type, validator, f_template_context, expr_template_context, f_substitution_mapping, location_id
+        key_type, expr_type, validator, f_template_context, expr_template_context, f_substitution_mapping, f_location_id
     )
     if not function_subtype_check:
         reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
@@ -1674,13 +1677,14 @@ def parse_function_evaluation_expression(
                 key_type.clean_name, f_arg_name
             )
             # substitute `f_arg_type` with template instantiation of Function
+            arg_location_id = f_location_id + [f_arg_name]
             f_arg_type, _ = substitute(
                 f_arg_type,
                 f_substitution_mapping,
                 f_template_context,
                 expr_template_context,
                 validator.get_type_template_instantiation_validator(),
-                location_id,
+                arg_location_id,
             )
             assert isinstance(f_arg_type, TYPE_VALUE_IS_INSTANCE_CHECK)
             arg_expr = parse_expression(
@@ -1690,7 +1694,7 @@ def parse_function_evaluation_expression(
                 f_arg_access,
                 expr_template_context,
                 validator,
-                location_id + [key, f_arg_name],
+                arg_location_id,
                 parse_template_expressions_without_type_checks,
                 template_substitution,
                 expansion_depth,
@@ -1740,7 +1744,7 @@ def parse_function_evaluation_expression(
                 f_template_context,
                 expr_template_context,
                 validator,
-                location_id,
+                f_location_id,
                 attempts,
                 expansion_depth,
             )
@@ -1834,12 +1838,13 @@ def _parse_expression_of_json_object(
                 return expressions_res
         else:
             # abstract Types do not have instantiation schemas
+            narrow_location_id = location_id + [key]
             narrow_res = _check_instantiation_schema(
                 value,
                 key_type,
                 expr_template_context,
                 validator,
-                location_id,
+                narrow_location_id,
                 template_substitution,
                 expansion_depth,
             )
