@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from copy import copy
 from enum import Enum
 
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
@@ -459,7 +460,7 @@ class DomainConceptDefinition(ConceptDefinition):
                 part=PathPart.VALUE,
             )
         data_container.update(def_location_data)
-        def_specialization = data_container.pop(DomainConceptDefinition.domain_concept_specialization, {})
+        def_specialization = copy(data_container.pop(DomainConceptDefinition.domain_concept_specialization, {}))
         if not isinstance(def_specialization, dict):
             raise CHSyntaxError(
                 f"The specialization content of {self.definition_type()} {data_type_plural} must be a JSON object, not "
