@@ -25,7 +25,12 @@ from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, Tem
 from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import FunctionArgumentAccessor, FunctionArgumentProvenance
-from concept_hierarchy.data.expressions.subexpressions import FunctionEvaluation, IllFormedExpression, Variable
+from concept_hierarchy.data.expressions.subexpressions import (
+    FunctionEvaluation,
+    IllFormedExpression,
+    Variable,
+    VerifiedTemplateDependentExpression,
+)
 from concept_hierarchy.data.parsers.expression_parser import get_expression_type, parse_expression
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, frozendict
 from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
@@ -33,6 +38,28 @@ from concept_hierarchy.definitions.concept_definition_functions import FunctionD
 from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.errors import CHSemanticError, LocationId, PathPart
+
+
+def ill_formed_parts(expr: Expression) -> tuple[IllFormedExpression, ...]:
+    """
+    Every :class:`IllFormedExpression` that makes ``expr`` invalid, whatever shape it arrived in.
+
+    There are two shapes, and a caller that knows only the first crashes on the second. At a site of
+    **ground** type the parser settles on one alternative, so an invalid expression *is* the
+    `IllFormedExpression`. At a site whose type is still **template dependent** it cannot settle --
+    ``ensure_expression_invariant`` answers ``None``, so every applicable alternative is tried and they are
+    collected into a `VerifiedTemplateDependentExpression`, which is invalid when *any* of them failed.
+
+    Returns ``()`` for an expression that is invalid with nothing to point at: a template-dependent
+    expression with no possible alternative at all, which `VerifiedTemplateDependentExpression.is_valid`
+    also rejects.
+    """
+    value = expr.value
+    if isinstance(value, IllFormedExpression):
+        return (value,)
+    if isinstance(value, VerifiedTemplateDependentExpression):
+        return tuple(possible for possible in value.possible_expressions if isinstance(possible, IllFormedExpression))
+    return ()
 
 
 def invalid_expression_error(expr: Expression, location_id) -> CHSemanticError:
@@ -43,17 +70,20 @@ def invalid_expression_error(expr: Expression, location_id) -> CHSemanticError:
     names the alternatives that were tried, the instantiation constraint groups that were tested, and the
     schema errors of the one that matched.
     """
-    assert isinstance(expr.value, IllFormedExpression)
+    assert not expr.is_valid, expr
+    parts = ill_formed_parts(expr)
+    reason = "; ".join(part.reason for part in parts) if parts else "no alternative could be parsed for this expression"
     error = CHSemanticError(
         f"Invalid expression: expected {expr.required_expression_type}, "
         f"{expr.required_provenance_type}, "
         f"{expr.required_access_type};"
         f"\n\tgot {expr.unparsed}!"
-        f"\n\t\tReason: {expr.value.reason}",
+        f"\n\t\tReason: {reason}",
         location_id=location_id,
         part=PathPart.VALUE,
     )
-    error.causes.extend(expr.value.explanation_causes(location_id))
+    for part in parts:
+        error.causes.extend(part.explanation_causes(location_id))
     return error
 
 
@@ -226,7 +256,6 @@ def init_expressions(context: ConceptHierarchyContext):
                 else:
                     assert parsed_default_value_expr.is_valid
                 if not parsed_default_value_expr.is_valid:
-                    assert isinstance(parsed_default_value_expr.value, IllFormedExpression)
                     raise invalid_expression_error(
                         parsed_default_value_expr, default_args_location_id + [default_arg_name]
                     )
@@ -301,7 +330,6 @@ def init_expressions(context: ConceptHierarchyContext):
                     parse_template_expressions_without_type_checks=True,
                 )
                 if not parsed_expr.is_valid:
-                    assert isinstance(parsed_expr.value, IllFormedExpression)
                     raise invalid_expression_error(parsed_expr, location_of_default)
                 # This stores the parsed/processed default_expr in custom nodes.
                 schema_node.parsed_default_expr = parsed_expr
@@ -436,7 +464,6 @@ def check_global_variable_expressions(context: ConceptHierarchyContext) -> None:
             expression_location,
         )
         if not parsed_expr.is_valid:
-            assert isinstance(parsed_expr.value, IllFormedExpression)
             raise invalid_expression_error(parsed_expr, expression_location)
         if parsed_expr.is_value_template_dependent or not parsed_expr.is_fully_parsed:
             raise CHSemanticError(
@@ -510,7 +537,6 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                     parse_template_expressions_without_type_checks=True,
                 )
                 if not parsed_default_value_expr.is_valid:
-                    assert isinstance(parsed_default_value_expr.value, IllFormedExpression)
                     raise invalid_expression_error(parsed_default_value_expr, default_arg_location_id)
 
         context.pop_last_variable_stack_frame()
