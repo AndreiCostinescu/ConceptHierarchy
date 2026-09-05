@@ -1546,7 +1546,6 @@ def _check_function_return(
     if function_return is None:
         return None, None, None, True
 
-    function_result_type = function_return[0]
     is_result_modifiable = function_return[1] != FunctionResultAccessor.GET
     is_result_addressable = function_return[2] == ValueDomainArgumentProvenance.ADDR
 
@@ -1570,7 +1569,7 @@ def _check_function_return(
         or isinstance(expr_type, TemplateVariable)
         or _check_if_subtype(validator, function_return_type, expr_type, expr_template_context, location_id)
     )
-    return function_result_type, is_result_modifiable, is_result_addressable, check_passed
+    return function_return_type, is_result_modifiable, is_result_addressable, check_passed
 
 
 def parse_function_evaluation_expression(
@@ -1650,7 +1649,7 @@ def parse_function_evaluation_expression(
 
     # check function result type (if any)
     function_return_type, is_result_modifiable, is_result_addressable, function_subtype_check = _check_function_return(
-        key_type, expr_type, validator, f_template_context, expr_template_context, template_substitution, location_id
+        key_type, expr_type, validator, f_template_context, expr_template_context, f_substitution_mapping, location_id
     )
     if not function_subtype_check:
         reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
