@@ -1,6 +1,7 @@
 line-length = 120
 indent-width = 4
 extend-exclude = [".devtools"]
+show-fixes = true
 
 [format]
 quote-style = "double"
