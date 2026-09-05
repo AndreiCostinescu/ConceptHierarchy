@@ -27,7 +27,8 @@ from concept_hierarchy.data.concept_hierarchy import (
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
 from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.jsonschema import CHSchemaNode
-from concept_hierarchy.data.parsers.jsonschema_parser import parse_schema
+from concept_hierarchy.data.jsonschema.parsed_schema import CrossSchemaReference
+from concept_hierarchy.data.parsers.jsonschema_parser import parse_schema, resolve_schema_pointer
 from concept_hierarchy.data.parsers.template_argument_constraint_parser import parse_constraint_definition
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
@@ -604,6 +605,95 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
     context.reset_template_context()
 
 
+def check_schema_references_in_concept_hierarchy(context: ConceptHierarchyContext) -> None:
+    """
+    Validate every ``#ch#`` reference, in a pass of its own after all instantiation schemas exist.
+
+    A second pass because a cross-schema reference is the one thing about a schema that its own concept
+    cannot decide. Schemas are parsed in `concept_topo_sort` order, which orders parents before children --
+    a reference is neither, so the target may not have been reached yet, and may equally be a descendant.
+    Waiting until every `ValueDomainData.instantiation` is filled removes the ordering question entirely.
+
+    What is checked is everything that does not need an *application*: that the target names a type, that
+    the type is a non-abstract ValueDomain with an instantiation, that the index obeys the rule below, and
+    that the pointer addresses something in the target's declared schema. Binding the reference to a node
+    is `bind_cross_schema_references`, and happens per application, because the node it must land on is one
+    of the *target application's* resolved schema.
+
+    **The index is present exactly when the target wrote a template-dependent instantiation.** Those have
+    one entry per constraint group, and which one is meant is not something a reader should have to work
+    out; the others have exactly one schema, and writing ``/0`` for it would suggest a choice that is not
+    there -- so it is rejected rather than accepted as a synonym for the only possibility.
+    """
+    context.set_template_context(TemplateContext())
+    for c_name, datum in context.model.value_domains.items():
+        for schema_index, (_constraint, schema) in enumerate(datum.instantiation):
+            for node in schema.walk():
+                if node.cross_reference is not None:
+                    _check_schema_reference(context, node.cross_reference, node.location_id)
+    context.reset_template_context()
+
+
+def _check_schema_reference(
+    context: ConceptHierarchyContext, reference: CrossSchemaReference, location_id: LocationId
+) -> None:
+    """One ``#ch#`` reference; raises the first thing that is wrong with it."""
+    reference_location = location_id + ["$ref"]
+
+    def bad(message: str, causes: list | None = None) -> CHSemanticError:
+        return CHSemanticError(
+            f"Cannot resolve $ref {reference.written!r}: {message}",
+            location_id=reference_location,
+            part=PathPart.VALUE,
+            causes=causes or [],
+        )
+
+    try:
+        target_type = parse_convert_type(reference.type_name, context.type_validator, reference_location)
+    except ConceptHierarchyError as e:
+        # Deliberately parsed in the *empty* template context: the reference must name a ground
+        # application, so a template variable of the referring concept is not in scope here and naming one
+        # is exactly the mistake this reports.
+        raise bad(f"{reference.type_name!r} is not a ground type of this Concept Hierarchy", [e])
+
+    target_name = target_type.clean_name
+    if target_name not in context.model.value_domains:
+        raise bad(f"{target_type} is not a ValueDomain, so it has no instantiation schema to point into")
+    if not context.model.concepts[target_name].instantiable:
+        raise bad(f"{target_type} is abstract, so it has no instantiation schema to point into")
+
+    target_definition = context.ch.concepts[target_name]
+    assert isinstance(target_definition, ValueDomainDefinition)
+    if target_definition.instantiation is None:
+        raise bad(
+            f"{target_type} declares no instantiation, so there is nothing in it to reference "
+            f"(its schema is the unconstrained one, which has no definitions)"
+        )
+
+    schemas = context.model.value_domains[target_name].instantiation
+    if target_definition.was_template_dependent_instantiation_defined:
+        if reference.schema_index is None:
+            raise bad(
+                f"{target_type} defines {len(schemas)} template-dependent instantiation schemas, so the "
+                f'reference must say which one: "#ch#/{reference.type_name}/<index>/#/...".'
+            )
+        if reference.schema_index >= len(schemas):
+            raise bad(
+                f"{target_type} defines {len(schemas)} instantiation schema(s), so there is no schema at "
+                f"index {reference.schema_index}"
+            )
+    elif reference.schema_index is not None:
+        raise bad(
+            f"{target_type} does not define template-dependent instantiation schemas, so it has exactly "
+            f"one and an index must not be written"
+        )
+
+    declared_schema = schemas[reference.schema_index or 0][1]
+    resolved, failure = resolve_schema_pointer(declared_schema, list(reference.pointer))
+    if resolved is None:
+        raise bad(f"in the instantiation schema of {target_type}, {failure}")
+
+
 def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):
     # First process template types
     for c_name, c in context.ch.concepts.items():
@@ -621,3 +711,5 @@ def check_types_in_concept_hierarchy(context: ConceptHierarchyContext):
             check_types_in_value_domain_definition(c, context.model.value_domains[c_name], context)
         if isinstance(c, FunctionDefinition):
             check_types_in_function_definition(c, context.model.functions[c_name], context)
+    # Last, because it is the one check that reads *other* concepts' finished schemas.
+    check_schema_references_in_concept_hierarchy(context)

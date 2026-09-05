@@ -43,6 +43,28 @@ from concept_hierarchy.definitions.concept_definition_domain_concept import ForP
 from concept_hierarchy.errors import LocationId, PathSegment
 
 
+@dataclass(frozen=True)
+class CrossSchemaReference:
+    """
+    A ``$ref`` into another ValueDomain's instantiation schema: ``#ch#/<Type>[/<index>]/#/<pointer>``.
+
+    The target is a **type**, not a concept name -- ``#ch#/Box<Integer>/#/$defs/x``. That is what makes the
+    referenced fragment meaningful: it carries the template arguments the target schema is substituted
+    with, so a ``$defs`` entry of type ``Box:T`` arrives as ``Integer`` rather than as a variable nothing in
+    the referring schema could bind.
+
+    ``schema_index`` selects one of the target's ``instantiation`` entries. It is absent exactly when the
+    target did not write a template-dependent instantiation -- there is one schema then, and naming its
+    index would be a fiction -- and required, and in range, when the target did.
+    """
+
+    type_name: str
+    schema_index: int | None
+    pointer: tuple[str, ...]
+    written: str
+    """The reference exactly as written, for diagnostics."""
+
+
 class CustomConceptDataConstraint:
     def __init__(
         self,
@@ -185,6 +207,15 @@ class CHSchemaNode:
     # --- $defs / $ref -------------------------------------------------
     definitions: dict[str, CHSchemaNode] = field(default_factory=dict)
     ref_string: str | None = None
+    cross_reference: CrossSchemaReference | None = None
+    """
+    Set instead of resolving locally when ``ref_string`` names *another* ValueDomain's schema.
+
+    Kept apart from `ref_resolved` because the two are bound at different times and for different
+    reasons: a local reference addresses a node of this same tree and is rebuilt with it, while a
+    cross-schema one addresses a node of the *target application's* resolved schema, which only exists
+    once that application has been built. See `bind_cross_schema_references`.
+    """
     ref_resolved: CHSchemaNode | None = None
 
     # --- everything else (enum, const, minimum, pattern, format, ...) -

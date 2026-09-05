@@ -53,6 +53,7 @@ from concept_hierarchy.data.expressions.subexpressions import (
 )
 from concept_hierarchy.data.jsonschema import CHSchemaNode
 from concept_hierarchy.data.jsonschema.parsed_schema import LITERAL_KEYWORD_FIELDS
+from concept_hierarchy.data.parsers.jsonschema_parser import resolve_schema_pointer
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
     ConstraintGroup,
     HierarchyCheckType,
@@ -487,14 +488,49 @@ def substitute_schema(
         assert res.custom_type is not None
         return res
 
-    return instantiation_schema.apply(_parse_and_substitute)
+    substituted = instantiation_schema.apply(_parse_and_substitute)
+    rewire_resolved_refs(instantiation_schema, substituted)
+    return substituted
+
+
+def rewire_resolved_refs(declared: CHSchemaNode, rebuilt: CHSchemaNode) -> None:
+    """
+    Point every ``$ref`` of ``rebuilt`` at *its* copy of the target, not at the declaration's.
+
+    `CHSchemaNode.apply` rebuilds every child a node holds, but `ref_resolved` is a pointer *across* the
+    tree rather than a child, so a shallow copy carries the old address over. The rebuilt tree then has
+    `$ref` nodes reaching back into the declaration, and two things go wrong at once, both measured:
+
+    * **substitution does not reach through a `$ref`.** ``W<T>`` whose property is ``{"$ref":
+      "#/$defs/inner"}`` with ``inner`` of type ``T`` rejected *every* value of *every* application,
+      because the value was checked against the unsubstituted ``W:T``;
+    * **a `default` under a `$ref` target is never registered.** `build_resolved_instantiation_schema`
+      registers default sites by walking the rebuilt tree, and `iter_children` does not follow
+      `ref_resolved` -- so the site that is actually reached at parse time is one this application never
+      registered, and its default is never resolved.
+
+    `apply` preserves the shape of the tree exactly -- every child position is mapped one-to-one, and a
+    boolean schema is returned as itself -- so walking the two in lockstep pairs each old node with its
+    replacement. A target that is not in the mapping is left alone: that is a reference into *another*
+    concept's schema, which this pass has no business rewriting.
+    """
+    replacements = {id(old): new for old, new in zip(declared.walk(), rebuilt.walk())}
+    for old, new in zip(declared.walk(), rebuilt.walk()):
+        if old.ref_resolved is not None:
+            new.ref_resolved = replacements.get(id(old.ref_resolved), old.ref_resolved)
 
 
 def _copy_schema(node: CHSchemaNode) -> CHSchemaNode:
     """A fresh tree with the same content, so that resolving defaults never writes to the declaration."""
+    copied = _copy_schema_nodes(node)
+    rewire_resolved_refs(node, copied)
+    return copied
+
+
+def _copy_schema_nodes(node: CHSchemaNode) -> CHSchemaNode:
     if node.is_boolean_schema:
         return node
-    return node.apply(_copy_schema)
+    return node.apply(_copy_schema_nodes)
 
 
 def expansion_cycle_expression(node: CHSchemaNode) -> Expression:
@@ -546,8 +582,12 @@ def build_resolved_instantiation_schema(
     else:
         resolved = _copy_schema(declared_schema)
 
-    # Published before the defaults are resolved: see `put_resolved_instantiation_schema`.
+    # Published before the defaults are resolved: see `put_resolved_instantiation_schema`. It is also
+    # what stops a cycle of cross-schema references: `bind_cross_schema_references` below asks for the
+    # target's resolved schema, and a chain that comes back round finds this entry -- structurally
+    # complete already, since only the *defaults* are still outstanding.
     validator.put_resolved_instantiation_schema(cache_key, resolved)
+    bind_cross_schema_references(resolved, validator, location_id, expansion_depth)
 
     # Registered, not resolved. A default is parsed the first time something materialises it, which is
     # what makes "already being resolved" (a cycle) distinguishable from "not resolved yet" (merely not
@@ -560,6 +600,77 @@ def build_resolved_instantiation_schema(
             node.parsed_default_expr = None
             validator.register_default_site(node, own_substitution or None, expansion_depth + 1)
     return resolved
+
+
+def resolved_instantiation_schema_of(
+    target_type: InstantiatedType,
+    schema_index: int,
+    validator: ExpressionParserValidator,
+    location_id: LocationId,
+    expansion_depth: int,
+) -> CHSchemaNode:
+    """
+    The target application's own resolved schema: substituted for *its* arguments, defaults registered.
+
+    The same memo `_check_instantiation_schema` uses, so a schema referenced from three places is built
+    once and every reference lands on the same nodes -- which is what keeps the default sites under a
+    referenced fragment registered exactly once, by the application that owns them.
+    """
+    schemas = validator.get_if_has_instantiation_schema(target_type)
+    assert schemas is not None and schema_index < len(schemas), (target_type, schema_index)
+    cache_key = (target_type.full_name, schema_index)
+    cached = validator.get_resolved_instantiation_schema(cache_key)
+    if cached is not None:
+        return cached
+    return build_resolved_instantiation_schema(
+        schemas[schema_index][1],
+        validator.get_template_context(target_type.clean_name),
+        target_type,
+        validator.get_type_template_instantiation_validator(),
+        validator,
+        location_id,
+        cache_key,
+        expansion_depth,
+    )
+
+
+def bind_cross_schema_references(
+    resolved: CHSchemaNode,
+    validator: ExpressionParserValidator,
+    location_id: LocationId,
+    expansion_depth: int,
+) -> None:
+    """
+    Point every ``#ch#`` reference of a freshly resolved schema at a node of the *target's* resolved schema.
+
+    Not at the target's **declaration**, which is the whole reason this happens here rather than in the
+    static pass that validated these references. A declaration is the wrong thing to point at twice over,
+    and both were measured on the local-reference version of this bug:
+
+    * a templated target's nodes still carry its own template variables, so the value would be checked
+      against ``Box:T`` rather than against ``Integer``;
+    * a ``default`` on the declaration was never registered for any application, so materialising it would
+      reach a site nothing ever resolved.
+
+    Pointing into the target's resolved schema gets both right, and gets them right *once*: the schema is
+    memoized per application, so the node a reference lands on is the same node the target's own values are
+    checked against.
+
+    Every reference here has already been validated by `check_schema_references_in_concept_hierarchy`, so a
+    failure to resolve now is an internal inconsistency rather than an author's mistake.
+    """
+    for node in resolved.walk():
+        reference = node.cross_reference
+        if reference is None:
+            continue
+        target_type = validator.create_instantiated_type(reference.type_name, location_id)
+        assert isinstance(target_type, InstantiatedType), reference.written
+        target_schema = resolved_instantiation_schema_of(
+            target_type, reference.schema_index or 0, validator, location_id, expansion_depth
+        )
+        referenced, failure = resolve_schema_pointer(target_schema, list(reference.pointer))
+        assert referenced is not None, f"{reference.written} was validated but does not resolve: {failure}"
+        node.ref_resolved = referenced
 
 
 def parse_expression(

@@ -187,6 +187,41 @@ class StringParser:
         self.pos += len(m.group())
         return m.group()
 
+    def consume_until_unnested(self, delimiters: str) -> str:
+        """
+        Consume up to the first character of ``delimiters`` that is neither quoted nor nested, and return it.
+
+        "Neither quoted nor nested" is the whole point. A type is not a token that can be found by searching
+        for a separator: a **literal template variable** may hold any character at all, so
+        ``Sequence<"a/b">`` contains a ``/`` that separates nothing, and ``Sequence<"a#b">`` a ``#`` that
+        starts nothing. Quoted literals are consumed whole by :meth:`parse_string_literal`, which already
+        knows about ``\\"``; ``<>``, ``()`` and ``[]`` are tracked by depth, so a delimiter inside a
+        template argument list is passed over as well.
+
+        Stops at end of input if no such delimiter is there, leaving the parser at EOF. The caller checks
+        what it stopped on -- this reports no error of its own, because "no delimiter" is a legitimate
+        answer for the last field of a grammar.
+        """
+        start = self.pos
+        depth = 0
+        while not self.eof():
+            character = self.peek()
+            if character == '"':
+                # Consumed whole rather than scanned: the closing quote is the one that is not escaped, and
+                # `parse_string_literal` is where that is already decided.
+                self.parse_string_literal(surround_result_with_quotes=True)
+                continue
+            if character in "<([":
+                depth += 1
+            elif character in ">)]":
+                # Clamped rather than allowed to go negative: an unbalanced closer is a malformed *type*,
+                # which the type parser reports far better than a scanner could.
+                depth = max(depth - 1, 0)
+            elif depth == 0 and character in delimiters:
+                break
+            self.pos += 1
+        return self.text[start : self.pos]
+
     def consume_balanced(self, open_ch: str, close_ch: str) -> str:
         """
         Consume a balanced delimited sequence (handles nesting).

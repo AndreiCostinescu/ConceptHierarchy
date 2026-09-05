@@ -47,14 +47,18 @@ at that point.
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
+from typing import Sequence
 
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression_utils import ValueDomainArgumentProvenance
-from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode, CustomConceptDataConstraint
+from concept_hierarchy.data.jsonschema.parsed_schema import (
+    CHSchemaNode,
+    CrossSchemaReference,
+    CustomConceptDataConstraint,
+)
 from concept_hierarchy.data.parsers.string_parser import StringParser
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.data.utils import StopValidation, record
@@ -120,7 +124,8 @@ BUILTIN_NODE_EXTRA_KEYS = {
     "$defs",
 }
 
-_REF_PATTERN = re.compile(r"^#/(definitions|\$defs)/([^/]+)$")
+_DEFINITION_KEYWORDS = ("definitions", "$defs")
+"""The two spellings of the same container; `CHSchemaNode` keeps both in :attr:`definitions`."""
 
 _MISSING = object()
 
@@ -839,28 +844,228 @@ def _build_safe_canonical(node: CHSchemaNode, remaining_keywords: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# $ref resolution (local "#/definitions/..." and "#/$defs/..." only)
+# $ref resolution: a JSON Pointer from the schema root
 # ---------------------------------------------------------------------------
-def _resolve_local_refs(root: CHSchemaNode, state: _State) -> None:
-    defs_by_name = {}
-    for n in root.walk():
-        for key, child in n.definitions.items():
-            defs_by_name.setdefault(key, child)
+def unescape_pointer_segment(segment: str) -> str:
+    """RFC 6901: ``~1`` is a literal ``/`` and ``~0`` a literal ``~``, in that order."""
+    return segment.replace("~1", "/").replace("~0", "~")
 
+
+def split_json_pointer(pointer: str) -> list[str]:
+    """The segments of ``pointer``, which must start at the document root (``#`` or ``#/...``)."""
+    assert pointer.startswith("#"), pointer
+    body = pointer[1:]
+    if not body:
+        return []
+    assert body.startswith("/"), pointer
+    return [unescape_pointer_segment(segment) for segment in body[1:].split("/")]
+
+
+def resolve_schema_pointer(root: CHSchemaNode, segments: Sequence[str]) -> tuple[CHSchemaNode | None, str | None]:
+    """
+    Navigate a JSON Pointer through a parsed schema, one keyword at a time.
+
+    A pointer rather than a name, because a name is not an address: the previous resolver flattened every
+    ``$defs`` in the tree into one map and took the first entry for a name, so a nested definition was
+    reachable *by accident*, two definitions sharing a name silently resolved to whichever came first, and
+    ``#/$defs/a/$defs/b`` could not be written at all.
+
+    Navigation is written out per keyword rather than driven by :meth:`CHSchemaNode.iter_children`, because
+    the two answer different questions: ``iter_children`` enumerates children for a traversal and folds
+    ``$defs`` and the custom concept-data constraints into shapes that suit that, while a pointer has to
+    address exactly what the *source text* wrote.
+
+    :return: ``(node, None)`` on success, or ``(None, reason)`` naming the segment that could not be taken.
+    """
+    node = root
+    index = 0
+    while index < len(segments):
+        keyword = segments[index]
+        index += 1
+        if node.is_boolean_schema:
+            return None, f"{keyword!r} can not be taken: the schema at that point is a boolean schema"
+
+        def named(container: dict, what: str) -> tuple[CHSchemaNode | None, str | None]:
+            if index >= len(segments):
+                return None, f"{keyword!r} needs a name after it"
+            name = segments[index]
+            if name not in container:
+                return None, f"there is no {what} named {name!r} (have: {sorted(container)})"
+            return container[name], None
+
+        if keyword in _DEFINITION_KEYWORDS:
+            child, failure = named(node.definitions, "definition")
+            index += 1
+        elif keyword == "properties":
+            child, failure = named(node.properties, "property")
+            index += 1
+        elif keyword == "patternProperties":
+            child, failure = named(node.pattern_properties, "pattern property")
+            index += 1
+        elif keyword == "dependencies":
+            child, failure = named(node.dependent_schemas, "dependent schema")
+            index += 1
+        elif keyword in ("allOf", "anyOf", "oneOf"):
+            branches = {"allOf": node.all_of, "anyOf": node.any_of, "oneOf": node.one_of}[keyword]
+            child, failure = _indexed(branches, segments, index, keyword)
+            index += 1
+        elif keyword == "items" and isinstance(node.items, list):
+            child, failure = _indexed(node.items, segments, index, keyword)
+            index += 1
+        elif keyword == "items":
+            child, failure = node.items, (None if node.items is not None else 'there is no "items" here')
+        elif keyword == "additionalProperties":
+            child = node.additional_properties if isinstance(node.additional_properties, CHSchemaNode) else None
+            failure = None if child is not None else 'there is no schema at "additionalProperties" here'
+        elif keyword == "additionalItems":
+            child = node.additional_items if isinstance(node.additional_items, CHSchemaNode) else None
+            failure = None if child is not None else 'there is no schema at "additionalItems" here'
+        elif keyword in ("propertyNames", "contains", "not", "if", "then", "else"):
+            attribute = {"not": "not_", "if": "if_", "then": "then_", "else": "else_"}.get(keyword, keyword)
+            child = getattr(node, attribute if attribute != "propertyNames" else "property_names")
+            failure = None if child is not None else f"there is no schema at {keyword!r} here"
+        else:
+            return None, f"{keyword!r} is not a schema keyword that can be pointed into"
+
+        if failure is not None:
+            return None, failure
+        assert child is not None
+        node = child
+    return node, None
+
+
+def _indexed(
+    branches: list, segments: Sequence[str], index: int, keyword: str
+) -> tuple[CHSchemaNode | None, str | None]:
+    """One step into a keyword whose value is an array of schemas."""
+    if index >= len(segments):
+        return None, f"{keyword!r} needs an index after it"
+    written = segments[index]
+    if not written.isdigit():
+        return None, f"{keyword!r} needs a numeric index, not {written!r}"
+    position = int(written)
+    if position >= len(branches):
+        return None, f"{keyword!r} has only {len(branches)} branch(es), so index {position} does not exist"
+    return branches[position], None
+
+
+CROSS_SCHEMA_REFERENCE_PREFIX = "#ch#/"
+"""What marks a ``$ref`` as naming *another* ValueDomain's schema -- see :class:`CrossSchemaReference`."""
+
+POINTER_START_MISSING = (
+    'a cross-schema reference needs a "#" where the pointer into the target schema starts, as in '
+    '"#ch#/<Type>/#/$defs/<name>"'
+)
+
+
+def parse_cross_schema_reference(written: str) -> tuple[CrossSchemaReference | None, str | None]:
+    """
+    Parse ``#ch#/<Type>[/<index>]/#/<pointer>`` left to right.
+
+    **Not by splitting on** ``/``, and not by searching for the ``#`` that starts the pointer. A type may
+    contain a *literal template variable*, and a literal may contain any character at all -- so
+    ``#ch#/Sequence<"a/b">/#/$defs/x`` has a ``/`` that separates nothing and ``#ch#/Sequence<"a#b">/#`` a
+    ``#`` that starts nothing. Either would be cut in the wrong place by a search. Reading the grammar in
+    order removes the question: the type ends at the first ``/`` that is neither quoted nor inside a
+    template argument list (`StringParser.consume_until_unnested`), and what follows is whatever the
+    grammar says can follow, never whatever a search happens to find.
+
+    The pointer *after* the ``#`` is split on ``/`` -- correctly, because a JSON Pointer segment escapes a
+    literal ``/`` as ``~1`` (RFC 6901), so a raw ``/`` there is always a separator.
+
+    :return: ``(reference, None)``, or ``(None, reason)`` when the text is not of this shape.
+    """
+    assert written.startswith(CROSS_SCHEMA_REFERENCE_PREFIX), written
+    parser = StringParser(written)
+    parser.consume(CROSS_SCHEMA_REFERENCE_PREFIX)
+
+    try:
+        type_name = parser.consume_until_unnested("/")
+    except CHSyntaxError as e:
+        return None, f"the type is not well-formed ({e.args[0].splitlines()[0]})"
+    if not type_name:
+        return None, "a cross-schema reference must name the type whose schema it points into"
+    if not parser.try_consume("/"):
+        return None, POINTER_START_MISSING
+
+    schema_index: int | None = None
+    if not parser.starts_with("#"):
+        # Only an index may stand between the type and the pointer. Splitting on "/" is safe *here*, which
+        # it was not before the type was consumed: what remains is an index and a JSON Pointer, and a
+        # pointer segment escapes a literal "/" as "~1".
+        segment = parser.remaining().split("/")[0]
+        if segment.isdigit():
+            schema_index = int(segment)
+            parser.pos += len(segment)
+            if not parser.try_consume("/"):
+                return None, 'the instantiation schema index must be followed by "/#" and the pointer'
+        elif parser.remaining()[len(segment) :].startswith("/#"):
+            # It stands where an index stands, so it was meant as one; saying the "#" is missing would
+            # send the author looking at the wrong end of the reference.
+            return None, f"the instantiation schema index must be a non-negative integer, not {segment!r}"
+        else:
+            return None, POINTER_START_MISSING
+    if not parser.try_consume("#"):
+        if schema_index is not None:
+            return None, (
+                'only "<Type>" or "<Type>/<index>" may stand before the pointer, so the index must be followed by "#"'
+            )
+        return None, POINTER_START_MISSING
+
+    pointer: tuple[str, ...] = ()
+    if not parser.eof():
+        if not parser.try_consume("/"):
+            return None, f'expected the pointer to continue with "/" after the "#", got {parser.remaining()!r}'
+        pointer = tuple(unescape_pointer_segment(segment) for segment in parser.remaining().split("/"))
+    return (
+        CrossSchemaReference(
+            type_name=type_name,
+            schema_index=schema_index,
+            pointer=pointer,
+            written=written,
+        ),
+        None,
+    )
+
+
+def _resolve_local_refs(root: CHSchemaNode, state: _State) -> None:
     for n in root.walk():
         if n.ref_string is None:
             continue
-        m = _REF_PATTERN.match(n.ref_string)
-        if m is not None and m.group(2) in defs_by_name:
-            n.ref_resolved = defs_by_name[m.group(2)]
-        else:
+        if n.ref_string.startswith(CROSS_SCHEMA_REFERENCE_PREFIX):
+            # Parsed now, bound later: the target application's schema does not exist yet, and whether the
+            # target is even a ValueDomain is not a question this module can ask.
+            reference, failure = parse_cross_schema_reference(n.ref_string)
+            if reference is None:
+                state.record(
+                    CHSyntaxError(
+                        f"Cannot resolve $ref {n.ref_string!r}: {failure}",
+                        n.location_id + ["$ref"],
+                    )
+                )
+                continue
+            n.cross_reference = reference
+            continue
+        if not n.ref_string.startswith("#/") and n.ref_string != "#":
             state.record(
                 CHSyntaxError(
-                    f"Cannot resolve $ref {n.ref_string!r} (only local references of the form "
-                    f'"#/definitions/<name>" or "#/$defs/<name>" are supported)',
+                    f"Cannot resolve $ref {n.ref_string!r}: a reference must be a JSON Pointer from the "
+                    f'schema root ("#" or "#/<keyword>/..."), or a cross-schema reference '
+                    f'("{CROSS_SCHEMA_REFERENCE_PREFIX}<Type>/#/...").',
                     n.location_id + ["$ref"],
                 )
             )
+            continue
+        resolved, failure = resolve_schema_pointer(root, split_json_pointer(n.ref_string))
+        if resolved is None:
+            state.record(
+                CHSyntaxError(
+                    f"Cannot resolve $ref {n.ref_string!r}: {failure}",
+                    n.location_id + ["$ref"],
+                )
+            )
+            continue
+        n.ref_resolved = resolved
 
 
 # ---------------------------------------------------------------------------
