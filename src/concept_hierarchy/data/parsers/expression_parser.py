@@ -211,7 +211,6 @@ class ExpressionParserValidator(ABC):
         schema: CHSchemaNode,
         value: object,
         location_id: LocationId,
-        template_context: TemplateContext,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
@@ -301,11 +300,22 @@ class ExpressionParserValidator(ABC):
         """
 
     @abstractmethod
-    def function_argument_scope(self, arguments: dict[str, TypeValue]) -> AbstractContextManager[None]:
+    def function_argument_scope(
+        self, arguments: dict[str, TypeValue], template_context: TemplateContext
+    ) -> AbstractContextManager[None]:
         """
-        Run with the variable scope **replaced** by the global variables plus these Function arguments.
+        Run in the Function's scope: its arguments as the variables, and its own template context.
 
-        Replaced, not extended. A default may name a sibling, so the Function's arguments have to be in
+        Both, because both change together. The text being parsed inside this scope was written *in the
+        Function* -- it names the Function's arguments and the Function's template variables -- and the
+        parser answers "is this name a variable?" and "is this name a template variable?" from ambient
+        state. Swapping one and not the other leaves the second question answered by whichever concept the
+        checker happens to be walking: measured, a default naming ``T`` was accepted inside a concept whose
+        own variable was called ``T``, and rejected when that unrelated variable was renamed.
+
+        The variable scope is **replaced**, not extended.
+
+        A default may name a sibling, so the Function's arguments have to be in
         scope -- but everything *between* the global frame and them must be out of it, because the parser
         classifies a bare string as a variable before it considers anything else. Leaving an enclosing
         Function's arguments visible lets one of its names capture a string that is meant to be a value:
@@ -333,6 +343,21 @@ class ExpressionParserValidator(ABC):
         """
 
     @abstractmethod
+    def get_current_template_context(self) -> TemplateContext:
+        """
+        The template context the text being parsed right now was **written in**.
+
+        Ambient rather than a parameter, because it is ambient either way: the queries that decide what a
+        bare name means -- :meth:`is_template_variable`, :meth:`is_literal_template_variable` -- answer from
+        it and cannot be handed one. Carrying a second copy alongside only made it possible for the two to
+        disagree, which they did wherever a parse began somewhere the ambient had not been set. Every such
+        origin now declares itself; see ``documentation/TODO_TEMPLATE_CONTEXT_IS_AMBIENT.md``.
+
+        Distinct from :meth:`get_template_context`, which answers "*that concept's* declared context" and is
+        what substitution mappings are built against.
+        """
+
+    @abstractmethod
     def get_template_context(self, type_name_clean) -> TemplateContext:
         pass
 
@@ -344,6 +369,7 @@ class ExpressionParserValidator(ABC):
     def register_default_site(
         self,
         node: CHSchemaNode,
+        template_context: TemplateContext,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
     ) -> None:
@@ -602,7 +628,11 @@ def build_resolved_instantiation_schema(
             # The copy inherited whatever the *declared* node was parsed to, which was parsed without this
             # application's substitution. Drop it so it can not be mistaken for a resolved value.
             node.parsed_default_expr = None
-            validator.register_default_site(node, own_substitution or None, expansion_depth + 1)
+            # The declaring concept's context, not this application's and not the empty one: the
+            # `default` is *its* text, and it may name its own template variables.
+            validator.register_default_site(
+                node, template_context_of_concept, own_substitution or None, expansion_depth + 1
+            )
     return resolved
 
 
@@ -709,7 +739,6 @@ def parse_expression(
     expr_type: TypeValue,
     expr_provenance: FunctionArgumentProvenance | ValueDomainArgumentProvenance,
     expr_access: FunctionArgumentAccessor | FunctionResultAccessor,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     parse_template_expressions_without_type_checks: bool = False,
@@ -748,7 +777,6 @@ def parse_expression(
         expr_candidate_value = _parse_syntax_of_expression(
             json_value,
             expr_type,
-            expr_template_context,
             validator,
             location_id,
             True,
@@ -798,19 +826,17 @@ def parse_expression(
 def get_expression_type(
     json_value: object,
     expr_type: TypeValue,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
 ) -> TypeValue | None:
     return _parse_syntax_of_expression(
-        json_value, expr_type, expr_template_context, validator, location_id, recursively_parse=False
+        json_value, expr_type, validator, location_id, recursively_parse=False
     ).value_type
 
 
 def _parse_syntax_of_expression(
     json_value: object,
     expr_type: TypeValue,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     recursively_parse: bool = True,
@@ -818,6 +844,7 @@ def _parse_syntax_of_expression(
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
 ) -> ExpressionValue:
+    expr_template_context = validator.get_current_template_context()
     # A literal template variable stands for a value, not a type, so it is substituted in the JSON itself
     # and then interpreted from scratch -- under `N := 3` the string "N" *becomes* the literal 3, and the
     # expression changes class from LiteralTemplateVariableValue to InstExpression.
@@ -872,7 +899,6 @@ def _parse_syntax_of_expression(
         expr_value_res = _parse_syntax_of_expression_with_instantiated_type(
             json_value,
             expr_type,
-            expr_template_context,
             validator,
             location_id,
             recursively_parse,
@@ -936,7 +962,6 @@ class InstantiationSearch:
 def _parse_syntax_of_expression_with_instantiated_type(
     json_value: object,
     expr_type: TypeValue,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     recursively_parse: bool,
@@ -949,6 +974,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
     expansion_depth: int = 0,
     value_is_a_substituted_literal: bool = False,
 ) -> list[ExpressionValue]:
+    expr_template_context = validator.get_current_template_context()
     expressions_res: list[ExpressionValue] = []
     attempts: list[ExpressionAttempt] = []
     """Every alternative that was applicable to this value and was rejected; see IllFormedExpression."""
@@ -980,7 +1006,6 @@ def _parse_syntax_of_expression_with_instantiated_type(
                     key,
                     value,
                     expr_type,
-                    expr_template_context,
                     validator,
                     location_id,
                     recursively_parse,
@@ -1147,7 +1172,6 @@ def _parse_syntax_of_expression_with_instantiated_type(
         inst_res = _check_instantiation_schema(
             json_value,
             expr_type,
-            expr_template_context,
             validator,
             location_id,
             template_substitution,
@@ -1159,7 +1183,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
             # unchecked, and `InstExpression.is_template_dependent` reads that off the parsed value.
             # Template dependence is a property of what was parsed, not of which class was chosen.
             # Saving this value as `InstExpression` also keeps the parse tree, which `PossibleInstExpression` discards.
-            expressions_res.append(InstExpression(inst_res.parsed, expr_type, True))
+            expressions_res.append(InstExpression(inst_res.parsed, expr_type, is_strict_subtype=False))
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
         attempts.append(_instantiation_attempt(ExpressionKind.INSTANTIATION, expr_type, inst_res))
@@ -1227,12 +1251,12 @@ def _instantiation_attempt(
 def _check_instantiation_schema(
     expr_value: object,
     expr_type: InstantiatedType,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
 ) -> InstantiationSearch:
+    expr_template_context = validator.get_current_template_context()
     instantiation_schema = validator.get_if_has_instantiation_schema(expr_type)
     if instantiation_schema is None or len(instantiation_schema) == 0:
         assert validator.is_type_abstract(expr_type), (
@@ -1279,7 +1303,6 @@ def _check_instantiation_schema(
             substituted_schema_to_match,
             expr_value,
             location_id,
-            expr_template_context,
             template_substitution,
             expansion_depth,
         )
@@ -1316,7 +1339,6 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
     unsupplied_arguments: set[str],
     f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument],
     f_template_context: TemplateContext,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     attempts: list[ExpressionAttempt],
@@ -1344,6 +1366,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
     as `FunctionEvaluation.applied_defaults`. Every branch below records one, including the two that
     decide without reparsing: a default that needed no work is still a default this site applied.
     """
+    expr_template_context = validator.get_current_template_context()
     dependencies: dict[str, frozenset[str]] = {}
     applied: dict[str, Expression] = {}
     to_ground: dict[str, object] = {}
@@ -1390,7 +1413,6 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
                 declared_type,
                 f_substitution_mapping,
                 f_template_context,
-                expr_template_context,
                 validator,
                 location_id,
                 attempts,
@@ -1449,7 +1471,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
         )
         argument_types[argument] = argument_type
 
-    with validator.function_argument_scope(argument_types):
+    with validator.function_argument_scope(argument_types, f_template_context):
         for argument, declared_source in to_ground.items():
             argument_type = argument_types[argument]
             arg_location_id = location_id + [argument]
@@ -1472,7 +1494,6 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
                 # the Function's for the same reason, though while `key_type` is ground nothing can tell
                 # the two apart: a ground application makes `f_substitution_mapping` ground, so every
                 # substitution below lands in the empty context either way.
-                f_template_context,
                 validator,
                 arg_location_id,
                 template_substitution=f_substitution_mapping,
@@ -1559,7 +1580,6 @@ def _recheck_decided_default(
     declared_type: TypeValue,
     f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument],
     f_template_context: TemplateContext,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     attempts: list[ExpressionAttempt],
@@ -1585,6 +1605,7 @@ def _recheck_decided_default(
     fixed, this shortcut has to be revisited: such a value would be decided, would come through here, and
     would never meet the substituted keyword.
     """
+    expr_template_context = validator.get_current_template_context()
 
     def ground(type_value: TypeValue) -> TypeValue:
         substituted, _ = substitute(
@@ -1656,10 +1677,10 @@ def _check_function_return(
     expr_type: TypeValue,
     validator: ExpressionParserValidator,
     f_template_context: TemplateContext,
-    expr_template_context: TemplateContext,
     template_substitution: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
 ) -> tuple[TypeValue | None, bool | None, bool | None, bool]:
+    expr_template_context = validator.get_current_template_context()
     function_return = validator.get_function_return_interface(f_type.clean_name)
     if function_return is None and expr_type is not None:
         raise CHSemanticError(
@@ -1700,7 +1721,6 @@ def parse_function_evaluation_expression(
     key: str,
     value: object,
     expr_type: TypeValue | None,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     recursively_parse: bool,
@@ -1711,6 +1731,7 @@ def parse_function_evaluation_expression(
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
 ) -> tuple[list[ExpressionValue], TypeValue | None, bool]:
+    expr_template_context = validator.get_current_template_context()
     expressions_res = []
 
     f_location_id = location_id + [key]
@@ -1775,7 +1796,7 @@ def parse_function_evaluation_expression(
 
     # check function result type (if any)
     function_return_type, is_result_modifiable, is_result_addressable, function_subtype_check = _check_function_return(
-        key_type, expr_type, validator, f_template_context, expr_template_context, f_substitution_mapping, f_location_id
+        key_type, expr_type, validator, f_template_context, f_substitution_mapping, f_location_id
     )
     if not function_subtype_check:
         reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
@@ -1814,7 +1835,6 @@ def parse_function_evaluation_expression(
                 f_arg_type,
                 f_arg_prov,
                 f_arg_access,
-                expr_template_context,
                 validator,
                 arg_location_id,
                 parse_template_expressions_without_type_checks,
@@ -1865,7 +1885,6 @@ def parse_function_evaluation_expression(
                 unsupplied_arguments,
                 f_substitution_mapping,
                 f_template_context,
-                expr_template_context,
                 validator,
                 f_location_id,
                 attempts,
@@ -1918,7 +1937,6 @@ def _parse_expression_of_json_object(
     key: str,
     value: object,
     expr_type: TypeValue,
-    expr_template_context: TemplateContext,
     validator: ExpressionParserValidator,
     location_id: LocationId,
     recursively_parse: bool,
@@ -1930,11 +1948,11 @@ def _parse_expression_of_json_object(
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
 ) -> list[ExpressionValue]:
+    expr_template_context = validator.get_current_template_context()
     expressions_res, key_type, is_function_subtype = parse_function_evaluation_expression(
         key,
         value,
         expr_type,
-        expr_template_context,
         validator,
         location_id,
         recursively_parse,
@@ -1965,7 +1983,6 @@ def _parse_expression_of_json_object(
             narrow_res = _check_instantiation_schema(
                 value,
                 key_type,
-                expr_template_context,
                 validator,
                 narrow_location_id,
                 template_substitution,

@@ -58,7 +58,7 @@ class ExpressionValidator(ExpressionParserValidator):
         self.resolved_instantiation_schemas: dict[tuple[str, int], CHSchemaNode] = {}
         """(application full name, constraint group index) -> schema substituted for that application."""
 
-        self._default_sites: dict[int, tuple[CHSchemaNode, dict | None, int]] = {}
+        self._default_sites: dict[int, tuple[CHSchemaNode, TemplateContext, dict | None, int]] = {}
         """Registered default sites, by node identity: how to parse each one when it is first needed."""
 
         self._grounded_function_defaults: dict[tuple[str, str], GroundedArgumentDefault] = {}
@@ -172,7 +172,6 @@ class ExpressionValidator(ExpressionParserValidator):
         schema: CHSchemaNode,
         value: object,
         location_id: LocationId,
-        template_context: TemplateContext,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
@@ -180,14 +179,17 @@ class ExpressionValidator(ExpressionParserValidator):
             value,
             schema,
             self.context.instantiation_values_validator,
-            template_context,
             location_id,
             template_substitution,
             expansion_depth,
         )
 
     def register_default_site(
-        self, node: CHSchemaNode, template_substitution: dict | None, expansion_depth: int
+        self,
+        node: CHSchemaNode,
+        template_context: TemplateContext,
+        template_substitution: dict | None,
+        expansion_depth: int,
     ) -> None:
         # Keyed by identity, which needs two things to be safe, both of which hold:
         #
@@ -202,7 +204,7 @@ class ExpressionValidator(ExpressionParserValidator):
         #
         # Identity is also the only correct key: `CHSchemaNode` is an `eq=True` dataclass and hence
         # unhashable, and two distinct sites can compare equal anyway (which would be wrong).
-        self._default_sites[id(node)] = (node, template_substitution, expansion_depth)
+        self._default_sites[id(node)] = (node, template_context, template_substitution, expansion_depth)
 
     def resolve_default_site(self, node: CHSchemaNode) -> Expression | None:
         if node.parsed_default_expr is not None:
@@ -211,10 +213,10 @@ class ExpressionValidator(ExpressionParserValidator):
         if site is None:
             # Not a site of a schema resolved for a ground application; nothing to resolve here.
             return None
-        _node, template_substitution, expansion_depth = site
+        _node, template_context, template_substitution, expansion_depth = site
         if id(node) in self._resolving:
-            # Reached while it is still being resolved: the expansion needs this very default in order to
-            # produce it. Memoized, because a site that is cyclic once is cyclic always.
+            # Reached while it is still being resolved: the expansion needs this very default in order to produce it.
+            # Memoized, because a site that is cyclic once is cyclic always.
             node.parsed_default_expr = expansion_cycle_expression(node)
             return node.parsed_default_expr
         self._resolving.add(id(node))
@@ -226,17 +228,24 @@ class ExpressionValidator(ExpressionParserValidator):
             # Counts application builds, not the length of this path -- see `register_default_site`: a
             # long path within the schemas already built is finite by construction and must not be
             # bounded, while one that keeps generating applications is not and must be.
-            node.parsed_default_expr = parse_expression(
-                node.default_expr,
-                node.custom_type,
-                node.provenance,
-                FunctionArgumentAccessor.GET,
-                TemplateContext(),
-                self,
-                node.location_id + ["default"],
-                template_substitution=template_substitution,
-                expansion_depth=expansion_depth,
-            )
+            #
+            # The **declaring concept's** context, because a `default` may name that concept's own
+            # template variables -- ``{"Box<T>": ...}`` at a site of ``W<T>``. `template_substitution`
+            # grounds them afterwards, but the text has to parse first, and `T` has to be in scope for it
+            # to. The empty context appeared to work only because `create_possibly_template_dependent_type`
+            # caches by the type's *text*, so the declaration-time parse had already put `Box<T>` there;
+            # with that entry cold the resolve-time parse fails with "'T' is not a template variable".
+            with self.template_context_scope(template_context):
+                node.parsed_default_expr = parse_expression(
+                    node.default_expr,
+                    node.custom_type,
+                    node.provenance,
+                    FunctionArgumentAccessor.GET,
+                    self,
+                    node.location_id + ["default"],
+                    template_substitution=template_substitution,
+                    expansion_depth=expansion_depth,
+                )
         finally:
             self._resolving.discard(id(node))
         return node.parsed_default_expr
@@ -339,7 +348,31 @@ class ExpressionValidator(ExpressionParserValidator):
         self._declared_defaults_parsed_early[(f_name, f_arg_name)] = expression
 
     @contextmanager
-    def function_argument_scope(self, arguments: dict[str, TypeValue]) -> Iterator[None]:
+    def template_context_scope(self, template_context: TemplateContext) -> Iterator[None]:
+        """
+        Run with the ambient template context replaced, and restored however the block is left.
+
+        Every place that begins parsing text from a *different origin* needs this. The parser answers "is
+        this name a template variable?" from ambient state, so text carried in from somewhere else is read
+        against whatever the checker was walking unless the origin is declared -- see
+        ``documentation/TODO_TEMPLATE_CONTEXT_IS_AMBIENT.md``. There are two such origins: grounding a
+        Function's declared default (`function_argument_scope`, which swaps the variable scope with it) and
+        resolving an instantiation default (`resolve_default_site`).
+
+        A context manager rather than an assignment because `parse_expression` is re-entrant and may leave
+        by raising.
+        """
+        previous = self.context.template_context
+        self.context.set_template_context(template_context)
+        try:
+            yield
+        finally:
+            self.context.set_template_context(previous)
+
+    @contextmanager
+    def function_argument_scope(
+        self, arguments: dict[str, TypeValue], template_context: TemplateContext
+    ) -> Iterator[None]:
         previous = self.context.variable_context
         assert previous is not None, "there is no variable context to scope"
         # Frame 0 is the global variables -- `check_expressions_in_concept_hierarchy` starts from an empty
@@ -348,7 +381,8 @@ class ExpressionValidator(ExpressionParserValidator):
         globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
         self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(arguments)]))
         try:
-            yield
+            with self.template_context_scope(template_context):
+                yield
         finally:
             self.context.set_variable_context(previous)
 
@@ -357,6 +391,9 @@ class ExpressionValidator(ExpressionParserValidator):
 
     def put_grounded_function_default(self, application: str, argument: str, grounded: GroundedArgumentDefault) -> None:
         self._grounded_function_defaults[(application, argument)] = grounded
+
+    def get_current_template_context(self) -> TemplateContext:
+        return self.context.template_context
 
     def get_template_context(self, type_name_clean) -> TemplateContext:
         assert type_name_clean in self.context.model.value_domains

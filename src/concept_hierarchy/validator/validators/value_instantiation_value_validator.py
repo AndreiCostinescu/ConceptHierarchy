@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
-from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     ExpressionProvenance,
@@ -51,7 +50,6 @@ class ValueValidator(ValueInstantiationContext):
         provenance: ExpressionProvenance,
         value: object,
         location_id: LocationId,
-        template_context: TemplateContext,
         template_substitution: dict | None,
         expansion_depth: int,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
@@ -60,7 +58,6 @@ class ValueValidator(ValueInstantiationContext):
             custom_type,
             provenance,
             FunctionArgumentAccessor.GET,
-            template_context,
             self.context.expression_parser_validator,
             location_id,
             template_substitution=template_substitution,
@@ -81,7 +78,6 @@ class ValueValidator(ValueInstantiationContext):
         arguments: object,
         schema_node: CHSchemaNode,
         location_id: LocationId,
-        template_context: TemplateContext,
         template_substitution: dict | None,
         expansion_depth: int,
     ) -> tuple[ParsedValue | None, list[ConceptHierarchyError]]:
@@ -93,7 +89,6 @@ class ValueValidator(ValueInstantiationContext):
             function_name,
             arguments,
             None,  # no expected result type!
-            template_context,
             self.context.expression_parser_validator,
             location_id,
             # The whole point of the call: parse and check the argument expressions.

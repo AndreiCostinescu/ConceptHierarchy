@@ -84,7 +84,6 @@ from typing import Callable
 
 from jsonschema import Draft7Validator
 
-from concept_hierarchy.data.contexts.template_context import TemplateContext
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural, ParsedValue
@@ -117,7 +116,6 @@ class ValueInstantiationContext(ABC):
         provenance: ExpressionProvenance,
         value: object,
         location_id: LocationId,
-        template_context: TemplateContext,
         template_substitution: dict | None,
         expansion_depth: int,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
@@ -140,7 +138,6 @@ class ValueInstantiationContext(ABC):
         arguments: object,
         schema_node: CHSchemaNode,
         location_id: LocationId,
-        template_context: TemplateContext,
         template_substitution: dict | None,
         expansion_depth: int,
     ) -> tuple[ParsedValue | None, list[ConceptHierarchyError]]:
@@ -213,7 +210,6 @@ class _State:
     """
 
     context: ValueInstantiationContext
-    template_context: TemplateContext
     errors: list[ConceptHierarchyError] = field(default_factory=list)
     collect_all_errors: bool = True
     template_substitution: dict | None = None
@@ -242,7 +238,6 @@ def parse_value(
     value: object,
     node: CHSchemaNode,
     context: ValueInstantiationContext,
-    template_context: TemplateContext,
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
@@ -254,7 +249,6 @@ def parse_value(
         value: The Python object to parse (JSON-decoded).
         node: Schema AST from ``parse_schema``, which should itself have parsed without errors.
         context: Handles custom-type leaves.
-        template_context: The template context in which this value (and especially the used template variables in it)
             is to be interpreted/parsed.
         location_id: Starting location in the Concept Hierarchy (``[]`` at the root).
         collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
@@ -271,7 +265,7 @@ def parse_value(
     if location_id is None:
         location_id = []
 
-    state = _State(context, template_context, [], collect_all_errors, template_substitution, expansion_depth)
+    state = _State(context, [], collect_all_errors, template_substitution, expansion_depth)
     result: ParsedValue | None = None
     try:
         result = _parse(node, value, True, location_id, state)
@@ -289,7 +283,6 @@ def validate_value(
     value: object,
     node: CHSchemaNode,
     context: ValueInstantiationContext,
-    template_context: TemplateContext,
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
@@ -300,7 +293,7 @@ def validate_value(
     This performs the full parse; it is not cheaper.
     """
     _, errors = parse_value(
-        value, node, context, template_context, location_id, template_substitution, expansion_depth, collect_all_errors
+        value, node, context, location_id, template_substitution, expansion_depth, collect_all_errors
     )
     return errors
 
@@ -411,7 +404,6 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             node.provenance,
             value,
             location_id,
-            state.template_context,
             state.template_substitution,
             state.expansion_depth,
         )
@@ -588,7 +580,6 @@ def _parse_object(
                     pn.provenance,
                     key,
                     location_id + [key],
-                    state.template_context,
                     state.template_substitution,
                     state.expansion_depth,
                 )
@@ -656,7 +647,6 @@ def _parse_evaluation_arguments_of_function(
         value,
         node,
         location_id[:-1],
-        state.template_context,
         state.template_substitution,
         state.expansion_depth,
     )
