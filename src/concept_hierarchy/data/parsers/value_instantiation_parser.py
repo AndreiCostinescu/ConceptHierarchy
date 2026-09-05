@@ -79,7 +79,8 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Callable
 
 from jsonschema import Draft7Validator
 
@@ -167,7 +168,7 @@ class ValueInstantiationContext(ABC):
 class _State:
     """Accumulator threaded through the traversal.
 
-    ``errors`` is the global error list for the current (sub-)parse; a *silent* sub-state is used for trial branches so
+    ``errors`` is the global error list for the current (sub-)parse; a *silent* substate is used for trial branches so
     that their errors do not escape.
     """
 
@@ -177,14 +178,18 @@ class _State:
     template_substitution: dict | None = None
     """Carried to every custom-type leaf; see `ValueInstantiationContext.parse_value_against_custom_type_expression`."""
     expansion_depth: int = 0
+    upper_level_object_key: str | None = None
 
     def record(self, err: ConceptHierarchyError) -> None:
         """Record ``err`` globally; raises :class:`StopValidation` in fail-fast mode."""
         record(self.errors, self.collect_all_errors, err)
 
     def silent(self) -> _State:
-        """A sub-state whose errors are collected in full and do not escape."""
+        """A substate whose errors are collected in full and do not escape."""
         return _State(self.context, [], True, self.template_substitution, self.expansion_depth)
+
+    def new_state(self, upper_level_object_key: str | None = None) -> _State:
+        return replace(self, upper_level_object_key=upper_level_object_key)
 
 
 # ===========================================================================================================
@@ -393,13 +398,15 @@ def _parse_structural(node: CHSchemaNode, value: object, location_id: LocationId
         local.append(err)
         state.record(err)
 
-    def child_p(schema: CHSchemaNode, val: object, child_loc: LocationId) -> ParsedValue | None:
+    def child_p(
+        schema: CHSchemaNode, val: object, child_loc: LocationId, new_state: _State | None = None
+    ) -> ParsedValue | None:
         """Parse a *present* value."""
-        return _parse(schema, val, True, child_loc, state)
+        return _parse(schema, val, True, child_loc, state.new_state() if new_state is None else new_state)
 
-    def child_a(schema: CHSchemaNode, child_loc: LocationId) -> ParsedValue | None:
+    def child_a(schema: CHSchemaNode, child_loc: LocationId, new_state: _State | None = None) -> ParsedValue | None:
         """Parse an *absent* value; may return ``None``."""
-        return _parse_absent(schema, child_loc, state)
+        return _parse_absent(schema, child_loc, state.new_state() if new_state is None else new_state)
 
     def child_silent(
         schema: CHSchemaNode, val: object, child_loc: LocationId
@@ -462,20 +469,33 @@ def _parse_object(
     value: dict,
     location_id: LocationId,
     structural: ParsedStructural,
-    rec,
+    rec: Callable[[ConceptHierarchyError], None],
     child_p,
     child_a,
     state: _State,
 ) -> None:
     matched_keys: set[str] = set()
 
+    # process "properties": [("props", "x"), ("funcs+(Dog)", "x")]
+    if node.custom_concept_data_constraints:
+        _parse_custom_concept_data(node, value, location_id, structural, rec, state)
+
+    # process "properties": "args"
+    if node.custom_object_properties is not None:
+        if node.custom_object_properties == "args":
+            _parse_evaluation_arguments_of_function(node, value, location_id, structural, rec, state)
+        else:
+            raise RuntimeError(
+                f'Unknown custom_object_properties "{node.custom_object_properties}" that was correctly parsed?!'
+            )
+
     # --- properties -----------------------------------------------------------------------------------
     for key, child_schema in node.properties.items():
         matched_keys.add(key)
         if key in value:
-            result = child_p(child_schema, value[key], location_id + [key])
+            result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
         else:
-            result = child_a(child_schema, location_id + [key])
+            result = child_a(child_schema, location_id + [key], state.new_state(key))
         if result is not None:
             structural.properties_parsed[key] = result
 
@@ -492,7 +512,7 @@ def _parse_object(
         for key in value:
             if regex.search(key):
                 matched_keys.add(key)
-                result = child_p(child_schema, value[key], location_id + [key])
+                result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
                 if result is not None:
                     structural.pattern_properties_parsed.setdefault(key, []).append((pattern, result))
 
@@ -506,7 +526,7 @@ def _parse_object(
             elif node.additional_properties is True:
                 pass
             else:
-                result = child_p(node.additional_properties, value[key], location_id + [key])
+                result = child_p(node.additional_properties, value[key], location_id + [key], state.new_state(key))
                 if result is not None:
                     structural.additional_properties_parsed[key] = result
 
@@ -537,9 +557,34 @@ def _parse_object(
     # --- dependent schemas ----------------------------------------------------------------------------
     for key, dep_schema in node.dependent_schemas.items():
         if key in value:
-            result = child_p(dep_schema, value, location_id)
+            # don't overwrite the state here to keep the upper-level upper_level_object_key in the state!
+            result = child_p(dep_schema, value, location_id, state)
             if result is not None:
                 structural.dependent_schemas_parsed[key] = result
+
+
+def _parse_custom_concept_data(
+    node: CHSchemaNode,
+    value: dict,
+    location_id: LocationId,
+    structural: ParsedStructural,
+    rec: Callable[[ConceptHierarchyError], None],
+    state: _State,
+):
+    pass
+
+
+def _parse_evaluation_arguments_of_function(
+    node: CHSchemaNode,
+    value: dict,
+    location_id: LocationId,
+    structural: ParsedStructural,
+    rec: Callable[[ConceptHierarchyError], None],
+    state: _State,
+):
+    if state.upper_level_object_key is None:
+        raise RuntimeError('Can\'t happen that an "args" argument is specified in a non-object key')
+    print(f"Validating function arguments of function: {state.upper_level_object_key}...")
 
 
 # ===========================================================================================================
