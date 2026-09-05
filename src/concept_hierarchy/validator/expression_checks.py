@@ -174,7 +174,6 @@ def init_expressions(context: ConceptHierarchyContext):
         expr_type_res = get_expression_type(
             global_var_data.value,
             value_domain_type,
-            TemplateContext(),
             context.expression_parser_validator,
             global_var_data.definition_location(),
         )
@@ -248,7 +247,6 @@ def init_expressions(context: ConceptHierarchyContext):
                         c.evaluation_argument_types[default_arg_name],
                         FunctionArgumentProvenance.ANY,
                         FunctionArgumentAccessor.GET,
-                        c.template_context,
                         context.expression_parser_validator,
                         default_args_location_id + [default_arg_name],
                         parse_template_expressions_without_type_checks=True,
@@ -324,7 +322,6 @@ def init_expressions(context: ConceptHierarchyContext):
                     schema_node.custom_type,
                     schema_node.provenance,
                     FunctionArgumentAccessor.GET,
-                    c.template_context,
                     context.expression_parser_validator,
                     location_of_default,
                     parse_template_expressions_without_type_checks=True,
@@ -459,7 +456,6 @@ def check_global_variable_expressions(context: ConceptHierarchyContext) -> None:
             global_variable.value_type,
             FunctionArgumentProvenance.ANY,
             FunctionArgumentAccessor.GET,
-            global_template_context,
             context.expression_parser_validator,
             expression_location,
         )
@@ -531,7 +527,6 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                     c.evaluation_argument_types[default_arg_name],
                     FunctionArgumentProvenance.ANY,
                     FunctionArgumentAccessor.GET,
-                    c.template_context,
                     context.expression_parser_validator,
                     default_arg_location_id,
                     parse_template_expressions_without_type_checks=True,
