@@ -1198,8 +1198,8 @@ def get_json_type_as_string(json_value: object, location_id: LocationId) -> str:
 
 
 def _ground_unsupplied_argument_defaults_in_instantiated_context(
-    key: str,
-    key_type: InstantiatedType,
+    f_name: str,
+    f_type: InstantiatedType,
     all_arguments: set[str],
     unsupplied_arguments: set[str],
     f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument],
@@ -1240,10 +1240,10 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
     for argument in sorted(unsupplied_arguments):
         # A missing default here is not an omission: a *required* argument left unsupplied was already
         # reported above, and an optional one with no default has nothing to ground.
-        declared_source = validator.get_function_argument_default_source(key_type.clean_name, argument)
+        declared_source = validator.get_function_argument_default_source(f_type.clean_name, argument)
         assert declared_source is not MISSING  # unsupplied arguments must be default; verified before this _ground call
-        declared_default = validator.get_parsed_function_argument_default(key_type.clean_name, argument)
-        declared_type, _, _ = validator.get_function_argument_interface(key_type.clean_name, argument)
+        declared_default = validator.get_parsed_function_argument_default(f_type.clean_name, argument)
+        declared_type, _, _ = validator.get_function_argument_interface(f_type.clean_name, argument)
         # Two *independent* things can still be waiting on the application, and they are settled
         # differently -- which is why this is two questions rather than one condition:
         #
@@ -1271,8 +1271,8 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
         if contents_are_decided:
             # Only (2). One subtype check settles it; reparsing would rebuild an identical tree to ask it.
             failure = _recheck_decided_default(
-                key,
-                key_type,
+                f_name,
+                f_type,
                 argument,
                 declared_default,
                 declared_type,
@@ -1291,7 +1291,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
             applied[argument] = declared_default
             continue
         # From here on, a reparsing of the argument is needed; because the default-expression is not decided (or parsed)
-        cached: GroundedArgumentDefault | None = validator.get_grounded_function_default(key_type.full_name, argument)
+        cached: GroundedArgumentDefault | None = validator.get_grounded_function_default(f_type.full_name, argument)
         if cached is None:
             # then the default argument of that Function was not parsed yet! Schedule it for parsing!
             to_ground[argument] = declared_source
@@ -1301,16 +1301,16 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
         if cached.in_progress:
             # this is what represents a (possibly-nested) dependency cycle
             reason = (
-                f'the default of argument "{argument}" of {key_type} can never be applied: grounding it '
+                f'the default of argument "{argument}" of {f_type} can never be applied: grounding it '
                 f"requires grounding it again"
             )
-            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=f_type))
             return IllFormedExpression(reason, tuple(attempts)), dependencies, applied
         # A cached failure is re-reported rather than passed over: the entry is the verdict for this
         # application, and a second call site reaching it is in exactly the position the first one was.
         assert cached.expression is not None  # equivalent to `not cached.in_progress`
         if not cached.expression.is_valid:
-            return _rejected_default(key, key_type, argument, cached.expression, attempts), dependencies, applied
+            return _rejected_default(f_name, f_type, argument, cached.expression, attempts), dependencies, applied
         dependencies[argument] = cached.sibling_dependencies
         applied[argument] = cached.expression
     # if there's nothing to parse, finish
@@ -1321,7 +1321,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
     # site *did* supply, and what it sees there is the argument's declared type, not the supplied value.
     argument_types: dict[str, TypeValue] = {}
     for argument in sorted(all_arguments):
-        argument_type, _, _ = validator.get_function_argument_interface(key_type.clean_name, argument)
+        argument_type, _, _ = validator.get_function_argument_interface(f_type.clean_name, argument)
         argument_type, _ = substitute(
             argument_type,
             f_substitution_mapping,
@@ -1339,7 +1339,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
             # Published before the parse, not after, so that a default which reaches itself finds the
             # in-progress entry instead of recursing. (An exception escaping the parse leaves the marker
             # behind, which is harmless: it aborts the whole check.)
-            validator.put_grounded_function_default(key_type.full_name, argument, GroundedArgumentDefault(None))
+            validator.put_grounded_function_default(f_type.full_name, argument, GroundedArgumentDefault(None))
             grounded = parse_expression(
                 declared_source,
                 argument_type,
@@ -1356,7 +1356,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
                 # substitution below lands in the empty context either way.
                 f_template_context,
                 validator,
-                location_id + [key, argument],
+                location_id + [f_name, argument],
                 template_substitution=f_substitution_mapping,
                 # Counted like an instantiation default, and for the same reason: each level here is a
                 # *new application*, because a level that repeated one is the in-progress case above. So a
@@ -1370,13 +1370,13 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
                 if isinstance(subexpression.value, Variable) and subexpression.value.variable_name in all_arguments
             )
             validator.put_grounded_function_default(
-                key_type.full_name, argument, GroundedArgumentDefault(grounded, grounded_dependencies)
+                f_type.full_name, argument, GroundedArgumentDefault(grounded, grounded_dependencies)
             )
             _offer_grounding_as_the_declarations_parse(
-                key_type, argument, grounded, f_template_context, declaration_unparsed, validator
+                f_type, argument, grounded, f_template_context, declaration_unparsed, validator
             )
             if not grounded.is_valid:
-                return _rejected_default(key, key_type, argument, grounded, attempts), dependencies, applied
+                return _rejected_default(f_name, f_type, argument, grounded, attempts), dependencies, applied
             dependencies[argument] = grounded_dependencies
             applied[argument] = grounded
     return None, dependencies, applied
