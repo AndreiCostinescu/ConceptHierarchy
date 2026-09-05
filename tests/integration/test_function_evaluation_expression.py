@@ -177,7 +177,6 @@ def parse_evaluation(
         key,
         value,
         resolved_site_type,
-        TemplateContext(),
         context.expression_parser_validator,
         [],
         recursively_parse,
@@ -449,7 +448,6 @@ def parse_at_site(context: ConceptHierarchyContext, value: object, site_type: Ty
         site_type,
         FunctionArgumentProvenance.ANY,
         FunctionArgumentAccessor.GET,
-        TemplateContext(),
         context.expression_parser_validator,
         [],
     )

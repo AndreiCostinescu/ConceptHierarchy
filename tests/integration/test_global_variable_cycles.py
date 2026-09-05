@@ -361,7 +361,9 @@ class TestGlobalValuesAreDecided:
         real_parse_expression = expression_checks.parse_expression
 
         def parse_the_global_as_undecided(json_value, expression_type, provenance, accessor, *args, **kwargs):
-            location_id = args[2]
+            # (validator, location_id) now follow the accessor: the template context stopped being a
+            # parameter when it became ambient state -- see TODO_TEMPLATE_CONTEXT_IS_AMBIENT.md.
+            location_id = args[1]
             if [str(part) for part in location_id] == ["instances", "v"]:
                 return Expression(
                     expression_type,
