@@ -1421,7 +1421,11 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
         # application, and a second call site reaching it is in exactly the position the first one was.
         assert cached.expression is not None  # equivalent to `not cached.in_progress`
         if not cached.expression.is_valid:
-            return _rejected_default(f_name, f_type, argument, cached.expression, attempts), dependencies, applied
+            return (
+                _rejected_default(f_name, f_type, argument, cached.expression, attempts, location_id + [argument]),
+                dependencies,
+                applied,
+            )
         dependencies[argument] = cached.sibling_dependencies
         applied[argument] = cached.expression
     # if there's nothing to parse, finish
@@ -1489,7 +1493,11 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
                 f_type, argument, grounded, f_template_context, declaration_unparsed, validator
             )
             if not grounded.is_valid:
-                return _rejected_default(f_name, f_type, argument, grounded, attempts), dependencies, applied
+                return (
+                    _rejected_default(f_name, f_type, argument, grounded, attempts, arg_location_id),
+                    dependencies,
+                    applied,
+                )
             dependencies[argument] = grounded_dependencies
             applied[argument] = grounded
     return None, dependencies, applied
@@ -1622,6 +1630,7 @@ def _rejected_default(
     argument: str,
     grounded: Expression,
     attempts: list[ExpressionAttempt],
+    argument_location_id: LocationId,
 ) -> IllFormedExpression:
     """Report one default that does not hold for this application, keeping the parse's own explanation."""
     assert isinstance(grounded.value, IllFormedExpression)
@@ -1635,6 +1644,7 @@ def _rejected_default(
             f'the default of the unsupplied argument "{argument}" does not hold for {key_type}',
             tried_type=key_type,
             cause=grounded.value,
+            cause_location_id=argument_location_id,
         )
     )
     return IllFormedExpression(reason, tuple(attempts))
@@ -1819,6 +1829,7 @@ def parse_function_evaluation_expression(
                         f'argument "{f_arg_name}" is not a valid {f_arg_type} expression',
                         tried_type=key_type,
                         cause=arg_expr.value,
+                        cause_location_id=arg_location_id,
                     )
                 )
                 expressions_res.append(IllFormedExpression(reason, tuple(attempts)))

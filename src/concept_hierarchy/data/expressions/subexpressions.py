@@ -450,6 +450,18 @@ class ExpressionAttempt:
     schema_errors: tuple[ConceptHierarchyError, ...] = ()
     constraint_groups: tuple[ConstraintGroupAttempt, ...] = ()
     cause: IllFormedExpression | None = None
+    cause_location_id: LocationId | None = None
+    """
+    Where :attr:`cause` was parsed, when that is not where this attempt was made.
+
+    An attempt is reported at the location of the value it tried to parse. Its cause is a *different*
+    value -- a Function argument, or the default of one -- parsed at a location of its own, and rendering
+    it at the parent's makes every level of a nested failure claim the same place. The chain then names
+    the outermost value however deep the real failure is: ``LessEqual<Integer>``'s ``arg1`` reported at
+    ``Condition``, three levels above where ``n`` actually is.
+
+    ``None`` where the cause has no location of its own to give, which keeps the parent's.
+    """
 
     def describe(self) -> str:
         if self.tried_type is None:
@@ -465,7 +477,8 @@ class ExpressionAttempt:
             causes.append(group_error)
         causes.extend(self.schema_errors)
         if self.cause is not None:
-            causes.extend(self.cause.explanation_causes(location_id))
+            # The cause's own location, not this attempt's -- see `cause_location_id`.
+            causes.extend(self.cause.explanation_causes(self.cause_location_id or location_id))
         error = CHSemanticError(self.describe(), location_id=location_id)
         error.causes.extend(causes)
         return error
