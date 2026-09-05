@@ -117,6 +117,43 @@ def site(expected_type: str, default: object, name: str = "Site", provenance: st
     }
 
 
+def located_messages(text: str) -> list[tuple[str, str]]:
+    """
+    Every ``(location, message)`` pair of a rendered trace.
+
+    ``ConceptHierarchyError.__str__`` prints a location on its own line and the message under it, so the
+    two are separable and a test can assert *where* something was reported, not only *that* it was. The
+    location is what a reader follows to the offending text, and it is the half that goes wrong silently:
+    a message reported three levels above where it happened still reads perfectly.
+    """
+    pairs: list[tuple[str, str]] = []
+    location: str | None = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            location = line
+        elif line and location is not None:
+            pairs.append((location, line))
+    return pairs
+
+
+def location_reporting(text: str, needle: str) -> str:
+    """The location of the one message containing ``needle``."""
+    matches = {location for location, message in located_messages(text) if needle in message}
+    assert len(matches) == 1, f"expected exactly one message containing {needle!r}, got {sorted(matches)}"
+    return matches.pop()
+
+
+def path_of(*segments: str) -> str:
+    """A rendered location, as `ConceptHierarchyError` prints it."""
+    return "[" + ": ".join(f'"{segment}"' for segment in segments) + "]"
+
+
+def site_path(*segments: str) -> str:
+    """The location of `site`'s default expression, extended by ``segments``."""
+    return path_of("concepts", "Site", "data", "instantiation", "properties", "p", "type", "default", *segments)
+
+
 def expression_error(concepts: dict) -> str:
     """Check the hierarchy, require it to fail, and return the fully rendered error text."""
     with pytest.raises(ConceptHierarchyError) as excinfo:
@@ -811,3 +848,94 @@ class TestDeeplyNestedFailures:
         assert "as Narrow (Holder)" in text
         assert 'argument "arg2" is not a valid Integer expression' in text
         assert "Nope" in text
+
+
+# ==================================================================================================
+# Where each part of a trace is reported
+# ==================================================================================================
+
+
+class TestTheTraceDescendsWithTheValue:
+    """
+    Every level of a trace is reported at the location of the value *that* level was parsing.
+
+    It used not to be. `ExpressionAttempt.as_error` rendered a nested cause at the enclosing attempt's
+    location, so an argument three levels down claimed the location of the outermost value: on
+    `animal_kingdom.json`, ``"n" is not a variable`` -- which is inside
+    ``Condition/condition/LessEqual<Integer>/arg1`` -- was reported at ``procedure/Condition``, and every
+    alternative tried for it said the same. A trace whose locations do not move is worse than no locations
+    at all, because it reads as though the failure really is at the top.
+
+    These assert the whole path, not a substring of it. A containment check passes for a location that has
+    merely stopped early, which is exactly the failure being guarded against.
+    """
+
+    def test_a_failing_function_argument_is_reported_at_that_argument(self):
+        value = {"Add<Integer>": {"arg1": 1, "arg2": "s:x"}}
+        text = expression_error({**ADD, **site("Integer", value)})
+        assert location_reporting(text, 'as variable: "s:x"') == site_path("Add<Integer>", "arg2")
+
+    def test_the_attempt_that_names_the_argument_stays_at_the_evaluation(self):
+        """
+        The attempt is about the *evaluation*: it is what was being parsed when the argument was found
+        wanting. Only its cause belongs further in -- which is why the two are separate fields.
+        """
+        value = {"Add<Integer>": {"arg1": 1, "arg2": "s:x"}}
+        text = expression_error({**ADD, **site("Integer", value)})
+        assert location_reporting(text, 'as FEval (Add<Integer>): argument "arg2"') == site_path()
+
+    def test_each_nesting_level_adds_its_own_segments(self):
+        """Two evaluations deep: the innermost failure is four segments below the site, not one."""
+        inner = {"Add<Integer>": {"arg1": 1, "arg2": "s:x"}}
+        value = {"Add<Integer>": {"arg1": 1, "arg2": inner}}
+        text = expression_error({**ADD, **site("Integer", value)})
+        assert location_reporting(text, 'as variable: "s:x"') == site_path(
+            "Add<Integer>", "arg2", "Add<Integer>", "arg2"
+        )
+
+    def test_a_failure_inside_an_instantiated_property_is_reported_inside_it(self):
+        """``Inst(Point) -> y -> FEval(Add) -> arg2``: the schema error names the property and the argument."""
+        value = {"x": 1, "y": {"Add<Integer>": {"arg1": 1, "arg2": {"NotAType": 9}}}}
+        text = expression_error({**ADD, **POINT, **site("Point", value)})
+        assert location_reporting(text, "is not of type 'integer'") == site_path("y", "Add<Integer>", "arg2")
+
+    def test_every_alternative_tried_for_one_value_shares_that_value_s_location(self):
+        """
+        The alternatives are all attempts on the *same* text, so they must agree -- and they must agree on
+        the innermost location, not on the outermost one.
+        """
+        value = {"Add<Integer>": {"arg1": 1, "arg2": "s:x"}}
+        text = expression_error({**ADD, **site("Integer", value)})
+        argument_location = site_path("Add<Integer>", "arg2")
+        alternatives = {
+            message.split(":")[0]
+            for location, message in located_messages(text)
+            if location == argument_location and message.startswith("as ")
+        }
+        assert len(alternatives) > 1, f"expected several alternatives at the argument, got {alternatives}"
+
+
+class TestTheFunctionCompositionArgsNodeLocatesItsKeyOnce:
+    """
+    The ``"properties": "args"`` node stands *on* the Function name, and the evaluation parser appends the
+    key itself. Handing the callee the location it was standing on spelled the key twice --
+    ``procedure/Condition/Condition/condition`` -- which is a path that exists in no document.
+    """
+
+    COMPOSED = {
+        "Holder": {
+            "directParents": ["ValueDomain"],
+            "data": {"instantiation": {"type": "object", "properties": {"p": {"type": "FunctionComposition"}}}},
+        }
+    }
+
+    def test_the_function_name_appears_once_in_the_location(self):
+        value = {"Add<Integer>": {"arg1": 1, "arg2": "s:x"}}
+        text = expression_error({**ADD, **site("FunctionComposition", value)})
+        location = location_reporting(text, 'as variable: "s:x"')
+        assert location.count('"Add<Integer>"') == 1, f"the key is spelled twice in {location}"
+
+    def test_the_argument_is_reached_through_the_key(self):
+        value = {"Add<Integer>": {"arg1": 1, "arg2": "s:x"}}
+        text = expression_error({**ADD, **site("FunctionComposition", value)})
+        assert location_reporting(text, 'as variable: "s:x"') == site_path("Add<Integer>", "arg2")
