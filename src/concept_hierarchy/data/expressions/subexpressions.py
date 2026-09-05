@@ -248,11 +248,35 @@ class FunctionEvaluation(ExpressionValue):
         arguments: dict[str, Expression],
         is_result_addressable: bool,
         is_strict_subtype: bool | None = None,
+        applied_defaults: dict[str, Expression] | None = None,
     ):
         super().__init__(value_type=f_res, is_strict_subtype=is_strict_subtype)
         self.f_type = f_type
+
         self.arguments = arguments
+        """What this call site **wrote**. Nothing else may go in here -- see :attr:`applied_defaults`."""
+
         self.is_result_addressable = is_result_addressable
+
+        self.applied_defaults: dict[str, Expression] = applied_defaults or {}
+        """
+        What each argument the call site left out fell back on, grounded for *this* application.
+
+        A **second** field rather than entries in :attr:`arguments`, and that is not tidiness.
+        `parse_expression_of_json_object` derives ``supplied_arguments = set(f_args)`` from `arguments`, so a
+        default recorded there would make the acyclicity check believe every argument was supplied and skip
+        the graph exactly where it is needed. Keeping the two apart lets an evaluation record what it depends
+        on without lying about what was written.
+
+        Deliberately **not** yielded from :meth:`get_subexpressions`. `init_expressions` computes
+        `FunctionData.default_argument_dependencies` with `Expression.all_subexpressions(Variable)` and
+        filters the names it finds against *this* Function's argument names; descending into a nested
+        evaluation's applied defaults imports another Function's argument names, and any that collide become
+        edges that do not exist. Measured, with `G.q := p` where `F` also has an argument `p`: `F`'s
+        dependencies become ``{'p': ['b'], 'b': ['p']}`` instead of ``{'p': ['b'], 'b': []}``, and the call
+        site ``{"F": {}}`` is then rejected as a cycle that is not there. A consumer that wants these has to
+        walk them explicitly.
+        """
 
     @property
     def is_fully_parsed(self) -> bool:

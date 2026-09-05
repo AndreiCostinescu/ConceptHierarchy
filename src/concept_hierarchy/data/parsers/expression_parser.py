@@ -1198,6 +1198,7 @@ def _ground_unsupplied_argument_defaults(
     """
     dependencies: dict[str, frozenset[str]] = {}
     to_ground: dict[str, Expression] = {}
+    applied: dict[str, Expression] = {}
     for argument in sorted(unsupplied_arguments):
         # A missing default here is not an omission: a *required* argument left unsupplied was already
         # reported above, and an optional one with no default has nothing to ground.
@@ -1221,7 +1222,9 @@ def _ground_unsupplied_argument_defaults(
         contents_are_decided = declared_default.is_fully_parsed and not declared_default.is_value_template_dependent
         site_type_is_decided = isinstance(declared_type, InstantiatedType)
         if contents_are_decided and site_type_is_decided:
-            # Nothing was left open, so the declaration already holds the whole verdict.
+            # Nothing was left open, so the declaration already holds the whole verdict -- which is
+            # therefore also the expression this site applies.
+            applied[argument] = declared_default
             continue
         if contents_are_decided:
             # Only (2). One subtype check settles it; reparsing would rebuild an identical tree to ask it.
@@ -1239,9 +1242,11 @@ def _ground_unsupplied_argument_defaults(
                 attempts,
             )
             if failure is not None:
-                return failure, dependencies
+                return failure, dependencies, applied
             # No entry is added to `dependencies`: the declaration's own scan of this default was complete
-            # (a decided tree has no unreached parts), so the declared edges already say everything.
+            # (a decided tree has no unreached parts), so the declared edges already say everything. The
+            # expression itself is unchanged by the subtype check, so the declaration is what was applied.
+            applied[argument] = declared_default
             continue
         cached = validator.get_grounded_function_default(key_type.full_name, argument)
         if cached is None:
@@ -1253,15 +1258,16 @@ def _ground_unsupplied_argument_defaults(
                 f"requires grounding it again"
             )
             attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
-            return IllFormedExpression(reason, tuple(attempts)), dependencies
+            return IllFormedExpression(reason, tuple(attempts)), dependencies, applied
         # A cached failure is re-reported rather than passed over: the entry is the verdict for this
         # application, and a second call site reaching it is in exactly the position the first one was.
         assert cached.expression is not None
         if not cached.expression.is_valid:
-            return _rejected_default(key, key_type, argument, cached.expression, attempts), dependencies
+            return _rejected_default(key, key_type, argument, cached.expression, attempts), dependencies, applied
         dependencies[argument] = cached.sibling_dependencies
+        applied[argument] = cached.expression
     if not to_ground:
-        return None, dependencies
+        return None, dependencies, applied
 
     # Every argument goes into scope, not just the unsupplied ones: a default may name a sibling the call
     # site *did* supply, and what it sees there is the argument's declared type, not the supplied value.
@@ -1319,9 +1325,10 @@ def _ground_unsupplied_argument_defaults(
                 key_type.full_name, argument, GroundedArgumentDefault(grounded, grounded_dependencies)
             )
             if not grounded.is_valid:
-                return _rejected_default(key, key_type, argument, grounded, attempts), dependencies
+                return _rejected_default(key, key_type, argument, grounded, attempts), dependencies, applied
             dependencies[argument] = grounded_dependencies
-    return None, dependencies
+            applied[argument] = grounded
+    return None, dependencies, applied
 
 
 def _recheck_decided_default(
@@ -1526,6 +1533,7 @@ def parse_expression_of_json_object(
                 if ensure_expression_invariant(expressions_res, expr_type):
                     return expressions_res
             f_args: dict[str, Expression] = {}
+            applied_defaults: dict[str, Expression] = {}
             if recursively_parse:
                 # verify sub-expressions + make sure that the Function arguments are actually correct ones
                 all_arguments = validator.get_function_arguments(key_type.clean_name)
@@ -1599,7 +1607,7 @@ def parse_expression_of_json_object(
                 # stopped being decidable. Only `InstantiatedType` is ground; a call site still inside a
                 # template gets its turn when the enclosing schema is built for an application (stage 1).
                 if isinstance(key_type, InstantiatedType):
-                    default_failure, grounded_dependencies = _ground_unsupplied_argument_defaults(
+                    default_failure, grounded_dependencies, applied_defaults = _ground_unsupplied_argument_defaults(
                         key,
                         key_type,
                         all_arguments,
@@ -1644,6 +1652,7 @@ def parse_expression_of_json_object(
                     f_args,
                     is_result_addressable,
                     function_return_type != expr_type,
+                    applied_defaults,
                 )
             )
             if ensure_expression_invariant(expressions_res, expr_type):
