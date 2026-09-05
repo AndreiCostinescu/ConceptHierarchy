@@ -247,6 +247,7 @@ class FunctionEvaluation(ExpressionValue):
         f_res: TypeValue,
         arguments: dict[str, Expression],
         is_result_addressable: bool,
+        is_result_modifiable: bool | None = None,
         is_strict_subtype: bool | None = None,
         applied_defaults: dict[str, Expression] | None = None,
     ):
@@ -257,6 +258,15 @@ class FunctionEvaluation(ExpressionValue):
         """What this call site **wrote**. Nothing else may go in here -- see :attr:`applied_defaults`."""
 
         self.is_result_addressable = is_result_addressable
+
+        self.is_result_modifiable = is_result_modifiable
+        """
+        Whether the Function's *result* may be modified, i.e. its `FunctionResultAccessor` is not ``Get``.
+
+        ``None`` when the Function returns nothing, which is the same case in which `value_type` is ``None``.
+        Read off the return interface beside `is_result_addressable`, and stored for the same reason: it is a
+        property of the evaluation, and recomputing it needs the interface this expression no longer holds.
+        """
 
         self.applied_defaults: dict[str, Expression] = applied_defaults or {}
         """
