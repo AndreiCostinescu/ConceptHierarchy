@@ -1221,8 +1221,9 @@ class TestHardErrorsDuringResolution:
                 "D",
                 closed_obj(
                     {
-                        # An unknown Function argument raises rather than returning an ill-formed value,
-                        # and does so half way through resolving D's default sites.
+                        # An unknown Function argument makes the evaluation ill-formed, half-way through
+                        # resolving D's default sites. It used to *raise* there; the assertions below hold
+                        # either way, which is what makes them a guard on the cause rather than the shape.
                         "a": {"type": "Integer", "default": {"Add<Integer>": {"nope": 1}}},
                         "b": {"type": "Leaf", "default": {}},
                     }

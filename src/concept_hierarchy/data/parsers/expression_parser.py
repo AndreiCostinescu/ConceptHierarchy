@@ -1614,12 +1614,13 @@ def parse_function_evaluation_expression(
             return expressions_res, None, True
         raise e
     if not isinstance(key_type, TemplateVariable) and validator.is_type_abstract(key_type):
-        raise CHSemanticError(
-            f"{key_type} is an abstract type! Thus, it can not be used in expression values "
-            f"(neither as FEval nor as Narrow expressions)!",
-            location_id=location_id + [key],
-            part=PathPart.KEY,
-        )
+        reason = f"{key_type} is an abstract type, so it can not be used in an expression value"
+        attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+        attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason, tried_type=key_type))
+        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+        # `is_function_subtype` is not decided yet and is not consulted: one expression is present, so
+        # every caller stops here.
+        return expressions_res, key_type, True
     function_evaluation = (
         expr_type is None
         or isinstance(expr_type, TemplateVariable)
@@ -1665,11 +1666,10 @@ def parse_function_evaluation_expression(
         all_arguments = validator.get_function_arguments(key_type.clean_name)
         for f_arg_name, f_arg_expr_val in value.items():
             if not validator.is_function_argument(key_type.clean_name, f_arg_name):
-                raise CHSemanticError(
-                    f'Function {key} does not have the argument "{f_arg_name}"; only {all_arguments}',
-                    location_id=location_id,
-                    part=PathPart.KEY,
-                )
+                reason = f'Function {key} does not have the argument "{f_arg_name}"; only {sorted(all_arguments)}'
+                attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+                expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+                return expressions_res, key_type, True
             f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(
                 key_type.clean_name, f_arg_name
             )
@@ -1715,11 +1715,12 @@ def parse_function_evaluation_expression(
             required_arg for required_arg in required_arguments if required_arg not in f_args
         )
         if missing_arguments:
-            raise CHSemanticError(
-                f"Argument(s) {missing_arguments} are missing from the Function evaluation interface of {key}!",
-                location_id=location_id + [key],
-                part=PathPart.VALUE,
+            reason = (
+                f"Argument(s) {sorted(missing_arguments)} are missing from the Function evaluation interface of {key}!"
             )
+            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+            expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+            return expressions_res, key_type, True
         # verify that the dependencies between the remaining default arguments are not cyclic
         supplied_arguments = set(f_args)
         unsupplied_arguments: set[str] = all_arguments - supplied_arguments
@@ -1763,12 +1764,13 @@ def parse_function_evaluation_expression(
         if default_argument_dependencies is not None and not _validate_acyclic_default_argument_dependencies(
             default_argument_dependencies, supplied_arguments
         ):
-            raise CHSemanticError(
-                f"The dependency graph between the remaining default arguments {unsupplied_arguments} of "
-                f"the Function evaluation of {key} is not acyclic!",
-                location_id=location_id + [key],
-                part=PathPart.VALUE,
+            reason = (
+                f"The dependency graph between the remaining default arguments {sorted(unsupplied_arguments)} of "
+                f"the Function evaluation of {key} is not acyclic!"
             )
+            attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+            expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+            return expressions_res, key_type, True
 
     # is the access character not relevant here? it should be...
     expressions_res.append(
