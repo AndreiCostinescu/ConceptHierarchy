@@ -170,14 +170,6 @@ class CHSchemaValidator(ABC):
         """
 
     @abstractmethod
-    def set_identifier_where_types_are_defined(self, identifier: str) -> None:
-        pass
-
-    @abstractmethod
-    def clear_identifier_where_types_are_defined(self) -> None:
-        pass
-
-    @abstractmethod
     def is_concept(self, concept_name: str) -> bool:
         pass
 

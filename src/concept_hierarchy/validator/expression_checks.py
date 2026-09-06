@@ -209,7 +209,6 @@ def init_expressions(context: ConceptHierarchyContext):
 
     for c_name, c in context.model.functions.items():
         context.set_template_context(c.template_context)
-        context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
         context.push_new_variable_stack_frame(VariableStackFrame())
 
         c_def = context.ch.concepts.get(c_name)
@@ -283,7 +282,6 @@ def init_expressions(context: ConceptHierarchyContext):
         )
 
         context.pop_last_variable_stack_frame()
-        context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
         context.reset_template_context()
 
     # Then, after the Function default argument dependencies are registered,
@@ -300,10 +298,9 @@ def init_expressions(context: ConceptHierarchyContext):
     #  However, detection may only be possible once a ground type application is given
     #  because the schemas can depend on their template types...
     #  But this anyway means, that default expressions in instantiations are not always resolvable at this point;
-    #  only at runtime, when an ground type application (instantiation) is given...
+    #  only at runtime, when a ground type application (instantiation) is given...
     for c_name, c in context.model.value_domains.items():
         context.set_template_context(c.template_context)
-        context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
         context.push_new_variable_stack_frame(VariableStackFrame())
 
         for instantiation_constraint, instantiation_schema in c.instantiation:
@@ -332,7 +329,6 @@ def init_expressions(context: ConceptHierarchyContext):
                 schema_node.parsed_default_expr = parsed_expr
 
         context.pop_last_variable_stack_frame()
-        context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
         context.reset_template_context()
 
 
@@ -498,7 +494,6 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
     # 2. reprocess Function default argument expressions
     for c_name, c in context.model.functions.items():
         context.set_template_context(c.template_context)
-        context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
         context.push_new_variable_stack_frame(VariableStackFrame())
 
         c_def = context.ch.concepts.get(c_name)
@@ -535,7 +530,6 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
                     raise invalid_expression_error(parsed_default_value_expr, default_arg_location_id)
 
         context.pop_last_variable_stack_frame()
-        context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
         context.reset_template_context()
 
     # Second, process template types

@@ -61,12 +61,6 @@ class SchemaValidator(CHSchemaValidator):
             self.type_validator.delete_template_variable("x", location_id)
             raise e
 
-    def set_identifier_where_types_are_defined(self, identifier: str) -> None:
-        self.type_validator.set_identifier_where_types_are_defined(identifier)
-
-    def clear_identifier_where_types_are_defined(self) -> None:
-        self.type_validator.clear_identifier_where_types_are_defined()
-
     def is_concept(self, concept_name: str) -> bool:
         return self.context.ch.is_concept(concept_name)
 

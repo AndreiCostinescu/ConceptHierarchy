@@ -180,7 +180,6 @@ def check_types_in_domain_concept_definition(
     """
     context.set_template_context(TemplateContext("global"))
     type_validator = context.type_validator
-    type_validator.set_identifier_where_types_are_defined(c.name)
     constraint_validator = context.type_application_constraints_validator
 
     property_types: dict[str, InstantiatedType] = {}
@@ -269,7 +268,6 @@ def check_types_in_domain_concept_definition(
             )
     datum.function_types = frozendict(function_types)
 
-    type_validator.clear_identifier_where_types_are_defined()
     context.reset_template_context()
 
 
@@ -284,7 +282,6 @@ def check_types_in_hidden_implementation_definition(
     """
     context.set_template_context(datum.template_context)
     type_validator = context.type_validator
-    type_validator.set_identifier_where_types_are_defined(datum.name)
     constraint_validator = context.type_application_constraints_validator
 
     substitution_values: dict[tuple[str, str], ConceptHierarchyTemplateArgument] = {}
@@ -384,7 +381,6 @@ def check_types_in_hidden_implementation_definition(
 
     datum.parent_template_variable_substitution = frozendict(substitution_values)
 
-    type_validator.clear_identifier_where_types_are_defined()
     context.reset_template_context()
 
 
@@ -414,7 +410,6 @@ def check_types_in_value_domain_definition(
 
     constraint_validator = context.template_constraint_formula_validator
     context.set_template_context(datum.template_context)
-    context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
 
     location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
     parsed_instantiations: list[tuple[ConstraintGroup, CHSchemaNode]] = []
@@ -438,7 +433,6 @@ def check_types_in_value_domain_definition(
         parsed_instantiations.append((constraint, parsed_instantiation_schema))
     datum.instantiation = tuple(parsed_instantiations)
 
-    context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
     context.reset_template_context()
 
 
@@ -452,7 +446,6 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
     """
     context.set_template_context(datum.template_context)
     type_validator = context.type_validator
-    type_validator.set_identifier_where_types_are_defined(c.name)
     # Setting the allowed template variables for the type_validator's type_instantiation_validator is not needed
     #  Because here, the type_instantiation_validator only checks instantiated types, which do not have template vars.
 
@@ -578,8 +571,6 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
     if not datum.instantiable:
         datum.instantiation = ()
     else:
-        context.instantiation_schema_validator.set_identifier_where_types_are_defined(c.name)
-
         location_id = c.location_id(ValueDomainDefinition.value_domain_instantiation)
 
         instantiation_location_id = location_id + ["default Function instantiation"]
@@ -599,9 +590,6 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
             ),
         )
 
-        context.instantiation_schema_validator.clear_identifier_where_types_are_defined()
-
-    type_validator.clear_identifier_where_types_are_defined()
     context.reset_template_context()
 
 

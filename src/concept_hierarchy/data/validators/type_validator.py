@@ -107,15 +107,7 @@ class TypeValidator(ABC):
         pass
 
     @abstractmethod
-    def set_identifier_where_types_are_defined(self, identifier: str) -> None:
-        pass
-
-    @abstractmethod
     def get_identifier_where_types_are_defined(self) -> str:
-        pass
-
-    @abstractmethod
-    def clear_identifier_where_types_are_defined(self) -> None:
         pass
 
     @abstractmethod
