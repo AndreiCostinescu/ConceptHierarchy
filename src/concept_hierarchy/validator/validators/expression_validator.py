@@ -54,7 +54,21 @@ class ExpressionValidator(ExpressionParserValidator):
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.instantiated_types: dict[str, InstantiatedType] = {}
-        self.parsed_types: dict[str, TypeValue] = {}
+        """Ground types, memoized by their text -- which is their whole meaning, wherever they are written."""
+
+        self.parsed_types: dict[tuple[str, tuple[str, ...], tuple[str, ...], str | None, str], TypeValue] = {}
+        """
+        Types memoized by their text **and the context that gives that text its meaning**.
+
+        Keyed by the text alone, this was wrong: `parse_convert_type_in_template_context` reads the ambient
+        template context, so ``Box<T>`` is ``Box<A:T>`` inside ``A<T>`` and ``Box<B:T>`` inside ``B<T>``,
+        and the second concept was handed the first one's parse. Where the two variables even had different
+        *names* the leak was caught -- by a bare ``assert`` in `substitute`, so an author's mistake came out
+        as an `AssertionError` naming a concept they had not mentioned.
+
+        The identifier is part of the key as well as the context, because that is what a template variable
+        is tagged with: two concepts can declare identically-shaped contexts and still mean different variables by them.
+        """
         self.resolved_instantiation_schemas: dict[tuple[str, int], CHSchemaNode] = {}
         """(application full name, constraint group index) -> schema substituted for that application."""
 
@@ -119,17 +133,49 @@ class ExpressionValidator(ExpressionParserValidator):
             self.instantiated_types[instantiated_type_name] = parse_convert_type(
                 instantiated_type_name, self.context.type_validator, location_id
             )
-            self.parsed_types[instantiated_type_name] = self.instantiated_types[instantiated_type_name]
+            self.parsed_types[self._parsed_type_key(instantiated_type_name)] = self.instantiated_types[
+                instantiated_type_name
+            ]
         return self.instantiated_types[instantiated_type_name]
 
+    def _parsed_type_key(self, type_name: str) -> tuple[str, tuple[str, ...], tuple[str, ...], str | None, str]:
+        """
+        What makes two occurrences of the same type text the same type -- see :attr:`parsed_types`.
+
+        The three components after the text are everything `parse_convert_type_in_template_context` reads
+        beyond the text itself. *(audited)* it reaches the validator only through:
+
+        * `is_template_variable` and `get_available_template_variables` -> the context's **variables**;
+        * `is_variadic_template_variable` -> also its **variadic variables**;
+        * the instantiation-constraint validation of every nested type -> its **constraint**;
+        * `get_identifier_where_types_are_defined` -> the **identifier** a template variable is tagged with.
+
+        Everything else it consults -- `is_concept`, `canonical_concept_name`, `resolved_type_alias`,
+        `get_template_data_of`, `full_type_name` -- reads `context.ch`, which is fixed for the whole check
+        and so cannot distinguish two occurrences.
+
+        Built from the components rather than from ``str(template_context)``, although both would work!
+        """
+        template_context = self.context.template_context
+        return (
+            type_name,
+            tuple(template_context.variables),
+            tuple(sorted(template_context.variadic_variables)),
+            None if template_context.empty else repr(template_context.constraint),
+            self.context.template_context.name_of_type_defining_the_template_variables,
+        )
+
     def create_possibly_template_dependent_type(self, type_name: str, location_id: LocationId) -> TypeValue:
-        if type_name not in self.parsed_types:
-            self.parsed_types[type_name] = parse_convert_type_in_template_context(
+        key = self._parsed_type_key(type_name)
+        if key not in self.parsed_types:
+            self.parsed_types[key] = parse_convert_type_in_template_context(
                 type_name, self.context.type_validator, location_id
             )
-            if isinstance(self.parsed_types[type_name], InstantiatedType):
-                self.instantiated_types[type_name] = self.parsed_types[type_name]
-        return self.parsed_types[type_name]
+            if isinstance(self.parsed_types[key], InstantiatedType):
+                # A ground result means the text names no template variable, so its meaning does not
+                # depend on where it was written. Thus, the memo only by the name of the type is safe to store.
+                self.instantiated_types[type_name] = self.parsed_types[key]
+        return self.parsed_types[key]
 
     def get_substituted_value_domain_instantiation_schema(
         self, type_name: InstantiatedType | TemplateDependentType
