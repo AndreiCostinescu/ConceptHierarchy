@@ -90,6 +90,7 @@ class ConceptHierarchyContext:
     def template_context_make_neg(self):
         self.set_template_context(
             TemplateContext(
+                self.template_context.name_of_type_defining_the_template_variables,
                 self.template_context.variables,
                 self.template_context.variadic_variables,
                 self.template_context.make_constraint_neg(),

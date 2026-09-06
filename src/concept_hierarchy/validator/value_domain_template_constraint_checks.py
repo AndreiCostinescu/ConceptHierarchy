@@ -61,7 +61,7 @@ def check_value_domain_template_constraint_formulae(context: ConceptHierarchyCon
                 vd.location_of(HiddenImplementationDefinition.hidden_template_arguments), tuple(constraints)
             )
         vd_data.template_context = TemplateContext(
-            vd.template_argument_order, vd.variadic_template_arguments, constraint
+            vd.name, vd.template_argument_order, vd.variadic_template_arguments, constraint
         )
         if vd_data.template_context.is_empty_constraint:
             raise CHSemanticError(

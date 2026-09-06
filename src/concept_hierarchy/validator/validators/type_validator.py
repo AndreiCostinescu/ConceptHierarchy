@@ -36,7 +36,7 @@ class ConceptHierarchyTypeValidator(TypeValidator):
         self.cached_template_data: dict[str, TypeTemplateData] = {}
         """The cache can persist between validations. This does not change: it is the (processed) definition data."""
         self.identifier_for_types: str | None = None
-        self.empty_template_context_for_non_template_concepts = TemplateContext()
+        self.empty_template_context_for_non_template_concepts = TemplateContext("global")
 
     def full_type_name(self, concept_name: str) -> str:
         if self.is_concept(concept_name):

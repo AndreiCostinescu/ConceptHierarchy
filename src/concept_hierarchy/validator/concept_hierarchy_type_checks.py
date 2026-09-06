@@ -178,7 +178,7 @@ def check_types_in_domain_concept_definition(
     - domain concept properties
     - domain concept functions (if present)
     """
-    context.set_template_context(TemplateContext())
+    context.set_template_context(TemplateContext("global"))
     type_validator = context.type_validator
     type_validator.set_identifier_where_types_are_defined(c.name)
     constraint_validator = context.type_application_constraints_validator
@@ -625,7 +625,7 @@ def check_schema_references_in_concept_hierarchy(context: ConceptHierarchyContex
     out; the others have exactly one schema, and writing ``/0`` for it would suggest a choice that is not
     there -- so it is rejected rather than accepted as a synonym for the only possibility.
     """
-    context.set_template_context(TemplateContext())
+    context.set_template_context(TemplateContext("global"))
     for c_name, datum in context.model.value_domains.items():
         for schema_index, (_constraint, schema) in enumerate(datum.instantiation):
             for node in schema.walk():

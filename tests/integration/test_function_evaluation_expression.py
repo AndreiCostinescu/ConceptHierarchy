@@ -144,7 +144,7 @@ def context() -> ConceptHierarchyContext:
     will be in for a non-templated ValueDomain.
     """
     checked = check_hierarchy(build_hierarchy(ALL_CONCEPTS))
-    checked.set_template_context(TemplateContext())
+    checked.set_template_context(TemplateContext("global"))
     return checked
 
 

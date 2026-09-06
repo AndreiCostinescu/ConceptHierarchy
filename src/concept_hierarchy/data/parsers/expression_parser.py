@@ -507,7 +507,7 @@ def substitute_schema(
             node.custom_type,
             template_substitution,
             template_context_of_concept,
-            TemplateContext(),
+            TemplateContext("global"),
             constraint_validator,
             location_id + node.location_id,
         )
@@ -1471,6 +1471,9 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
         )
         argument_types[argument] = argument_type
 
+    assert f_template_context.name_of_type_defining_the_template_variables == f_type.clean_name, "{} - {}".format(
+        f_template_context.name_of_type_defining_the_template_variables, f_type.clean_name
+    )
     with validator.function_argument_scope(argument_types, f_template_context):
         for argument, declared_source in to_ground.items():
             argument_type = argument_types[argument]
@@ -1747,7 +1750,7 @@ def parse_function_evaluation_expression(
                 key_type,
                 template_substitution,
                 expr_template_context,
-                TemplateContext(),
+                TemplateContext("global"),
                 validator.get_type_template_instantiation_validator(),
                 f_location_id,
             )
@@ -2120,6 +2123,7 @@ def _check_if_subtype_of_template_variable(
         ),
     )
     narrowed = TemplateContext(
+        template_context.name_of_type_defining_the_template_variables,
         template_context.variables,
         template_context.variadic_variables,
         template_context.add_and_constraint_to(b.clean_name, supertype_or_equal, location_id),

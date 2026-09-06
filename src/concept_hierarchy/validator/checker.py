@@ -908,7 +908,7 @@ class ConceptHierarchyChecker:
         concepts_location_id = LocationId([ConceptHierarchyDefinition.model_concepts])
         # An alias is declared at the hierarchy level, so no template variable is in scope for it -- the
         # type parser still needs *a* context to answer `is_template_variable`, so give it an empty one.
-        self.context.set_template_context(TemplateContext())
+        self.context.set_template_context(TemplateContext("global"))
         try:
             for alias_name, parsed_target in self._type_alias_targets.items():
                 location_id = concepts_location_id + [alias_name]

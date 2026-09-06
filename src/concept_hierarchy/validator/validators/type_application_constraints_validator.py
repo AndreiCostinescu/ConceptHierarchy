@@ -134,7 +134,7 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
             return None
 
         if template_context is None:
-            template_context = TemplateContext()
+            template_context = TemplateContext("global")
 
         substitution: dict[str, ConceptHierarchyTemplateArgument] = {}
         for t_arg_name, t_arg_val in zip(sub_type_def_data.template_argument_order, sub_type.template_arguments):

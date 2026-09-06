@@ -134,7 +134,7 @@ class TypeTemplateInstantiationValidator(ABC):
 
 class TemplateContextDeterminator:
     def __init__(self, template_context: TemplateContext | None = None):
-        self.original: TemplateContext = template_context if template_context is not None else TemplateContext()
+        self.original: TemplateContext = template_context if template_context is not None else TemplateContext("global")
         self.determined: TemplateContext | None = None
 
 
@@ -387,6 +387,7 @@ def validate_complete_instantiation_of_type(
         else:
             # there was no non-template-variable-related error and there are template constraints => negate constraint
             template_context.determined = TemplateContext(
+                template_context.original.name_of_type_defining_the_template_variables,
                 template_context.original.variables,
                 template_context.original.variadic_variables,
                 sub_template_context.determined.make_constraint_neg(),
@@ -540,6 +541,7 @@ def _validate_not(
     else:
         # there was no non-template-variable-related error and there are template constraints => negate constraint
         state.template_context.determined = TemplateContext(
+            state.template_context.original.name_of_type_defining_the_template_variables,
             state.template_context.original.variables,
             state.template_context.original.variadic_variables,
             new_state.template_context.determined.make_constraint_neg(),
@@ -583,6 +585,7 @@ def _handle_template_variable(
     )
     if state.template_context.determined is None:
         state.template_context.determined = TemplateContext(
+            state.template_context.original.name_of_type_defining_the_template_variables,
             state.template_context.original.variables,
             state.template_context.original.variadic_variables,
             state.template_context.original.create_unconstrained_except_with_constraint_at_name(
@@ -738,6 +741,7 @@ def _constrain_context_template_variable(
     )
     if state.template_context.determined is None:
         state.template_context.determined = TemplateContext(
+            state.template_context.original.name_of_type_defining_the_template_variables,
             state.template_context.original.variables,
             state.template_context.original.variadic_variables,
             state.template_context.original.create_unconstrained_except_with_constraint_at_name(

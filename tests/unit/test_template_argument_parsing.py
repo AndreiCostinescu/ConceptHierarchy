@@ -288,7 +288,7 @@ class TestTemplateArgumentParsing:
             r"\"Not\(ValueDomain\) <-> SubInstance<\[SubInstance:SubAcceptConcepts..., "
             r"SubInstance:SubRejectConcepts...\], \[\]>\"\] \n"
             r"[\s\S]*Sub formula ValueDomain passed without constraints on template arguments "
-            r"TemplateContext\(vars: \('SubAcceptConcepts', 'SubRejectConcepts'\), "
+            r"TemplateContext\(of: SubInstance, vars: \('SubAcceptConcepts', 'SubRejectConcepts'\), "
             r"variadic: \['SubAcceptConcepts', 'SubRejectConcepts'\], "
             r"constraint: <Not\(ValueDomain\), Not\(ValueDomain\)>\) => negation fails\n"
             r"[\s\S]*\[\"concepts\": \"SubInstance\": \"data\": \"templateContext\": \"substitution\": "
@@ -297,7 +297,7 @@ class TestTemplateArgumentParsing:
             r"\"Not\(ValueDomain\) <-> SubInstance<\[\], \[SubInstance:SubRejectConcepts..., "
             r"SubInstance:SubAcceptConcepts...\]>\"\] \n"
             r"[\s\S]*Sub formula ValueDomain passed without constraints on template arguments "
-            r"TemplateContext\(vars: \('SubAcceptConcepts', 'SubRejectConcepts'\), "
+            r"TemplateContext\(of: SubInstance, vars: \('SubAcceptConcepts', 'SubRejectConcepts'\), "
             r"variadic: \['SubAcceptConcepts', 'SubRejectConcepts'\], "
             r"constraint: <Not\(ValueDomain\), Not\(ValueDomain\)>\) => negation fails",
         ):

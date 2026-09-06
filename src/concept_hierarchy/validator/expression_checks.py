@@ -444,7 +444,7 @@ def check_global_variable_expressions(context: ConceptHierarchyContext) -> None:
     here that outlives one global, and nothing is written to the validator, which is an interface another
     implementation is free to satisfy differently.
     """
-    global_template_context = TemplateContext()
+    global_template_context = TemplateContext("global")
     context.set_template_context(global_template_context)
     for global_variable_name, global_variable_definition in context.ch.instances.items():
         global_variable = context.model.instances[global_variable_name]
@@ -487,7 +487,7 @@ def check_global_variable_expressions(context: ConceptHierarchyContext) -> None:
 
 
 def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
-    context.set_template_context(TemplateContext())
+    context.set_template_context(TemplateContext("global"))
     context.set_variable_context(VariableContext([]))
 
     init_expressions(context)  # this mutates context to contain in its variable context all the global variables

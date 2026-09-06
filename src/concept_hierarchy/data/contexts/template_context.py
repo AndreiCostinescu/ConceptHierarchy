@@ -39,16 +39,23 @@ class TemplateContext:
     def create_from(context: TemplateContext) -> TemplateContext:
         new_variadic_variables: set[str] = set()
         new_variadic_variables.update(context.variadic_variables)
-        return TemplateContext(context.variables, new_variadic_variables, context._constraint)
+        return TemplateContext(
+            context.name_of_type_defining_the_template_variables,
+            context.variables,
+            new_variadic_variables,
+            context._constraint,
+        )
 
     def __init__(
         self,
+        name_of_type_defining_the_template_variables: str,
         template_variables: tuple[str, ...] = (),
         variadic_variables: set[str] | frozenset[str] | None = None,
         constraint_on_variables: StructureConstraintFormula | None = None,
     ):
-        """the order is very important here in variables; this is the order in the structure constraint"""
+        self.name_of_type_defining_the_template_variables = name_of_type_defining_the_template_variables
         self.variables = template_variables
+        """the order is very important here in variables; this is the order in the structure constraint"""
         self.variadic_variables = frozenset(variadic_variables) if variadic_variables is not None else frozenset()
         self.nr_variables = len(self.variables)
         self._constraint = simplify_structure_constraint(constraint_on_variables)
@@ -95,8 +102,8 @@ class TemplateContext:
 
     def __repr__(self):
         return (
-            f"TemplateContext(vars: {self.variables!r}, variadic: {sorted(self.variadic_variables)!r}, "
-            f"constraint: {(None if self.empty else self.constraint)!r})"
+            f"TemplateContext(of: {self.name_of_type_defining_the_template_variables}, vars: {self.variables!r}, "
+            f"variadic: {sorted(self.variadic_variables)!r}, constraint: {(None if self.empty else self.constraint)!r})"
         )
 
     def set_constraint(self, constraint: StructureConstraintFormula | None) -> None:
@@ -204,7 +211,9 @@ class TemplateContext:
             new_constraint = constraint
         else:
             new_constraint = self.extend_constraint(constraint, location_id)
-        return TemplateContext(new_variables, new_variadic_variables, new_constraint)
+        return TemplateContext(
+            self.name_of_type_defining_the_template_variables, new_variables, new_variadic_variables, new_constraint
+        )
 
     def delete_template_variable(self, template_variable_name: str, location_id: LocationId) -> TemplateContext:
         # FIXME: update procedure to work not only with the last template variable!
@@ -226,7 +235,9 @@ class TemplateContext:
         else:
             # FIXME: make sure that the remaining variables to not depend on the variable being removed!
             new_constraint = ConstraintGroup(location_id, self._constraint.group_constraints[:-1])
-        return TemplateContext(new_variables, new_variadic_variables, new_constraint)
+        return TemplateContext(
+            self.name_of_type_defining_the_template_variables, new_variables, new_variadic_variables, new_constraint
+        )
 
     def add_context(self, context: TemplateContext, location_id: LocationId) -> TemplateContext:
         for var_name in context.variables:
@@ -237,7 +248,9 @@ class TemplateContext:
         new_variables = self.variables + context.variables
         new_variadic_variables = self.variadic_variables | context.variadic_variables
         new_constraint = self.extend_constraint(context.constraint, location_id)
-        return TemplateContext(new_variables, new_variadic_variables, new_constraint)
+        return TemplateContext(
+            self.name_of_type_defining_the_template_variables, new_variables, new_variadic_variables, new_constraint
+        )
 
     def extend_constraint(
         self, constraint_to_extend: StructureConstraintFormula, location_id: LocationId
@@ -324,13 +337,17 @@ class TemplateContext:
 
     def create_unconstrained_context(self, location_id: LocationId) -> TemplateContext:
         new_constraint = create_unconstrained_structure_constraint(self.nr_variables, location_id)
-        return TemplateContext(self.variables, self.variadic_variables, new_constraint)
+        return TemplateContext(
+            self.name_of_type_defining_the_template_variables, self.variables, self.variadic_variables, new_constraint
+        )
 
     def create_empty_context(self, location_id: LocationId) -> TemplateContext:
         new_constraint = create_empty_structure_constraint(
             self.nr_variables, self._constraint.variable_constraint_types, location_id
         )
-        return TemplateContext(self.variables, self.variadic_variables, new_constraint)
+        return TemplateContext(
+            self.name_of_type_defining_the_template_variables, self.variables, self.variadic_variables, new_constraint
+        )
 
     def make_constraint_neg(self) -> StructureConstraintFormula:
         return simplify_structure_constraint(StructureNegation(self._constraint.location_id, self._constraint))
