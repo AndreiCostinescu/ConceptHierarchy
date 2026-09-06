@@ -178,7 +178,7 @@ def check_types_in_domain_concept_definition(
     - domain concept properties
     - domain concept functions (if present)
     """
-    context.set_template_context(TemplateContext("global"))
+    context.set_template_context(TemplateContext(c.name))
     type_validator = context.type_validator
     constraint_validator = context.type_application_constraints_validator
 
