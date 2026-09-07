@@ -11,8 +11,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
@@ -22,4 +20,5 @@ jobs:
       - name: Install ruff
         run: pip install ruff==0.15.17
 
-      - uses: ./.devtools/.github/actions/check-ruff
+      - name: Check formatting
+        uses: AndreiCostinescu/DevTools/.github/actions/check-ruff@8f494acab0a2ca9ac9bc6abba11acc0dbde0c453
