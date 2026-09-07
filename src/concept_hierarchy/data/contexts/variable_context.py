@@ -82,15 +82,15 @@ class VariableStackFrame:
         new_variables.update(self.variables)
         return VariableStackFrame(new_variables)
 
-    def add_variables(self, new_variables: dict[str, TypeValue | dict]) -> VariableStackFrame:
-        for var_name in new_variables:
+    def add_variables(self, new_variables_to_add: dict[str, TypeValue | dict]) -> VariableStackFrame:
+        for var_name in new_variables_to_add:
             if var_name in self.variables:
                 raise RuntimeError(
                     "Variable {} already exists in VariableStackFrame {}! Can't add again!".format(var_name, self)
                 )
         new_variables = {}
         new_variables.update(self.variables)
-        new_variables.update(new_variables)
+        new_variables.update(new_variables_to_add)
         return VariableStackFrame(new_variables)
 
     def add_frame(self, frame: VariableStackFrame) -> VariableStackFrame:
