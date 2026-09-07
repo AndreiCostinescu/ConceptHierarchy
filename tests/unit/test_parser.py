@@ -16,20 +16,20 @@
 
 import pytest
 
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
-from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.validator.checker import check_model
 
-MINIMAL = ConceptHierarchyModel.create_from_data(
+MINIMAL = ConceptHierarchyDefinition.create_from_data(
     {
         "name": "TestHierarchy",
         "concepts": {"Concept": {}},
     }
 )
 
-MINIMAL_SHORT = ConceptHierarchyModel.create_from_data({"Concept": {}})
+MINIMAL_SHORT = ConceptHierarchyDefinition.create_from_data({"Concept": {}})
 
-FULL = ConceptHierarchyModel.create_from_data(
+FULL = ConceptHierarchyDefinition.create_from_data(
     {
         "name": "Animals",
         "metadata": {"author": "Tester"},
@@ -37,7 +37,7 @@ FULL = ConceptHierarchyModel.create_from_data(
             "Concept": {},
             "Animal": {"directParents": ["Concept"], "description": "Base", "data": {"properties": {"age": "Integer"}}},
             "Dog": {"directParents": ["Animal"], "data": {"properties": {"breed": "String"}}},
-            "ValueDomain": {"directParents": ["Concept"], "data": {"abstract": True}},
+            "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
             "Integer": {"directParents": ["ValueDomain"], "data": {"instantiation": "integer"}},
             "String": {"directParents": ["ValueDomain"], "data": {"instantiation": "string"}},
         },
@@ -47,7 +47,7 @@ FULL = ConceptHierarchyModel.create_from_data(
 
 class TestParseEmpty:
     def test_empty_still_defines_concept(self):
-        model = ConceptHierarchyModel.create_from_data({})
+        model = ConceptHierarchyDefinition.create_from_data({})
         check_model(model)
         assert model.name == "ConceptHierarchy"
         assert dict(model.metadata) == {}
@@ -94,7 +94,7 @@ class TestParseFull:
     def test_parents_set(self):
         check_model(self.model)
         dog = self.model.concepts["Dog"]
-        assert dog.parents == ["Animal"]
+        assert dog.parents == ("Animal",)
 
     def test_metadata_parsed(self):
         check_model(self.model)
@@ -104,38 +104,50 @@ class TestParseFull:
 class TestParseErrors:
     def test_not_a_dict(self):
         with pytest.raises(CHSyntaxError):
-            check_model(ConceptHierarchyModel.create_from_data(["not", "a", "dict"]))
+            check_model(ConceptHierarchyDefinition.create_from_data(["not", "a", "dict"]))
 
     def test_missing_name(self):
-        model = ConceptHierarchyModel.create_from_data({"concepts": {"Concept": {}}})
+        model = ConceptHierarchyDefinition.create_from_data({"concepts": {"Concept": {}}})
         check_model(model)
         assert model.name == "ConceptHierarchy"
 
     def test_missing_concepts(self):
         with pytest.raises(CHSyntaxError, match="concepts"):
-            check_model(ConceptHierarchyModel.create_from_data({"name": "X"}))
+            check_model(ConceptHierarchyDefinition.create_from_data({"name": "X"}))
 
     def test_concepts_empty(self):
         # with pytest.raises(CHSemanticError):  # <- an empty concept hierarchy is allowed
-        check_model(ConceptHierarchyModel.create_from_data({"name": "X", "concepts": {}}))
+        check_model(ConceptHierarchyDefinition.create_from_data({"name": "X", "concepts": {}}))
+
+    def test_concepts_without_normal_root_but_with_it_implied_without_data(self):
+        with pytest.raises(
+            CHSyntaxError,
+            match="Every non-root concept must define its data in the \"data\" keyword! Concept 'ValueDomain' "
+            "does not, please add its data!",
+        ):
+            check_model(
+                ConceptHierarchyDefinition.create_from_data(
+                    {"name": "X", "concepts": {"ValueDomain": {"directParents": ["Concept"]}}}
+                )
+            )
 
     def test_concepts_without_normal_root_but_with_it_implied(self):
         with pytest.raises(CHSemanticError):
             check_model(
-                ConceptHierarchyModel.create_from_data(
-                    {"name": "X", "concepts": {"ValueDomain": {"directParents": ["Concept"]}}}
+                ConceptHierarchyDefinition.create_from_data(
+                    {"name": "X", "concepts": {"ValueDomain": {"directParents": ["Concept"], "data": {}}}}
                 )
             )
 
     def test_two_roots_one_non_concept(self):
         with pytest.raises(CHSemanticError):
             check_model(
-                ConceptHierarchyModel.create_from_data({"name": "X", "concepts": {"Concept": {}, "Concept2": {}}})
+                ConceptHierarchyDefinition.create_from_data({"name": "X", "concepts": {"Concept": {}, "Concept2": {}}})
             )
 
     def test_two_non_concept_roots(self):
         check_model(
-            ConceptHierarchyModel.create_from_data(
+            ConceptHierarchyDefinition.create_from_data(
                 {
                     "name": "X",
                     "concepts": {
@@ -147,9 +159,13 @@ class TestParseErrors:
         )
 
     def test_non_concept_root(self):
-        with pytest.raises(CHSemanticError):
-            check_model(ConceptHierarchyModel.create_from_data({"name": "X", "concepts": {"Base": {}}}))
-        model = ConceptHierarchyModel.create_from_data(
+        with pytest.raises(
+            CHSyntaxError,
+            match="Every non-root concept must define its data in the \"data\" keyword! Concept 'Base' does not, "
+            "please add its data!",
+        ):
+            check_model(ConceptHierarchyDefinition.create_from_data({"name": "X", "concepts": {"Base": {}}}))
+        model = ConceptHierarchyDefinition.create_from_data(
             {
                 "name": "X",
                 "concepts": {
@@ -159,4 +175,4 @@ class TestParseErrors:
         )
         check_model(model)
         assert model.concept_names() == ["Concept", "Base"]
-        assert model.concepts["Base"].parents == ["Concept"]
+        assert model.concepts["Base"].parents == ("Concept",)

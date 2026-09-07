@@ -16,21 +16,21 @@
 generator.py — Dispatch code generation to the appropriate backend.
 """
 
-from concept_hierarchy.errors import CodegenError
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
+from concept_hierarchy.errors import CodegenError, PathPart
 
 _BACKENDS = {
     "cpp": "concept_hierarchy.backends.cpp:CppBackend",
 }
 
 
-def generate(model: ConceptHierarchyModel, target: str = "cpp") -> str:
+def generate(model: ConceptHierarchy, target: str = "cpp") -> str:
     """Generate source code for *model* in *target* language.
 
     Parameters
     ----------
     model:
-        A validated :class:`~concept_hierarchy.models.ConceptHierarchyModel`.
+        A validated :class:`~concept_hierarchy.data.concept_hierarchy.ConceptHierarchy`.
     target:
         One of the supported backends (currently ``"cpp"``).
 
@@ -60,4 +60,9 @@ def generate(model: ConceptHierarchyModel, target: str = "cpp") -> str:
     try:
         return backend.generate(model)
     except Exception as exc:
-        raise CodegenError(f"Code generation failed for target {target!r}: {exc}") from exc
+        raise CodegenError(
+            f"Code generation failed for target {target!r}: {exc}",
+            location_id=None,
+            part=PathPart.NONE,
+            causes=None,
+        ) from exc

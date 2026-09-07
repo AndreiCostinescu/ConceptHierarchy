@@ -1,0 +1,1304 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Concept Hierarchy",
+  "description": "JSON Schema for validating a Concept Hierarchy",
+
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "version": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+            "author": { "type": "string" }
+          }
+        },
+        "concepts": { "$ref": "#/$defs/concepts" },
+        "instances": { "$ref": "#/$defs/instances" }
+      },
+      "required": ["concepts"],
+      "additionalProperties": false
+    }, {
+      "$ref": "#/$defs/concepts"
+    }
+  ],
+
+  "$defs": {
+    "concepts": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "https://cdn.jsdelivr.net/gh/AndreiCostinescu/ConceptHierarchy@develop/documentation/concepts.schema.json",
+      "title": "Concept Hierarchy Concepts",
+      "description": "JSON Schema for validating concept definitions in the Concept Hierarchy",
+      "type": "object",
+      "patternProperties": {
+        "^Concept$": {
+          "description": "Content of the root concept",
+          "$ref": "#/$defs/concepts/$defs/rootConceptContent"
+        },
+        "^external$": {
+          "description": "Array of relative paths to external .ch files to include",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\.(ch|json)$"
+          }
+        },
+        "^(?!Concept$)[A-Z][A-Za-z0-9_]*$": {
+          "description": "Concept definition (name must start with uppercase)",
+          "$ref": "#/$defs/concepts/$defs/conceptContent"
+        }
+      },
+      "additionalProperties": false,
+
+      "$defs": {
+        "rootConceptContent": {
+          "description": "Content of the root concept",
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "description": "Human-readable description of the root concept"
+            },
+            "directParents": {
+              "type": "array",
+              "description": "Array of parent concept names of the root concept; should be empty (root has no parents)!",
+              "maxItems": 0
+            },
+            "data": {
+              "description": "Concept data of the root concept: either a path to external file OR an object with concept-specific data",
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Path to external file containing the root concept's data",
+                  "pattern": "\\.(ch|json)$"
+                },
+                { "$ref": "#/$defs/concepts/$defs/conceptData" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "conceptContent": {
+          "description": "Content of a concept: either a reference to another concept or a full definition",
+          "oneOf": [
+            {
+              "description": "Reference to another concept (aliasing)",
+              "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain"
+            },
+            {
+              "description": "Full concept definition",
+              "type": "object",
+              "properties": {
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable description of the concept"
+                },
+                "directParents": {
+                  "type": "array",
+                  "description": "Array of parent concept names",
+                  "items": { "$ref": "#/$defs/concepts/$defs/conceptReference" },
+                  "minItems": 1
+                },
+                "data": {
+                  "description": "Concept data: either a path to external file OR an object with concept-specific data",
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Path to external file containing concept data",
+                      "pattern": "\\.(ch|json)$"
+                    },
+                    { "$ref": "#/$defs/concepts/$defs/conceptData" }
+                  ]
+                },
+                "directChildren": { "type": "array", "items": "string" },
+                "distinctFrom": { "type": "array", "items": "string" },
+                "distinctGroup": { "type": "array", "items": "string" },
+                "minInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
+                "maxInstances": { "$ref": "#/$defs/concepts/$defs/natural" },
+                "abstract": { "$ref": "#/$defs/concepts/$defs/abstractFlag" }
+              },
+              "required": ["directParents"],
+              "additionalProperties": false
+            }
+          ]
+        },
+
+        "conceptDataSeparate": {
+          "description": "Concept data object - can contain domain concept, ValueDomain, or Function specific data",
+          "anyOf": [
+            {
+              "description": "Domain Concept data",
+              "type": "object",
+              "properties": {
+                "properties": { "$ref": "#/$defs/concepts/$defs/domainConceptProperties" },
+                "functions": { "$ref": "#/$defs/concepts/$defs/domainConceptFunctions" },
+                "management": { "$ref": "#/$defs/concepts/$defs/conceptManagement" }
+              },
+              "additionalProperties": false
+            }, {
+              "description": "ValueDomain data",
+              "type": "object",
+              "properties": {
+                "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
+                "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
+                "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
+                "instantiation": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": [
+                          {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                          }, {
+                            "$ref": "#/$defs/concepts/$defs/CHSchema"
+                          }
+                        ]
+                      }
+                    }, {
+                      "$ref": "#/$defs/concepts/$defs/CHSchema"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }, {
+              "description": "Function data",
+              "type": "object",
+              "properties": {
+                "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
+                "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
+                "interface": { "$ref": "#/$defs/concepts/$defs/functionInterface" },
+                "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+                "variations": { "$ref": "#/$defs/concepts/$defs/functionVariations" },
+                "inversion": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": [
+                          {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                          }, {
+                            "$ref": "#/$defs/concepts/$defs/functionInversion"
+                          }
+                        ]
+                      }
+                    }, {
+                      "$ref": "#/$defs/concepts/$defs/functionInversion"
+                    }
+                  ]
+                },
+                "addNewVariablesInExistingScope": { "$ref": "#/$defs/concepts/$defs/functionUpdateScope" },
+                "subScopes": { "$ref": "#/$defs/concepts/$defs/functionSubScopes" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "conceptData": {
+          "$comment": "If using conceptDataSeparate and if there is an error in the concept data definition, then the errors will be shown totally wrong... So, accept that validation of the keys will be done in the parser and this is an incomplete, but still useful helper for development with the Concept Hierarchy.",
+          "description": "Concept data object - can contain domain concept, ValueDomain, or Function specific data",
+          "type": "object",
+          "properties": {
+            "properties": { "$ref": "#/$defs/concepts/$defs/domainConceptProperties" },
+            "functions": { "$ref": "#/$defs/concepts/$defs/domainConceptFunctions" },
+            "management": { "$ref": "#/$defs/concepts/$defs/conceptManagement" },
+            "implementation": { "$ref": "#/$defs/concepts/$defs/implementationPath" },
+            "templateContext": { "$ref": "#/$defs/concepts/$defs/templateContext" },
+            "defaultSerialization": { "$ref": "#/$defs/concepts/$defs/defaultSerialization" },
+            "instantiation": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                      }, {
+                        "$ref": "#/$defs/concepts/$defs/CHSchema"
+                      }
+                    ]
+                  }
+                }, {
+                  "$ref": "#/$defs/concepts/$defs/CHSchema"
+                }
+              ]
+            },
+            "interface": { "$ref": "#/$defs/concepts/$defs/functionInterface" },
+            "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+            "variations": { "$ref": "#/$defs/concepts/$defs/functionVariations" },
+            "inversion": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": [
+                      {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+                      }, {
+                        "$ref": "#/$defs/concepts/$defs/functionInversion"
+                      }
+                    ]
+                  }
+                }, {
+                  "$ref": "#/$defs/concepts/$defs/functionInversion"
+                }
+              ]
+            },
+            "addNewVariablesInExistingScope": { "$ref": "#/$defs/concepts/$defs/functionUpdateScope" },
+            "subScopes": { "$ref": "#/$defs/concepts/$defs/functionSubScopes" }
+          },
+          "additionalProperties": false
+        },
+
+        "conceptReference": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9_]*$",
+          "description": "Reference to a concept (must start with uppercase letter; concepts specified without template args)"
+        },
+
+        "argumentReference": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9_]*$",
+          "not": {
+            "enum": ["_defaultArgumentValues", "res"]
+          },
+          "description": "Argument name (must start with lowercase letter, cannot be a reserved keyword)"
+        },
+
+        "variableReference": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+          "description": "Variable name (must start with a letter)"
+        },
+
+        "templateArgumentDefinition": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9_]*(\\.\\.\\.)?$",
+          "description": "Template argument name (must start with uppercase, may end with ... for variadic)"
+        },
+
+        "typeAppliedValueDomain": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9_]*(<.*>)?$",
+          "description": "Instantiated ValueDomain reference with optional template arguments"
+        },
+
+        "instantiatedFunction": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9_]*(<.*>)?$",
+          "description": "Instantiated Function reference with optional template arguments"
+        },
+
+        "implementationPath": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to implementation file (without extension)"
+        },
+
+        "abstractFlag": {
+          "type": "boolean",
+          "description": "Whether this ValueDomain/Function is abstract"
+        },
+
+        "defaultSerialization": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["null", "boolean", "integer", "number", "string"],
+              "description": "Maps ValueDomain to a JSON primitive type for serialization"
+            }, {
+              "type": "null"
+            }
+          ]
+        },
+
+        "CHSchema": {
+          "title": "CH schema",
+          "description": "A CH schema value. Accepts boolean (draft-07 boolean schema), string (type-name shorthand), array (custom-type + ref-kind shorthand), or full object form. Custom type validity and ref-placement rules are enforced at runtime by CHSchemaContext.",
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "string", "minLength": 1 },
+            { "$ref": "#/$defs/concepts/$defs/CHSchemaArrayShorthand" },
+            { "$ref": "#/$defs/concepts/$defs/CHSchemaObject" }
+          ]
+        },
+        "CHSchemaArrayShorthand": {
+          "title": "CH array shorthand",
+          "description": "['<custom type name>', 'Addr'|'Any'] — valid only when the type name is NOT a draft-07 builtin. Builtin-type array shorthands are rejected at runtime.",
+          "type": "array",
+          "items": [
+            { "type": "string", "minLength": 1 },
+            { "type": "string", "enum": ["Addr", "Any"] }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "CHSchemaObject": {
+          "title": "CH schema object",
+          "description": "Full object form. Adds 'provenance' (Addr|Any) and treats 'default' as an unvalidated expression for custom types. All sub-schema positions accept CHSchema, including the string and array shorthands. additionalProperties:false enforces the keyword allowlist; stricter semantic rules (ref only on custom types, custom type name validity, etc.) are enforced at runtime.",
+          "type": "object",
+          "properties": {
+            "$ref": {
+              "type": "string", "pattern": "^#/(\\$defs|definitions)/[^/]+$",
+              "description": "Local, top-level references only: '#/$defs/<name>' or '#/definitions/<name>'."
+            },
+            "$id": { "type": "string", "format": "uri-reference" },
+            "$schema": { "type": "string", "format": "uri" },
+            "$comment": { "type": "string" },
+
+            "type": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["null", "boolean", "integer", "number", "string", "array", "object"]
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              ]
+            },
+
+            "provenance": {
+              "type": "string",
+              "enum": ["Addr", "Any"],
+              "description": "CH extension. Only valid when 'type' is a single custom type name; enforced at runtime."
+            },
+
+            "const": { },
+            "enum": { "type": "array", "minItems": 1, "uniqueItems": true },
+
+            "default": { },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "examples": { "type": "array" },
+            "readOnly": { "type": "boolean" },
+            "writeOnly": { "type": "boolean" },
+
+            "multipleOf": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number", "exclusiveMinimum": 0 }
+              ]
+            },
+            "maximum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
+            "exclusiveMaximum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
+            "minimum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
+            "exclusiveMinimum": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "type": "number" }
+              ]
+            },
+
+            "maxLength": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "minLength": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "pattern": { "type": "string", "format": "regex" },
+            "format": { "type": "string" },
+            "contentMediaType": { "type": "string" },
+            "contentEncoding": { "type": "string" },
+
+            "items": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+                { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 }
+              ]
+            },
+            "additionalItems": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "maxItems": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "minItems": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "uniqueItems": { "type": "boolean" },
+            "contains": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+
+            "maxProperties": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "minProperties": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/literalTemplateVariable" },
+                { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
+              ]
+            },
+            "required": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "properties": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+                }, { "$ref": "#/$defs/concepts/$defs/customConceptRelatedObjectKeys" }, {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "$ref": "#/$defs/concepts/$defs/customConceptRelatedObjectKeys" }
+                }
+              ]
+            },
+            "patternProperties": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+            },
+            "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "propertyNames": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "dependencies": {
+              "type": "object",
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+                ]
+              }
+            },
+
+            "allOf": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 },
+            "anyOf": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 },
+            "oneOf": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/CHSchema" }, "minItems": 1 },
+            "not": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "if": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "then": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+            "else": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
+
+            "definitions": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+            },
+            "$defs": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/concepts/$defs/CHSchema" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "customConceptRelatedObjectKeys": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": [
+            {
+              "type": "string",
+              "pattern": "^(props|funcs)((\\\\+\\\\([A-Z][A-Za-z0-9_]*(,\\\\s[A-Z][A-Za-z0-9_]*)*\\\\))|(\\\\([A-Z][A-Za-z0-9_]*(,\\\\s[A-Z][A-Za-z0-9_]*)*\\\\))?)$"
+            }, {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/CHSchemaArrayShorthand" },
+                { "type": "string", "minLength": 1 }
+              ]
+            }, { "type": "boolean" }
+          ]
+        },
+        "literalTemplateVariable": {
+          "type": "string",
+          "description": "Template variable that has a Literal: constraint!",
+          "minLength": 1
+        },
+        "nonNegativeInteger": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "natural": { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" },
+
+        "fromJsonLiteral": {
+          "description": "Specifies how to deserialize a JSON literal into this ValueDomain. Either JSON null (no literal deserialization), or a string encoding the literalDeserialization DSL: a '|'-separated list of literal alternatives, where element/value types may be primitives, array, object, or a concept name (upperCaseName).",
+          "oneOf": [
+            {
+              "type": "null",
+              "description": "No JSON deserialization from literal defined"
+            },
+            { "$ref": "#/$defs/concepts/$defs/literalDeserializationSyntaxString" }
+          ]
+        },
+
+        "literalDeserializationSyntaxString": {
+          "description": "A string encoding a literalDeserialization expression: one or more '|'-separated literal alternatives. Element and value types (typeAndLiteralDeserialization) may be any literal type expression OR a bare concept name (upperCaseName starting with uppercase).",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(null|boolean|integer|number|string|array(<(([A-Z][A-Za-z0-9_]*|[^()]+)|(\\(([A-Z][A-Za-z0-9_]*|[^()]+),\\s((Any)|(Addr))\\)))>(\\{(([0-9]+,\\s[0-9]+)|(<=?[0-9]+)|([0-9]+<=?)|[0-9]+)\\})?|\\[(([^()]+)|(\\([^()]+,\\s((Any)|(Addr))\\)))?\\])?|object(\\{(([^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))(,\\s[^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))*|(keys[=<]\\{[^}]+(,\\s[^}]+)*\\},\\s)?values=([^()}]+|([^()}]+,\\s((Any)|(Addr))))|(keys[=<](props|funcs)((\\+\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))|(\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))?),\\svalues=((x|[A-Z][A-Za-z0-9_<>\\[\\].]*)|((x|[A-Z][A-Za-z0-9_<>\\[\\].]*),\\s((Any)|(Addr))))))?\\})?)(\\s\\|\\s(null|boolean|integer|number|string|array(<(([A-Z][A-Za-z0-9_]*|[^()]+)|(\\(([A-Z][A-Za-z0-9_]*|[^()]+),\\s((Any)|(Addr))\\)))>(\\{(([0-9]+,\\s[0-9]+)|(<=?[0-9]+)|([0-9]+<=?)|[0-9]+)\\})?|\\[(([^()]+)|(\\([^()]+,\\s((Any)|(Addr))\\)))?\\])?|object(\\{(([^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))(,\\s[^:]+:([^:()}]+|([^:()}]+,\\s((Any)|(Addr)))))*|(keys[=<]\\{[^}]+(,\\s[^}]+)*\\},\\s)?values=([^()}]+|([^()}]+,\\s((Any)|(Addr))))|(keys[=<](props|funcs)((\\+\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))|(\\([A-Z][A-Za-z0-9_]*(,\\s[A-Z][A-Za-z0-9_]*)*\\))?),\\svalues=((x|[A-Z][A-Za-z0-9_<>\\[\\].]*)|((x|[A-Z][A-Za-z0-9_<>\\[\\].]*),\\s((Any)|(Addr))))))?\\})?))*$"
+        },
+
+        "domainConceptProperties": {
+          "type": "object",
+          "description": "Container for concept properties and specializations",
+          "patternProperties": {
+            "^_specializations$": {
+              "$ref": "#/$defs/concepts/$defs/topLevelPropertySpecializationContent"
+            },
+            "^(?!_specializations$)[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/propertyDefinition"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "propertyDefinition": {
+          "description": "Property definition: either just the ValueDomain name or a full definition object",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "valueDomain": {
+                  "oneOf": [
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                    { "$ref": "#/$defs/concepts/$defs/valueDomainCreation" }
+                  ]
+                },
+                "constraint": {
+                  "oneOf": [
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                    { "$ref": "#/$defs/concepts/$defs/valueDomainCreation" }
+                  ]
+                },
+                "default": { "$ref": "#/$defs/concepts/$defs/anyValue" },
+                "assumptions": { "$ref": "#/$defs/concepts/$defs/anyValue" },
+                "hooks": { "$ref": "#/$defs/concepts/$defs/propertyHooks" },
+                "computations": { "$ref": "#/$defs/concepts/$defs/propertyComputations" },
+                "confidenceHalfDecayTime": { "$ref": "#/$defs/concepts/$defs/durationValue" },
+                "static": { "type": "boolean" },
+                "nameDefaultInstanceValuesWithThisInstanceName": { "type": "boolean" }
+              },
+              "required": ["valueDomain"],
+              "additionalProperties": false
+            }
+          ]
+        },
+
+        "propertyHooks": {
+          "type": "object",
+          "description": "Hooks for property changes",
+          "patternProperties": {
+            "^[A-Z][A-Za-z0-9_]*(<.*>)?$": {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z][A-Za-z0-9_]*$": {
+                  "type": "object",
+                  "properties": {
+                    "pre": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+                    "post": { "$ref": "#/$defs/concepts/$defs/functionProcedure" }
+                  },
+                  "additionalProperties": false,
+                  "minProperties": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "propertyComputations": { "type": "array", "items": { "$ref": "#/$defs/concepts/$defs/functionProcedure" } },
+
+        "topLevelPropertySpecializationContent": {
+          "type": "object",
+          "description": "Container for property specializations (contains per-property specializations for subconcepts and the _forThis definition)",
+          "properties": {
+            "_forThis": { "$ref": "#/$defs/concepts/$defs/forThisPropertySpecializationContent" }
+          },
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/propertySpecializationContent"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "forThisPropertySpecializationContent": {
+          "type": "object",
+          "description": "Property specialization definition forThis concept",
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/propertySpecializationContent"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "propertySpecializationContent": {
+          "type": "object",
+          "properties": {
+            "constraint": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                { "$ref": "#/$defs/concepts/$defs/valueDomainCreation" },
+                { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+              ]
+            },
+            "default": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/anyValue" },
+                { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+              ]
+            },
+            "assumptions": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/anyValue" },
+                { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+              ]
+            },
+            "hooks": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/propertyHooks" },
+                { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+              ]
+            },
+            "computations": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/propertyComputations" },
+                { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+              ]
+            },
+            "confidenceHalfDecayTime": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/durationValue" },
+                { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+              ]
+            },
+            "nameDefaultInstanceValuesWithThisInstanceName": {
+              "oneOf": [
+                { "type": "boolean" },
+                { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "durationValue": {
+          "description": "Duration: either a number or [number, unit]",
+          "oneOf": [
+            { "type": "number" },
+            {
+              "type": "array",
+              "items": [
+                { "type": "number" },
+                { "type": "string", "enum": ["ns", "us", "ms", "s", "min", "h", "d", "w", "m", "y"] }
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+
+        "domainConceptFunctions": {
+          "type": "object",
+          "description": "Container for concept functions and specializations",
+          "patternProperties": {
+            "^_specializations$": {
+              "$ref": "#/$defs/concepts/$defs/topLevelFunctionSpecializationsContainer"
+            },
+            "^(?!_specializations$)[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/domainFunctionDefinition"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "domainFunctionDefinition": {
+          "description": "Domain function: can be a procedure, custom function, or full definition",
+          "oneOf": [
+            { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+            { "$ref": "#/$defs/concepts/$defs/customFunctionDefinition" },
+            {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "valueDomain": { "type": "string" },
+                "default": {
+                  "oneOf": [
+                    { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+                    { "$ref": "#/$defs/concepts/$defs/customFunctionDefinition" }
+                  ]
+                },
+                "static": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+
+        "customFunctionDefinition": {
+          "type": "object",
+          "description": "Custom function definition with interface and procedure",
+          "properties": {
+            "interface": { "$ref": "#/$defs/concepts/$defs/simpleFunctionInterface" },
+            "procedure": { "$ref": "#/$defs/concepts/$defs/functionProcedure" }
+          },
+          "required": ["interface", "procedure"],
+          "additionalProperties": false
+        },
+
+        "simpleFunctionInterface": {
+          "type": "object",
+          "description": "Simple function interface (for custom functions)",
+          "properties": {
+            "res": { "$ref": "#/$defs/concepts/$defs/functionEvaluationResultTypeDefinition" }
+          },
+          "patternProperties": {
+            "^(?!res$)[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/functionEvaluationArgumentTypeDefinition"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "topLevelFunctionSpecializationsContainer": {
+          "type": "object",
+          "description": "Container for function specializations (contains per-function specializations for subconcepts and the _forThis definition)",
+          "properties": {
+            "_forThis": { "$ref": "#/$defs/concepts/$defs/forThisFunctionSpecializationContent" }
+          },
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/functionSpecializationContent"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "forThisFunctionSpecializationContent": {
+          "type": "object",
+          "description": "Function specialization definition forThis concept",
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/functionSpecializationContent"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "functionSpecializationContent": {
+          "description": "Function specialization",
+          "oneOf": [
+            { "$ref": "#/$defs/concepts/$defs/functionSpecializationValueDefinition" },
+            {
+              "type": "object",
+              "properties": {
+                "default": { "$ref": "#/$defs/concepts/$defs/functionSpecializationValueDefinition" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+
+        "functionSpecializationValueDefinition": {
+          "oneOf": [
+            { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+            { "$ref": "#/$defs/concepts/$defs/customFunctionDefinition" },
+            { "$ref": "#/$defs/concepts/$defs/inheritedValueDisambiguation" }
+          ]
+        },
+
+        "conceptManagement": {
+          "type": "object",
+          "description": "Concept management functions",
+          "properties": {
+            "initialization": { "$ref": "#/$defs/concepts/$defs/functionProcedure" },
+            "consolidation": { "$ref": "#/$defs/concepts/$defs/functionProcedure" }
+          },
+          "additionalProperties": false
+        },
+
+        "templateContext": {
+          "description": "Definition of a ValueDomain's template context",
+          "oneOf": [
+            {
+              "type": "array",
+              "description": "Shorthand: array of template argument names",
+              "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentDefinition" }
+            },
+            {
+              "type": "object",
+              "description": "Full definition with order, constraints, substitution",
+              "properties": {
+                "order": {
+                  "description": "The order in which template variable are to be specified in instantiations of this type.",
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/concepts/$defs/templateArgumentDefinition" }
+                },
+                "substitution": {
+                  "type": "object",
+                  "description": "Substitution of parent template arguments",
+                  "patternProperties": {
+                    "^[A-Z][A-Za-z0-9_]*(:[A-Z][A-Za-z0-9_]*)?$": {
+                      "oneOf": [
+                        { "$ref": "#/$defs/concepts/$defs/templateSubstitutionValueLiteral" },
+                        { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                        {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              { "$ref": "#/$defs/concepts/$defs/templateSubstitutionValueLiteral" },
+                              { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                              { "type": "string", "pattern": "^[A-Z][A-Za-z0-9_]*(\\.\\.\\.)$" }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "variadicGroupIdentifiers": {
+                  "type": "object",
+                  "description": "Custom identifiers for variadic groups",
+                  "patternProperties": {
+                    "^[A-Z][A-Za-z0-9_]*$": {
+                      "type": "string",
+                      "pattern": "^[!$]*$"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "patternProperties": {
+                "^[A-Z][A-Za-z0-9_]*$": { "$ref": "#/$defs/concepts/$defs/templateArgumentConstraintValue" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+
+        "templateArgumentConstraintValue": {
+          "description": "The value that can be written wherever a template variable constraint is expected.",
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Template variable literal constraint",
+              "pattern": "^Literal:(boolean|integer|number|string)$"
+            }, {
+              "type": "integer",
+              "description": "Template variable literal value constraint of type Literal:integer"
+            }, {
+              "type": "number",
+              "description": "Template variable literal value constraint of type Literal:number",
+              "not": { "type": "integer" }
+            }, {
+              "type": "boolean",
+              "description": "Template variable literal value constraint of type Literal:boolean"
+            }, {
+              "type": "string",
+              "pattern": "^\".*\"$",
+              "description": "Template variable literal value constraint of type Literal:string"
+            }, {
+              "type": "string",
+              "description": "Template variable type constraint (including the empty string that maps to unconstrained)",
+              "pattern": "^(?!Literal:(boolean|integer|number|string)$)(?!\".*\"$)"
+            }
+          ]
+        },
+
+        "templateSubstitutionValueLiteral": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "boolean" },
+            {
+              "type": "string",
+              "pattern": "^\".*\"$",
+              "description": "String literal value enclosed in quotes \"...\" to distinguish from ValueDomain instantiations"
+            }
+          ]
+        },
+
+        "valueDomainCreationInterface": {
+          "type": "object",
+          "description": "ValueDomain creation interface",
+          "properties": {
+            "_arguments": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "description": "Single interface",
+                  "items": { "$ref": "#/$defs/concepts/$defs/argumentReference" }
+                },
+                {
+                  "type": "array",
+                  "description": "Multiple interfaces",
+                  "items": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/concepts/$defs/argumentReference" }
+                  },
+                  "minItems": 1
+                }
+              ]
+            },
+            "_defaultArgumentValues": {
+              "type": "object",
+              "description": "Default values for optional arguments",
+              "patternProperties": {
+                "^[a-z][A-Za-z0-9_]*$": {
+                  "$ref": "#/$defs/concepts/$defs/anyValue"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "patternProperties": {
+            "^(?!_arguments$|_defaultArgumentValues$)[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/valueDomainCreationArgumentTypeDefinition"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "valueDomainCreationArgumentTypeDefinition": {
+          "description": "ValueDomain creation argument type definition",
+          "oneOf": [
+            { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+            {
+              "type": "array",
+              "items": [
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                { "type": "string", "enum": ["Any", "Addr"] }
+              ],
+              "minItems": 1,
+              "maxItems": 2
+            }
+          ]
+        },
+
+        "functionEvaluationArgumentTypeDefinition": {
+          "description": "Function Evaluation argument type definition",
+          "oneOf": [
+            { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+            {
+              "type": "array",
+              "items": [
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                { "type": "string", "enum": ["Get", "Modify", "GetModify"] },
+                { "type": "string", "enum": ["Any", "Addr", "ResetAddr"] }
+              ],
+              "minItems": 1,
+              "maxItems": 3
+            }
+          ]
+        },
+
+        "functionEvaluationResultTypeDefinition": {
+          "description": "Function Evaluation Result type definition",
+          "oneOf": [
+            { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+            {
+              "type": "array",
+              "items": [
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                { "type": "string", "enum": ["Get", "Modify"] },
+                { "type": "string", "enum": ["Any", "Addr"] }
+              ],
+              "minItems": 1,
+              "maxItems": 3
+            }
+          ]
+        },
+
+        "functionInterface": {
+          "type": "object",
+          "description": "Function interface definition",
+          "properties": {
+            "res": { "$ref": "#/$defs/concepts/$defs/functionEvaluationResultTypeDefinition" },
+            "_defaultArgumentValues": {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z][A-Za-z0-9_]*$": {
+                  "$ref": "#/$defs/concepts/$defs/anyValue"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "patternProperties": {
+            "^(?!res$|_defaultArgumentValues$)[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/functionEvaluationArgumentTypeDefinition"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "functionProcedure": {
+          "description": "Function procedure: a JSON object with function name as key. RECURSION POINT - add maxDepth here if needed",
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 2,
+          "properties": {
+            "isFunctionEvaluation": {
+              "type": "boolean",
+              "description": "Disambiguates function evaluation from procedure definition"
+            }
+          },
+          "patternProperties": {
+            "^[A-Z][A-Za-z0-9_]*(<.*>)?$": {
+              "type": "object",
+              "description": "Function arguments",
+              "patternProperties": {
+                "^[a-z][A-Za-z0-9_]*$": {
+                  "$ref": "#/$defs/concepts/$defs/anyValue"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "valueDomainCreation": {
+          "description": "ValueDomain creation/instantiation. RECURSION POINT - add maxDepth here if needed",
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "patternProperties": {
+            "^[A-Z][A-Za-z0-9_]*(<.*>)?$": {
+              "type": "object",
+              "description": "Creation arguments",
+              "patternProperties": {
+                "^[a-z][A-Za-z0-9_]*$": {
+                  "$ref": "#/$defs/concepts/$defs/anyValue"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "functionVariations": {
+          "description": "Function variations definition",
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "Object syntax",
+              "patternProperties": {
+                "^[a-z][A-Za-z0-9_]*$": {
+                  "$ref": "#/$defs/concepts/$defs/functionVariationRelation"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "array",
+              "description": "Array syntax",
+              "items": {
+                "type": "array",
+                "items": [
+                  {
+                    "oneOf": [
+                      { "$ref": "#/$defs/concepts/$defs/argumentReference" },
+                      {
+                        "type": "array",
+                        "items": { "$ref": "#/$defs/concepts/$defs/argumentReference" }
+                      }
+                    ]
+                  },
+                  { "$ref": "#/$defs/concepts/$defs/functionVariationRelation" }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          ]
+        },
+
+        "functionVariationRelation": {
+          "oneOf": [
+            { "$ref": "#/$defs/concepts/$defs/instantiatedFunction" },
+            { "$ref": "#/$defs/concepts/$defs/functionProcedure" }
+          ]
+        },
+
+        "functionInversion": {
+          "type": "object",
+          "description": "Maps function arguments to their inversion procedures",
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/concepts/$defs/functionProcedure"
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "functionUpdateScope": {
+          "type": "object",
+          "description": "Variables to add to existing scope",
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]*$": {
+              "oneOf": [
+                { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                {
+                  "type": "array",
+                  "items": [
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                    { "type": "boolean" }
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "functionSubScopes": {
+          "type": "object",
+          "description": "New variable scopes for function arguments",
+          "patternProperties": {
+            "^[a-z][A-Za-z0-9_]*$": {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z][A-Za-z0-9_]*$": {
+                  "oneOf": [
+                    { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                    {
+                      "type": "array",
+                      "items": [
+                        { "$ref": "#/$defs/concepts/$defs/typeAppliedValueDomain" },
+                        { "type": "boolean" }
+                      ],
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+
+        "inheritedValueDisambiguation": {
+          "type": "string",
+          "pattern": "^inheritFrom:([A-Z][A-Za-z0-9_]*|parents)?$"
+        },
+
+        "anyValue": {
+          "description": "Any JSON value, ValueDomain creation, or Function procedure. RECURSION POINT - add maxDepth here if needed",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "boolean" },
+            { "type": "number" },
+            { "type": "string" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/concepts/$defs/anyValue" }
+            },
+            {
+              "type": "object",
+              "description": "Could be plain JSON object, ValueDomain creation, or Function procedure"
+            }
+          ]
+        }
+      }
+    },
+    "instances": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "https://cdn.jsdelivr.net/gh/AndreiCostinescu/ConceptHierarchy@develop/documentation/instances.schema.json",
+      "title": "Concept Hierarchy Instances",
+      "description": "JSON Schema for validating instance definitions in the Concept Hierarchy",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_]*$": {
+          "description": "Instance = Global variable (can start with upper or lowercase letter)",
+          "$ref": "#/$defs/instances/$defs/instanceDefinition"
+        }
+      },
+      "additionalProperties": false,
+
+      "$defs": {
+        "instanceDefinition": {
+          "description": "Value of an instance: can be any JSON value, ValueDomain creation, Function procedure, or reference to another instance",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "boolean" },
+            { "type": "number" },
+            {
+              "type": "string",
+              "description": "Either a string literal (with s: prefix) or reference to another instance"
+            },
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/instances/$defs/instanceDefinition" }
+            },
+            {
+              "type": "object",
+              "description": "Could be: plain JSON object, ValueDomain creation, Function procedure, or CustomFunction definition. RECURSION POINT - add maxDepth here if needed"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

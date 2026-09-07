@@ -1,24 +1,18 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.15.17
     hooks:
       - id: ruff
         args: [--fix]
+        verbose: true
+        stages: [pre-commit]
       - id: ruff-format
+        verbose: true
+        stages: [pre-commit]
 
-  - repo: local
+  - repo: https://github.com/AndreiCostinescu/DevTools
+    rev: b0b747598e766e885d51c4f48ee19a27bae9bfe4
     hooks:
-      - id: license-header-check
-        name: Apache 2.0 license header check
-        entry: .githooks/check-license-header
-        language: script
-        types: [python]
-        pass_filenames: false
-
+      - id: license-header-check-python
+        stages: [pre-commit]
       - id: dco-check
-        name: DCO sign-off check
-        entry: .githooks/commit-msg
-        language: script
-        stages: [commit-msg]
-        always_run: true
-        pass_filenames: false

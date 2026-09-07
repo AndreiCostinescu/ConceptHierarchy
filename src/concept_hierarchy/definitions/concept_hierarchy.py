@@ -1,0 +1,329 @@
+# Copyright 2026 ConceptHierarchy Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+concept_hierarchy.py — Internal representation of a ConceptHierarchy definition (not its parsed and validated data).
+"""
+
+from __future__ import annotations
+
+import os
+
+from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType
+from concept_hierarchy.definitions.concept_definition import ConceptDefinition
+from concept_hierarchy.definitions.global_variable_definition import GlobalVariableDefinition
+from concept_hierarchy.errors import CHSyntaxError, LocationId, LocationIdLike, PathPart
+
+
+class ConceptHierarchyDefinition:
+    """Root model filled by the model checker and consumed by validation."""
+
+    model_name: str = "name"
+    model_metadata: str = "metadata"
+    model_concepts: str = "concepts"
+    model_instances: str = "instances"
+    model_concepts_external: str = "external"
+    model_keywords: set[str] = {model_name, model_metadata, model_concepts, model_instances}
+
+    metadata_expansion_depth_limit_for_default_instantiation_expressions: str = (
+        "maxExpansionDepthForDefaultInstantiationExpressions"
+    )
+    """``metadata`` key bounding how deep nested instantiation-default expansion may go."""
+
+    default_expansion_depth_limit_for_default_instantiation_expressions: int = 1024
+    """
+    Used when the metadata does not set one. Matches the minimum depth of recursively nested template
+    instantiations that the C++ standard recommends (Annex B), and Clang's ``-ftemplate-depth`` default.
+    """
+
+    default_root_concept_name: str = "Concept"
+    default_value_domain_name: str = "ValueDomain"
+    default_function_name: str = "Function"
+
+    def get_expansion_depth_limit_for_default_instantiation_expressions(self) -> int:
+        """
+        How many nested *default* expansions this hierarchy allows before a parse is rejected.
+
+        Materialising one instantiation default can force materialising another, and the applications it
+        generates can grow without ever repeating -- so a cycle check is not enough on its own and the
+        recursion needs a bound. Read once from ``metadata``, which is coerced to ``dict[str, str]``, so
+        the value arrives as text and has to be parsed and validated here.
+        """
+        if self._expansion_depth_limit_for_default_instantiation_expressions is not None:
+            return self._expansion_depth_limit_for_default_instantiation_expressions
+        raw = self.metadata.get(
+            ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions
+        )
+        if raw is None:
+            self._expansion_depth_limit_for_default_instantiation_expressions = (
+                ConceptHierarchyDefinition.default_expansion_depth_limit_for_default_instantiation_expressions
+            )
+            return self._expansion_depth_limit_for_default_instantiation_expressions
+        location_id = LocationId()
+        if self.file:
+            location_id.append(self.file)
+        location_id += [
+            ConceptHierarchyDefinition.model_metadata,
+            ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions,
+        ]
+        try:
+            limit = int(raw)
+        except ValueError:
+            raise CHSyntaxError(
+                f'"{ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions}" '
+                f"must be a positive integer, got {raw!r}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+            ) from None
+        if limit < 1:
+            raise CHSyntaxError(
+                f'"{ConceptHierarchyDefinition.metadata_expansion_depth_limit_for_default_instantiation_expressions}" '
+                f"must be a positive integer, got {limit}",
+                location_id=location_id,
+                part=PathPart.VALUE,
+            )
+        self._expansion_depth_limit_for_default_instantiation_expressions = limit
+        return self._expansion_depth_limit_for_default_instantiation_expressions
+
+    @staticmethod
+    def create_by_parser(
+        concept_hierarchy_file: str, parse_options: dict[str, object] = None
+    ) -> ConceptHierarchyDefinition:
+        """Parse a JSON-decoded dict into a :class:`ConceptHierarchyDefinition`.
+
+        Parameters
+        ----------
+        concept_hierarchy_file : str:
+            The file to read and interpret.
+        parse_options : dict[str, object]
+            The options to pass to :func:`~concept_hierarchy.definitions.concept_hierarchy.ConceptHierarchyDefinition`.
+
+        Returns
+        -------
+        ConceptHierarchyDefinition
+        """
+        if not isinstance(concept_hierarchy_file, str):
+            raise RuntimeError(
+                f"The file path to the Concept Hierarchy definition must be a string, not {concept_hierarchy_file!r}."
+            )
+        if parse_options is None:
+            parse_options = {}
+
+        if "path_to_root_dir" in parse_options:
+            path_to_root_dir = parse_options["path_to_root_dir"]
+        else:
+            path_to_root_dir = os.path.dirname(concept_hierarchy_file)
+
+        return ConceptHierarchyDefinition(concept_hierarchy_file, path_to_root_dir)
+
+    @staticmethod
+    def create_from_data(data):
+        ch = ConceptHierarchyDefinition("", "")
+        ch.definition_data = data
+        return ch
+
+    def __init__(self, file: str, path_to_root_dir: str):
+        self.file: str = file
+        self.path_to_root_dir: str = path_to_root_dir
+        self.definition_data = None
+
+        self.root_concept_name: str = ConceptHierarchyDefinition.default_root_concept_name
+
+        self.checked_structure = False
+        self.checked = False
+        self.name: str = ""
+        self.concepts: dict[str, ConceptDefinition] = {}
+        self.instances: dict[str, GlobalVariableDefinition] = {}
+        self.concept_aliases: dict[str, str] = {}
+        """
+        Alias name -> the canonical concept it names.
+
+        An alias is a *name*, not an entity: it is never an entry of :attr:`concepts`, never takes part in
+        the subconcept relation, and is never a definition site. It is resolved at the lookup boundary --
+        see :meth:`canonical_concept_name` and :meth:`concept` -- rather than by rewriting the definition
+        data, so a use of the alias is still visible in the diagnostics of the use site. Chains are already
+        followed here: the value is the concept that ultimately defines the data, not the next link.
+        """
+        self.variable_aliases: dict[str, str] = {}
+        """
+        Alias name -> the canonical global variable it names.
+
+        As for :attr:`concept_aliases`: never an entry of :attr:`instances`, resolved at the lookup
+        boundary by :meth:`canonical_variable_name`, and already resolved through any chain. Because there
+        is one entry rather than a copy per name, an alias and its target are *the same* ``GlobalVariableData``
+        -- writing through either name writes the one object, with no propagation step.
+        """
+        self.type_aliases: dict[str, InstantiatedType] = {}
+        """
+        Alias name -> the saturated, ground type it names.
+
+        Unlike the other two containers this one is filled in ``check_types``, not ``check_structure``:
+        turning ``"Box<Integer>"`` into a type needs the concepts *and* their template contexts, which do
+        not exist until then. Every entry is saturated and ground by construction -- an alias of a bare
+        name is a concept alias, so only an *applied* type reaches this map -- and it can not be
+        parameterized further.
+
+        A type alias is **not** a concept: :meth:`is_concept` stays false for it, which is what keeps it out
+        of ``directParents`` and the other concept-name positions. It is substituted where a type is built,
+        via :meth:`resolved_type_alias`.
+        """
+        self.metadata: dict[str, str] = {}
+        self._expansion_depth_limit_for_default_instantiation_expressions: int | None = None
+
+        self.domain_concepts: set[str] = set()
+        self.value_domains: set[str] = set()
+        self.functions: set[str] = set()
+
+        self.all_concept_parents: dict[str, set[str]] = {}  # does not include the concept itself
+        self.topo_sort_concept_parents: dict[str, list[str]] = {}  # does not include the concept itself
+        self.concept_topo_sort: list[str] = []
+        self.defined_direct_children: dict[str, set[str]] = {}  # this is the inverse "directParents" relation
+        self.all_declared_distinct_pairs: set[tuple[str, str]] = set()
+        """Entries are sorted (alphabetically) to eliminate the reflexivity of the "distinct" relation."""
+
+        self.all_domain_concept_properties: dict[str, str] = {}  # prop_name -> defining concept
+        self.all_domain_concept_functions: dict[str, str] = {}  # func_name -> defining concept
+
+        self.default_serializations: dict[str, str] = {}
+
+        self.external_concept_data_resolver = None
+
+    def __repr__(self) -> str:
+        return (
+            f"ConceptHierarchyDefinition({ConceptHierarchyDefinition.model_name}={self.name!r}, "
+            f"{ConceptHierarchyDefinition.model_concepts}={self.concept_names()!r}, "
+            f"{ConceptHierarchyDefinition.model_instances}={self.instance_names()!r}, "
+            f"{ConceptHierarchyDefinition.model_metadata}={self.metadata!r})"
+        )
+
+    def assert_structure(self):
+        if not self.checked_structure:
+            raise RuntimeError("Can't verify Concept Hierarchy relations before it has been processed!")
+
+    def canonical_concept_name(self, c: str) -> str:
+        """
+        The name under which ``c`` is defined: ``c`` itself, or -- if ``c`` is an alias -- what it names.
+
+        Every map keyed by a concept name is keyed by the canonical one, so a name that came from the
+        user's JSON must pass through here before it indexes one. Names taken from an already-canonical
+        source (:attr:`concept_topo_sort`, a concept's ``parents``, ...) need not.
+        """
+        return self.concept_aliases.get(c, c)
+
+    def get_concept_definition(
+        self, name: str, location_id: LocationId | LocationIdLike | None = None
+    ) -> tuple[ConceptDefinition, LocationId]:
+        """
+        The definition ``name`` denotes, and the location to blame in an error about *this* use of it.
+
+        Reaching a concept through an alias annotates the **use site** with ``ref:<alias>``: an alias has no
+        definition of its own to annotate, and the use site is where a reader has to look to see that an
+        alias was written at all. ``location_id`` is not modified; the annotated copy is returned.
+
+        :raises RuntimeError: if ``name`` is neither a concept nor an alias of one.
+        """
+        self.assert_structure()
+        location = LocationId(location_id) if location_id is not None else LocationId()
+        canonical = self.concept_aliases.get(name)
+        if canonical is None:
+            if name not in self.concepts:
+                raise RuntimeError(f"{name!r} is not the name of a concept in the Concept Hierarchy!")
+            return self.concepts[name], location
+        return self.concepts[canonical], location + ["ref:" + name]
+
+    def is_concept(self, c: str) -> bool:
+        self.assert_structure()
+        return c in self.concepts or c in self.concept_aliases
+
+    def is_domain_concept(self, c: str) -> bool:
+        return not self.is_value_domain(c)
+
+    def is_value_domain(self, c: str) -> bool:
+        return self.is_concept(ConceptHierarchyDefinition.default_value_domain_name) and self.is_a_subconcept_of_b(
+            c, ConceptHierarchyDefinition.default_value_domain_name, include_self=True
+        )
+
+    def is_pure_value_domain(self, c: str) -> bool:
+        return self.is_value_domain(c) and not self.is_function(c)
+
+    def is_function(self, c: str) -> bool:
+        return self.is_concept(ConceptHierarchyDefinition.default_function_name) and self.is_a_subconcept_of_b(
+            c, ConceptHierarchyDefinition.default_function_name, include_self=True
+        )
+
+    def canonical_variable_name(self, v: str) -> str:
+        """
+        The name under which the global variable ``v`` is defined: ``v`` itself, or what it aliases.
+
+        The counterpart of :meth:`canonical_concept_name`, for :attr:`instances`.
+        """
+        return self.variable_aliases.get(v, v)
+
+    def resolved_type_alias(self, name: str) -> InstantiatedType | None:
+        """
+        The type ``name`` names if it is a type alias, else ``None``.
+
+        This is the lookup the type parser goes through, and the reason a type alias needs no place in
+        :attr:`concepts`: where a bare name is turned into a type, the stored type is substituted instead.
+        """
+        return self.type_aliases.get(name)
+
+    def get_variable_definition(
+        self, name: str, location_id: LocationIdLike | None = None
+    ) -> tuple[GlobalVariableDefinition, LocationId]:
+        """
+        The definition ``name`` denotes, and the location to blame in an error about *this* use of it.
+
+        Reaching a variable through an alias annotates the **use site** with ``ref:<alias>``: an alias has no
+        definition of its own to annotate, and the use site is where a reader has to look to see that an
+        alias was written at all. ``location_id`` is not modified; the annotated copy is returned.
+
+        :raises RuntimeError: if ``name`` is neither a variable nor an alias of one.
+        """
+        self.assert_structure()
+        location = LocationId(location_id) if location_id is not None else LocationId()
+        canonical = self.variable_aliases.get(name)
+        if canonical is None:
+            if name not in self.instances:
+                raise RuntimeError(f"{name!r} is not the name of a variable in the Concept Hierarchy!")
+            return self.instances[name], location
+        return self.instances[canonical], location + ["ref:" + name]
+
+    def is_variable(self, v: str) -> bool:
+        self.assert_structure()
+        return v in self.instances or v in self.variable_aliases
+
+    def is_a_subconcept_of_b(self, a: str, b: str, *, include_self: bool) -> bool:
+        self.assert_structure()
+        if not self.is_concept(a):
+            raise RuntimeError(f"{a!r} is not the name of a concept in the Concept Hierarchy!")
+        if not self.is_concept(b):
+            raise RuntimeError(f"{b!r} is not the name of a concept in the Concept Hierarchy!")
+        # either side may be written as an alias; an alias and its target are the same concept
+        a, b = self.canonical_concept_name(a), self.canonical_concept_name(b)
+        if include_self and a == b:
+            return True
+        return b in self.all_concept_parents[a]
+
+    def concept_names(self) -> list[str]:
+        return self.concept_topo_sort
+
+    def instance_names(self) -> list[str]:
+        return [c for c in self.instances]
+
+    def add_distinct_pair(self, concept_name_1: str, concept_name_2: str):
+        if concept_name_1 < concept_name_2:
+            self.all_declared_distinct_pairs.add((concept_name_1, concept_name_2))
+        else:
+            self.all_declared_distinct_pairs.add((concept_name_2, concept_name_1))

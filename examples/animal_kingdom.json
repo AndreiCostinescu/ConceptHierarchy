@@ -1,57 +1,475 @@
 {
     "name": "AnimalKingdom",
     "metadata": {
-        "version": "1.0",
+        "version": "v1.0",
         "author": "Your Name"
     },
     "concepts": {
-        "Concept": {
-            "data": null
-        },
+        "Concept": { },
         "Animal": {
             "directParents": ["Concept"],
-            "data": {
-                "properties": {
-                    "age": "Integer",
-                    "name": "String",
-                    "type": {
-                        "valueDomain": "String"
-                    },
-                    "description": {
-                        "valueDomain": "String",
-                        "description": "Test property",
-                        "hooks": {},
-                        "confidenceHalfDecayTime": [2, "d"],
-                        "nameDefaultInstanceValuesWithThisInstanceName": true
-                    }
-                }
-            }
+            "data": "external_animal_data.json"
         },
         "Dog": {
             "directParents": ["Animal"],
             "data": {
                 "properties": {
-                    "breed": "String"
+                    "breed": {
+                        "valueDomain": "String",
+                        "confidenceHalfDecayTime": [1, "y"]
+                    },
+                    "_specializations": {
+                        "age": {
+                            "confidenceHalfDecayTime": [1, "d"],
+                            "hooks": "inheritFrom:",
+                            "nameDefaultInstanceValuesWithThisInstanceName": "inheritFrom:Animal"
+                        },
+                        "_forThis": {
+                            "breed": {
+                                "confidenceHalfDecayTime": "inheritFrom:"
+                            }
+                        }
+                    }
+                },
+                "functions": {
+                    "f1": { },
+                    "f2": {
+                        "Add<Number>": {
+                            "arg1": 2,
+                            "arg2": 2
+                        }
+                    },
+                    "f3": {
+                        "interface": {
+                            "arg": "Number",
+                            "res": "Number"
+                        },
+                        "procedure": {
+                            "Return<Number>": {
+                                "what": {
+                                    "Add<Number>": {
+                                        "arg1": "arg",
+                                        "arg2": 2
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "f4": {
+                        "valueDomain": "CustomFunction",
+                        "static": true,
+                        "default": {
+                            "interface": {
+                                "arg": "Number",
+                                "res": "Number"
+                            },
+                            "procedure": {
+                                "Return<Number>": {
+                                    "what": {
+                                        "Add<Number>": {
+                                            "arg1": "arg",
+                                            "arg2": 2
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "_specializations": {
+                        "_forThis": {
+                            "f1": {
+                                "Return<Number>": {
+                                    "Add<Number>": {
+                                        "arg1": 2,
+                                        "arg2": 2
+                                    }
+                                }
+                            },
+                            "f2": "inheritFrom:"
+                        }
+                    }
+                }
+            }
+        },
+        "DogClone": "Dog",
+        "Pug": {
+            "directParents": ["DogClone"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "breed": {
+                            "default": "s:Pug"
+                        }
+                    }
+                },
+                "functions": {
+                    "_specializations": {
+                        "f1": "inheritFrom:",
+                        "_forThis": {
+                            "f1": "inheritFrom:parents"
+                        }
+                    }
+                }
+            }
+        },
+        "TestSpecialization_Parent": {
+            "directParents": ["Concept"],
+            "data": {
+                "properties": {
+                    "prop": "String"
+                }
+            }
+        },
+        "TestSpecialization_Spec1": {
+            "directParents": ["TestSpecialization_Parent"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "prop": {
+                            "default": "s:test"
+                        }
+                    }
+                }
+            }
+        },
+        "TestSpecialization_Spec2": {
+            "directParents": ["TestSpecialization_Parent"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "prop": {
+                            "default": "s:test",
+                            "confidenceHalfDecayTime": [1, "d"]
+                        }
+                    }
+                }
+            }
+        },
+        "TestSpecialization_Diamond": {
+            "directParents": ["TestSpecialization_Spec1", "TestSpecialization_Spec2"],
+            "data": {
+                "properties": {
+                    "_specializations": {
+                        "prop": {
+                            "default": "s:Test",
+                            "confidenceHalfDecayTime": [0.5, "d"],
+                            "constraint": { "Equals<String>": { "arg1": "constraint", "arg2": "s:Test" } }
+                        },
+                        "_forThis": {
+                            "prop": {
+                                "confidenceHalfDecayTime": "inheritFrom:parents"
+                            }
+                        }
+                    }
                 }
             }
         },
         "ValueDomain": {
             "directParents": ["Concept"],
+            "data": { },
+            "abstract": true
+        },
+        "Numeric": {
+            "directParents": ["ValueDomain"],
+            "data": { }
+        },
+        "Number": {
+            "directParents": ["Numeric"],
             "data": {
-                "abstract": true
+                "defaultSerialization": "number",
+                "instantiation": [[[], "number"]]
             }
         },
         "Integer": {
-            "directParents": ["ValueDomain"],
+            "directParents": ["Number"],
             "data": {
                 "instantiation": "integer"
+            }
+        },
+        "Duration": {
+            "directParents": ["Numeric"],
+            "data": {
+                "instantiation": {
+                    "oneOf": [
+                        {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2
+                        }, {
+                            "type": "integer"
+                        }
+                    ]
+                }
             }
         },
         "String": {
             "directParents": ["ValueDomain"],
             "data": {
-                "instantiation": "string"
+                "defaultSerialization": "string",
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
             }
+        },
+        "Map": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": ["K", "V"],
+                "instantiation": [
+                    [["String", ""], "object"],
+                    [["", ""], {
+                        "type": "array",
+                        "items": ["K", "V"],
+                        "minItems": 2,
+                        "maxItems": 2
+                    }]
+                ]
+            }
+        },
+        "InstanceBase": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "concepts": {
+                            "type": "List<ConceptValue>",
+                            "default": []
+                        },
+                        "properties": "ConceptParameters",
+                        "instanceName": "string"
+                    }
+                }
+            }
+        },
+        "Instance": {
+            "directParents": ["InstanceBase"],
+            "data": {
+                "templateContext": {
+                    "order": ["AcceptConcepts...", "RejectConcepts..."],
+                    "AcceptConcepts": "And(Concept, Not(ValueDomain))",
+                    "RejectConcepts": "And(Concept, Not(ValueDomain))",
+                    "variadicGroupIdentifiers": {
+                        "AcceptConcepts": "",
+                        "RejectConcepts": "!"
+                    }
+                }
+            }
+        },
+        "ConceptValue": {
+            "directParents": ["String"],
+            "data": {
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
+            }
+        },
+        "List": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": ["T"],
+                "instantiation": {
+                    "type": "array",
+                    "items": "T"
+                }
+            }
+        },
+        "ConceptParameters": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": [["props", "x", true], ["funcs", "x", true]]
+                }
+            }
+        },
+        "TypeName": {
+            "directParents": ["String"],
+            "data": {
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
+            }
+        },
+        "Interval": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": {
+                    "order": ["T"],
+                    "T": "Or(Number, Duration)"
+                }
+            }
+        },
+        "ClosedInterval": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": {
+                    "order": ["T"],
+                    "T": "Integer"
+                },
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "min": { "type": "T" },
+                        "max": { "type": "T" }
+                    },
+                    "additionalProperties": false
+                }
+            }
+        },
+        "Vector": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": {
+                    "order": ["N"],
+                    "N": 3
+                },
+                "instantiation": {
+                    "type": "array",
+                    "minItems": "N",
+                    "maxItems": "N",
+                    "items": "Number"
+                }
+            }
+        },
+        "Variation": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": ["T"]
+            }
+        },
+        "SubTypeVariation": {
+            "directParents": ["Variation"],
+            "data": {
+                "templateContext": {
+                    "order": ["SubT", "T"],
+                    "SubT": "And(T, Not(T.))",
+                    "substitution": {
+                        "T": "T"
+                    }
+                }
+            }
+        },
+        "DifferentTemplateArguments": {
+            "directParents": ["SubTypeVariation"],
+            "data": {
+                "templateContext": {
+                    "order": ["First", "Second", "Third"],
+                    "Second": "Not(First.)",
+                    "Third": "And(Not(First.), Not(Second.))",
+                    "substitution": {
+                        "T": "First",
+                        "SubT": "Second"
+                    }
+                }
+            }
+        },
+        "CustomFunction": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "interface": {
+                            "type": "object",
+                            "properties": {
+                                "res": { "$ref": "#/$defs/argumentTypeDefinition" }
+                            },
+                            "patternProperties": {
+                                "^[a-z][A-Za-z0-9_]*$": { "$ref": "#/$defs/argumentTypeDefinition" }
+                            }
+                        },
+                        "procedure": "FunctionComposition"
+                    },
+                    "required": ["procedure"],
+                    "additionalProperties": false,
+                    "$defs": {
+                        "argumentTypeDefinition": {
+                            "oneOf": [
+                                "TypeName",
+                                {
+                                    "type": "array",
+                                    "items": ["TypeName", "string"],
+                                    "minItems": 1,
+                                    "maxItems": 2
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "FunctionComposition": {
+            "directParents": ["ValueDomain"],
+            "data": { }
+        },
+        "Function": {
+            "directParents": ["ValueDomain"],
+            "data": { },
+            "abstract": true
+        },
+        "FunctionReturning": {
+            "directParents": ["Function"],
+            "data": {
+                "templateContext": ["T"]
+            },
+            "abstract": true
+        },
+        "Add": {
+            "directParents": ["FunctionReturning"],
+            "data": {
+                "templateContext": {
+                    "order": ["T"],
+                    "T": "Not(Or(Duration, Number))",
+                    "substitution": {
+                        "FunctionReturning:T": "T"
+                    }
+                },
+                "interface": {
+                    "arg1": ["T"],
+                    "arg2": ["T"],
+                    "res": "T"
+                },
+                "inversion": [
+                    [["Numeric"], { }],
+                    [[""], { }]
+                ]
+            }
+        },
+        "Increment": {
+            "directParents": ["Add"],
+            "data": {
+                "templateContext": {
+                    "order": ["T"],
+                    "substitution": {
+                        "T": "T"
+                    }
+                },
+                "interface": {
+                    "_defaultArgumentValues": {
+                        "arg2": 1
+                    }
+                }
+            }
+        },
+        "CreateLocalVariable": {
+            "directParents": ["Function"],
+            "data": {
+                "templateContext": ["T"],
+                "interface": {
+                    "varName": "String"
+                },
+                "addNewVariablesInExistingScope": {
+                    "varName": ["T", true]
+                }
+            }
+        },
+        "GetCurrentTime": {
+            "directParents": ["Function"],
+            "data": { "interface": { "arg1": "Duration", "res": "Duration" } }
         }
     },
     "instances": {
