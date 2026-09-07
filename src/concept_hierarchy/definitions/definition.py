@@ -172,7 +172,7 @@ class DefinitionInsideConceptHierarchy(ABC):
         return self.check_location_id(
             LocationOfCheckData(None, keywords, (), False),
             DefinitionInsideConceptHierarchy.definition_location(self),
-            location_check=self.definition_location_id[-1],
+            location_check=list(self.definition_location_id),
             previous_location=None,
             allow_start_at_this_location=True,
         )

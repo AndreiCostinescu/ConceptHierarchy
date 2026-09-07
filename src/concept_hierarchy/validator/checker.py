@@ -88,7 +88,7 @@ class ConceptHierarchyChecker:
                 res.pop(ConceptHierarchyDefinition.model_concepts_external)
             return res
 
-        return create_json(file)
+        return create_json(join_path(path_to_root_dir, file))
 
     @staticmethod
     def alias_target_names(target: str) -> tuple[str, ...]:
@@ -187,7 +187,7 @@ class ConceptHierarchyChecker:
 
         base_location_id: LocationId = LocationId()
         if self.ch.file:
-            base_location_id.append(self.ch.file)
+            base_location_id.append(join_path(self.ch.path_to_root_dir, self.ch.file))
 
         if self.ch.definition_data is None:
             self.ch.definition_data = ConceptHierarchyChecker.read_concept_hierarchy(
