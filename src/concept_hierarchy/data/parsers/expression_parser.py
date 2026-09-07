@@ -1265,6 +1265,7 @@ def _check_instantiation_schema(
         return InstantiationSearch(None)
     groups: list[ConstraintGroupAttempt] = []
     for i, (type_application_constraint, schema_to_match) in enumerate(instantiation_schema):
+        assert schema_to_match.schema_owner == expr_type.clean_name
         type_template_instantiation_validator = validator.get_type_template_instantiation_validator()
         found_matching_schema = type_application_constraint is None
         constraint_errors: list[ConceptHierarchyError] = []

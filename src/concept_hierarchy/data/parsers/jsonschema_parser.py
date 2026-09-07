@@ -207,6 +207,7 @@ class CHSchemaValidator(ABC):
 class _State:
     """Accumulator threaded through the traversal."""
 
+    schema_owner: str
     context: CHSchemaValidator
     errors: list[ConceptHierarchyError] = field(default_factory=list)
     collect_all_errors: bool = True
@@ -221,11 +222,16 @@ class _State:
 
 
 def parse_schema(
-    schema: object, validator: CHSchemaValidator, location_id: LocationId = None, collect_all_errors: bool = True
+    schema_owner: str,
+    schema: object,
+    validator: CHSchemaValidator,
+    location_id: LocationId = None,
+    collect_all_errors: bool = True,
 ) -> tuple[CHSchemaNode | None, list[ConceptHierarchyError]]:
     """Parse and validate ``schema``.
 
     Args:
+        schema_owner: the name of the ValueDomain that owns this schema.
         schema: The raw schema definition
             (using the shorthand notations described in the module docstring, plus full draft-07).
         validator: Used to validate custom type names (see :class:`~ch_schema.context.CHSchemaContext`).
@@ -241,7 +247,7 @@ def parse_schema(
         working with a partially-valid schema.
     """
     errors: list[ConceptHierarchyError] = []
-    state: _State = _State(validator, errors, collect_all_errors)
+    state: _State = _State(schema_owner, validator, errors, collect_all_errors)
     node: CHSchemaNode | None = None
     try:
         if location_id is None:
@@ -314,7 +320,7 @@ def _build_node(
     raw: object, location_id: LocationId, state: _State, allow_x_as_template_variable: bool
 ) -> CHSchemaNode:
     if isinstance(raw, bool):
-        node = CHSchemaNode(location_id=location_id, raw=raw, canonical=raw)
+        node = CHSchemaNode(schema_owner=state.schema_owner, location_id=location_id, raw=raw, canonical=raw)
         node.safe_canonical = raw
         node.shallow_canonical = raw
         return node
@@ -336,14 +342,14 @@ def _build_node(
         canonical = True
 
     if isinstance(canonical, bool):
-        node = CHSchemaNode(location_id=location_id, raw=raw, canonical=canonical)
+        node = CHSchemaNode(schema_owner=state.schema_owner, location_id=location_id, raw=raw, canonical=canonical)
         node.safe_canonical = canonical
         node.shallow_canonical = canonical
         return node
 
     # ------ BUILD OBJECT NODE ----------------------------------------------
 
-    node = CHSchemaNode(location_id=location_id, raw=raw, canonical=canonical)
+    node = CHSchemaNode(schema_owner=state.schema_owner, location_id=location_id, raw=raw, canonical=canonical)
     work = dict(canonical)  # local working copy we can pop() from
 
     type_value = work.get("type", _MISSING)

@@ -199,6 +199,9 @@ def find_reference_cycle(root: CHSchemaNode) -> list[CHSchemaNode] | None:
 @dataclass
 class CHSchemaNode:
     # --- provenance -------------------------------------------------
+    schema_owner: str
+    """The name of the ValueDomain concept that defined this instantiation schema."""
+
     location_id: LocationId
     """Location of this node in the *original* (shorthand) schema."""
 
@@ -309,7 +312,7 @@ class CHSchemaNode:
 
     # ------------------------------------------------------------------
     def __repr__(self):
-        non_empty_fields = [f"location={self.location_id}"]
+        non_empty_fields = [f"defined_in={self.schema_owner}", f"location={self.location_id}"]
         if self.is_custom_type:
             if self.custom_type is not None:
                 non_empty_fields.append(f"type={self.custom_type}")

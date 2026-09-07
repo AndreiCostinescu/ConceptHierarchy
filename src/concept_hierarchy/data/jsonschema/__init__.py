@@ -18,7 +18,7 @@ Typical usage::
 
     from ch_schema import parse_schema, validate_value, CHSchemaContext
 
-    node, errors = parse_schema(my_schema, my_schema_context)
+    node, errors = parse_schema(schema_owner, my_schema, my_schema_context, location_id, collect_all_errors)
     if not errors:
         value_errors = validate_value(my_value, node, my_value_context)
 

@@ -415,7 +415,7 @@ def check_types_in_value_domain_definition(
     parsed_instantiations: list[tuple[ConstraintGroup, CHSchemaNode]] = []
     for instantiation_location_id, (instantiation_constraints, instantiation_schema) in all_instantiations:
         parsed_instantiation_schema, errors = parse_schema(
-            instantiation_schema, context.instantiation_schema_validator, instantiation_location_id
+            c.name, instantiation_schema, context.instantiation_schema_validator, instantiation_location_id
         )
         if errors:
             raise CHSyntaxError(f"Parsing {instantiation_schema!r} into a json schema failed!", causes=errors)
@@ -575,6 +575,7 @@ def check_types_in_function_definition(c: FunctionDefinition, datum: FunctionDat
 
         instantiation_location_id = location_id + ["default Function instantiation"]
         parsed_instantiation_schema, errors = parse_schema(
+            c.name,
             FunctionDefinition.default_function_instantiation_schema,
             context.instantiation_schema_validator,
             instantiation_location_id,

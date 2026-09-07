@@ -37,11 +37,14 @@ from concept_hierarchy.data.jsonschema.parsed_schema import (
     CHSchemaNode,
     json_type_family_of,
 )
+from concept_hierarchy.errors import LocationId
 
 
 def node(**parked: str) -> CHSchemaNode:
     """A schema node with the given ``*_def`` fields parked, as `jsonschema_parser` would leave them."""
-    result = CHSchemaNode(location_id=[], raw={}, canonical={})
+    result = CHSchemaNode(
+        schema_owner="test_undecided_literal_keywords.py", location_id=LocationId(), raw={}, canonical={}
+    )
     for field_name, variable in parked.items():
         setattr(result, field_name, variable)
     return result

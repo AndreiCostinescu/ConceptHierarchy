@@ -126,7 +126,7 @@ NAVIGABLE_SCHEMA = {
 def navigable() -> CHSchemaNode:
     context = check_quietly({})
     context.set_template_context(context.model.value_domains["Integer"].template_context)
-    node, errors = parse_schema(NAVIGABLE_SCHEMA, context.instantiation_schema_validator, [])
+    node, errors = parse_schema("Integer", NAVIGABLE_SCHEMA, context.instantiation_schema_validator)
     assert not errors, errors
     return node
 
