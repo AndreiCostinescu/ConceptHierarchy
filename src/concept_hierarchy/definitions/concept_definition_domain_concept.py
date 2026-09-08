@@ -344,7 +344,7 @@ class DomainConceptDefinition(ConceptDefinition):
             assert func_name_or_specialization in functions_data
             func_def_data = functions_data[func_name_or_specialization]
             # check that func_def_data is not a FunctionComposition value at func_name
-            if (
+            if func_def_data is None or (
                 func_name_or_specialization != DomainConceptDefinition.domain_concept_specialization
                 and DomainConceptDefinition.looks_like_function_instantiation(
                     func_def_data, accept_specialization=False
@@ -841,7 +841,7 @@ class DomainConceptDefinition(ConceptDefinition):
             if for_specialization and not specialize_for_sub:
                 assert isinstance(func_def_val, tuple)
                 func_def_val = func_def_val[0]
-            if not isinstance(func_def_val, dict):
+            if func_def_val is not None and not isinstance(func_def_val, dict):
                 # only allow string-values if this is a specialization
                 if (
                     not for_specialization
@@ -849,10 +849,11 @@ class DomainConceptDefinition(ConceptDefinition):
                     or not func_def_val.startswith(INHERIT_FROM_KEYWORD)
                 ):
                     raise CHSemanticError(
-                        f"{c.definition_type()} function specialization values must be either:"
+                        f"{c.definition_type()} function {FunctionDefinitionKeywords.DEFAULT}"
+                        f"{' specialization' if for_specialization else ''} values must be either:"
                         f"\n - FunctionComposition values (i.e. the procedure of a "
-                        f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions} without any "
-                        f"input arguments),\n - the instantiation of a "
+                        f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions} that does not"
+                        f" have any input arguments): either JSON object or null values,\n - the instantiation of a "
                         f"{DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions} (i.e. by "
                         f"specifying its procedure and optional interface)\n - or a JSON object defining the only "
                         f"specializable definition key for {c.definition_type()} functions: the "
@@ -1015,13 +1016,20 @@ class DomainConceptDefinition(ConceptDefinition):
                     location_id=self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                     part=PathPart.KEY,
                 )
-            if not isinstance(func_data, dict):
+            if func_data is not None and not isinstance(func_data, dict):
                 raise CHSyntaxError(
                     f"The definition of domain concept functions must be a FunctionComposition value "
                     f"(serialized as a JSON object), not {func_data!r} for {func_name} of domain concept {self.name}!",
                     location_id=self.location_id(DomainConceptDefinition.domain_concept_functions, func_name),
                     part=PathPart.VALUE,
                 )
+            elif func_data is None:
+                # interpret as default value of the non-static function
+                self.functions[func_name] = {
+                    FunctionDefinitionKeywords.STATIC: False,
+                    FunctionDefinitionKeywords.DEFAULT: None,
+                }
+                self.is_shorthand_function_definition.add(func_name)
             else:
                 func_def_data_keys = set(func_data.keys())
                 if not (func_def_data_keys <= DomainConceptDefinition.function_data_keys):
@@ -1051,9 +1059,6 @@ class DomainConceptDefinition(ConceptDefinition):
         for func_name, func_data in self.functions.items():
             for func_data_def_key, func_data_def_val in func_data.items():
                 assert func_data_def_key in DomainConceptDefinition.function_data_keys
-            if func_data == {}:
-                func_data[FunctionDefinitionKeywords.STATIC] = False
-                func_data[FunctionDefinitionKeywords.DEFAULT] = {}
             if FunctionDefinitionKeywords.VALUE_DOMAIN not in func_data:
                 func_data[FunctionDefinitionKeywords.VALUE_DOMAIN] = (
                     DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions
