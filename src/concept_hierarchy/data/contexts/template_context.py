@@ -197,9 +197,7 @@ class TemplateContext:
     ) -> TemplateContext:
         if variable_name in self.variables:
             raise RuntimeError(
-                "Template variable {} already exists in TemplateContext {}! Can't add again!".format(
-                    variable_name, self
-                )
+                f"Template variable {variable_name} already exists in TemplateContext {self}! Can't add again!"
             )
         new_variables = self.variables + (variable_name,)
         new_variadic_variables = self.variadic_variables | ({variable_name} if is_variadic else set())
@@ -243,7 +241,7 @@ class TemplateContext:
         for var_name in context.variables:
             if var_name in self.variables:
                 raise RuntimeError(
-                    "Template variable {} already exists in TemplateContext {}! Can't add again!".format(var_name, self)
+                    f"Template variable {var_name} already exists in TemplateContext {self}! Can't add again!"
                 )
         new_variables = self.variables + context.variables
         new_variadic_variables = self.variadic_variables | context.variadic_variables

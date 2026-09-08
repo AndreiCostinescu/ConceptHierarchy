@@ -354,7 +354,7 @@ class ExpressionParserValidator(ABC):
         pass
 
     @abstractmethod
-    def add_variables_in_existing_scope(self, vars_to_add: dict[str, TypeValue]) -> None:
+    def add_variables_in_existing_scope(self, vars_to_add: dict[str, tuple[TypeValue, str]]) -> None:
         pass
 
     @abstractmethod
@@ -2111,21 +2111,20 @@ def parse_function_evaluation_expression(
             expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
             return expressions_res, key_type, True, FunctionEvaluationReading.FREE
 
-    expressions_res.append(
-        FunctionEvaluation(
-            key_type,
-            function_return_type,
-            f_args,
-            is_result_addressable,
-            is_result_modifiable,
-            function_return_type != expr_type,
-            applied_defaults,
-        )
+    f_eval = FunctionEvaluation(
+        key_type,
+        function_return_type,
+        f_args,
+        is_result_addressable,
+        is_result_modifiable,
+        function_return_type != expr_type,
+        applied_defaults,
     )
 
+    was_error = False
     if recursively_parse:
         # add variables in existing scope
-        vars_to_add_in_existing_scope: dict[str, TypeValue] = {}
+        vars_to_add_in_existing_scope: dict[str, tuple[TypeValue, str]] = {}
         for var_name, var_type in validator.get_function_variables_to_add_in_existing_scope(f_concept_name).items():
             var_location_id = f_location_id + [
                 FunctionDefinition.function_add_new_variables_in_existing_scope,
@@ -2139,6 +2138,7 @@ def parse_function_evaluation_expression(
                 validator.get_type_template_instantiation_validator(),
                 var_location_id,
             )
+            orig_var_name = var_name
             if var_type[1]:
                 assert var_name in f_args or var_name in applied_defaults
                 var_value = f_args.get(var_name, applied_defaults.get(var_name, None))
@@ -2150,8 +2150,31 @@ def parse_function_evaluation_expression(
                     var_name = var_value.unparsed
                 else:
                     var_name = var_value.unparsed[2:]  # strip the "s:" prefix
-            vars_to_add_in_existing_scope[var_name] = subst_var_type
-        validator.add_variables_in_existing_scope(vars_to_add_in_existing_scope)
+            vars_to_add_in_existing_scope[var_name] = (subst_var_type, orig_var_name)
+        try:
+            validator.add_variables_in_existing_scope(vars_to_add_in_existing_scope)
+        except RuntimeError as e:
+            if " already contains these variables: " not in e.args[0]:
+                raise
+            duplicate_variables = e.args[1]
+            duplicate_variable_provenance = e.args[2]
+            reason = f"VariableContext already contains these variables: {duplicate_variables}. Can't add again!"
+            errors = tuple(
+                CHSemanticError(
+                    f"VariableContext already contains the variable {duplicate_var_name!r}",
+                    location_id=f_location_id
+                    + [FunctionDefinition.function_add_new_variables_in_existing_scope, provenance],
+                )
+                for duplicate_var_name, provenance in zip(duplicate_variables, duplicate_variable_provenance)
+            )
+            attempts.append(
+                ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type, schema_errors=errors)
+            )
+            expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+            was_error = True
+
+    if not was_error:
+        expressions_res.append(f_eval)
     return expressions_res, key_type, True, FunctionEvaluationReading.FREE
 
 

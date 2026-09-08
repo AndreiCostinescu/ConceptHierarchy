@@ -505,7 +505,7 @@ class ExpressionValidator(ExpressionParserValidator):
     def get_function_variables_to_add_in_existing_scope(self, f_name: str) -> frozendict[str, tuple[TypeValue, bool]]:
         return self.context.model.functions[f_name].new_vars_in_scope
 
-    def add_variables_in_existing_scope(self, vars_to_add: dict[str, TypeValue]) -> None:
+    def add_variables_in_existing_scope(self, vars_to_add: dict[str, tuple[TypeValue, str]]) -> None:
         if vars_to_add:
             self.context.variable_context = self.context.variable_context.add_variables(vars_to_add)
 

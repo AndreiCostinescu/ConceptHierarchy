@@ -774,7 +774,7 @@ def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: Litera
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
         return t_arg.literal_type == "string"
     else:
-        raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
+        raise RuntimeError(f"Unknown constraint type: {formula.constraint_type}")
 
 
 def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: LiteralValue) -> bool:
@@ -790,7 +790,7 @@ def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: LiteralV
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
         return t_arg.clean_name == formula.raw_value
     else:
-        raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
+        raise RuntimeError(f"Unknown constraint type: {formula.constraint_type}")
 
 
 def _validate_literal(

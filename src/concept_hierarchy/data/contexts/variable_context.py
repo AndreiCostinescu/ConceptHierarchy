@@ -33,7 +33,7 @@ class VariableStackFrame:
         return repr(self)
 
     def __repr__(self):
-        return "{}".format(self.variables)
+        return f"{self.variables}"
 
     @property
     def empty(self):
@@ -61,8 +61,8 @@ class VariableStackFrame:
             if allow_new_variables:
                 return self.add_variable(var_name, inferred_value_domain)
             raise RuntimeError(
-                "Can't create a new variable with the set_inferred_type_for method; "
-                "{} does not exist in context {}".format(var_name, self.variables)
+                f"Can't create a new variable with the set_inferred_type_for method; "
+                f"{var_name} does not exist in context {self.variables}"
             )
         new_variables = {}
         new_variables.update(self.variables)
@@ -75,30 +75,45 @@ class VariableStackFrame:
 
     def add_variable(self, var_name, value_domain: TypeValue) -> VariableStackFrame:
         if var_name in self.variables:
-            raise RuntimeError(
-                "Variable {} already exists in VariableStackFrame {}! Can't add again!".format(var_name, self)
-            )
+            raise RuntimeError(f"Variable {var_name} already exists in VariableStackFrame {self}! Can't add again!")
         new_variables = {var_name: value_domain}
         new_variables.update(self.variables)
         return VariableStackFrame(new_variables)
 
-    def add_variables(self, new_variables_to_add: dict[str, TypeValue | dict]) -> VariableStackFrame:
-        for var_name in new_variables_to_add:
+    def add_variables(
+        self, new_variables_to_add: dict[str, TypeValue | tuple[TypeValue, str] | dict]
+    ) -> VariableStackFrame:
+        duplicate_variables: set[tuple[str, str]] = set()
+        var_provenance: dict[str, str] = {}
+        data_of_vars: dict[str, TypeValue | dict] = {}
+        for var_name, var_data in new_variables_to_add.items():
+            provenance = None
+            if isinstance(var_data, tuple):
+                assert len(var_data) == 2
+                provenance = var_provenance[var_name] = var_data[1]
+                data_of_vars[var_name] = var_data[0]
+            else:
+                data_of_vars[var_name] = var_data
             if var_name in self.variables:
-                raise RuntimeError(
-                    "Variable {} already exists in VariableStackFrame {}! Can't add again!".format(var_name, self)
-                )
+                duplicate_variables.add((var_name, provenance))
+        if duplicate_variables:
+            duplicate_variables_list = list(sorted(duplicate_variables))
+            provenance_of_duplicate_variables_list = [x[1] for x in duplicate_variables_list]
+            duplicate_variables_list = [x[0] for x in duplicate_variables_list]
+            raise RuntimeError(
+                f"VariableStackFrame {self} already contains these variables: {duplicate_variables_list}",
+                duplicate_variables_list,
+                provenance_of_duplicate_variables_list,
+            )
         new_variables = {}
         new_variables.update(self.variables)
-        new_variables.update(new_variables_to_add)
+        new_variables.update(data_of_vars)
         return VariableStackFrame(new_variables)
 
     def add_frame(self, frame: VariableStackFrame) -> VariableStackFrame:
         for var_name in frame.variables:
             if var_name in self.variables:
-                raise RuntimeError(
-                    f"Variable {var_name!r} already exists in VariableStackFrame {self!r}! Can't add again!"
-                )
+                raise RuntimeError(f"Variable {var_name} already exists in VariableStackFrame {self}! Can't add again!")
         new_variables = {}
         new_variables.update(self.variables)
         new_variables.update(frame.variables)
@@ -169,7 +184,7 @@ class VariableContext:
         new_context.stack_frames[-1] = new_frame
         return new_context
 
-    def add_variables(self, new_variables: dict[str, TypeValue | dict]) -> VariableContext:
+    def add_variables(self, new_variables: dict[str, TypeValue | tuple[TypeValue, str] | dict]) -> VariableContext:
         new_frame = self.stack_frames[-1].add_variables(new_variables)
         new_context = self.clone()
         new_context.stack_frames[-1] = new_frame
