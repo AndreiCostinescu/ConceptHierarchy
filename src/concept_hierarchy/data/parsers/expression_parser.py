@@ -29,10 +29,11 @@ from concept_hierarchy.data.expressions.expression import Expression, Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
+    FunctionEvaluationReading,
     FunctionResultAccessor,
     ValueDomainArgumentProvenance,
 )
-from concept_hierarchy.data.expressions.instantiated_value import ParsedValue
+from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedValue
 from concept_hierarchy.data.expressions.subexpressions import (
     ConstraintGroupAttempt,
     DefaultSerializationExpression,
@@ -218,6 +219,7 @@ class ExpressionParserValidator(ABC):
         location_id: LocationId,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
+        function_evaluation_reading: FunctionEvaluationReading,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
         """
         Parse ``value`` against ``schema``, returning the result tree **and** the authoritative error list.
@@ -763,6 +765,7 @@ def parse_expression(
     parse_template_expressions_without_type_checks: bool = False,
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
+    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE,
 ) -> Expression:
     """
     ``template_substitution`` is ``None`` in the ordinary case. It is set when this expression is being
@@ -802,6 +805,7 @@ def parse_expression(
             parse_template_expressions_without_type_checks,
             template_substitution,
             expansion_depth,
+            function_evaluation_reading,
         )
     except RecursionError:
         # The interpreter's own stack runs out long before `depth_limit` does -- one expansion level costs
@@ -862,6 +866,7 @@ def _parse_syntax_of_expression(
     parse_template_expressions_without_type_checks: bool = False,
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
+    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE,
 ) -> ExpressionValue:
     expr_template_context = validator.get_current_template_context()
     # A literal template variable stands for a value, not a type, so it is substituted in the JSON itself
@@ -898,11 +903,16 @@ def _parse_syntax_of_expression(
         #             defined, but signal that there are instantiation schemas that do not match the expected type
         # TODO: validate literal formula; if formula is not validated -> raise CHSemanticError
 
+    # `is_function_evaluation_present` means "the keyword is written in this JSON object", and nothing else.
+    # It governs popping the key, restoring it, and the "Invalid use of the ..." misuse error
+    # `function_evaluation_reading` travels separately and the two meet only where the reading is decided.
     is_function_evaluation, is_function_evaluation_present, len_content_keys = True, False, None
     # compute the amount of **content keys** in the JSON object
     if isinstance(json_value, dict):
         len_content_keys = len(json_value)
-        is_function_evaluation_present = "isFunctionEvaluation" in json_value
+        is_function_evaluation_present = "isFunctionEvaluation" in json_value and isinstance(
+            json_value["isFunctionEvaluation"], bool
+        )
         if is_function_evaluation_present:
             len_content_keys -= 1
             # remove the `"isFunctionEvaluation"` key from `json_value` ONLY in a Narrow/FEval expression type!
@@ -924,6 +934,7 @@ def _parse_syntax_of_expression(
             parse_template_expressions_without_type_checks,
             is_function_evaluation,
             is_function_evaluation_present,
+            function_evaluation_reading,
             len_content_keys,
             ensure_unmodified_json_value,
             template_substitution,
@@ -931,7 +942,7 @@ def _parse_syntax_of_expression(
             value_is_a_substituted_literal,
         )
         ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
-        assert isinstance(expr_type, TemplateVariable) or len(expr_value_res) == 1
+        assert isinstance(expr_type, TemplateVariable) or len(expr_value_res) == 1, f"{expr_type} - {expr_value_res!r}"
         if isinstance(expr_type, TemplateVariable):
             if len(expr_value_res) == 1:
                 expr_res = expr_value_res[0]
@@ -987,6 +998,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
     parse_template_expressions_without_type_checks: bool,
     is_function_evaluation: bool,
     is_function_evaluation_present: bool,
+    function_evaluation_reading_from_caller: FunctionEvaluationReading,
     len_content_keys: int,
     ensure_unmodified_json_value: Callable[[object, bool, bool], None],
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
@@ -1006,23 +1018,24 @@ def _parse_syntax_of_expression_with_instantiated_type(
             return len(_expressions_res) == 1
         return None
 
-    # check Narrow and FEval expressions
-    is_function_composition_expr = False
+    # Check `Narrow` and `FEval` expressions.
+    # The FunctionEvaluationReading handed down by the caller already applies to *this* value;
+    # use this instead of "isFunctionEvaluation" inside _parse_expression_of_json_object.
+    function_evaluation_reading = function_evaluation_reading_from_caller
     if len_content_keys == 1:
         assert isinstance(json_value, dict)
         if is_function_evaluation_present:
             json_value.pop("isFunctionEvaluation")
         key, value = get_items_of_single_entry_dict(json_value)
-        # TODO: verify if key is a Concept Hierarchy-specific type:
-        #  - a (non-literal) Template Variable and
-        #  - a Function or ValueDomain type application
+        # Verifying if key is a Concept Hierarchy type (a (non-literal) Template Variable and a Function or ValueDomain
+        # type application) is done in _parse_expression_of_json_object -> parse_function_evaluation_expression
         is_concept_hierarchy_expression = not key.startswith("s:")
         if validator.is_template_variable(key) and validator.is_literal_template_variable(key):
             is_concept_hierarchy_expression = False
 
-        is_function_subtype, is_function_composition_expr = False, False
+        key_names_a_type = False
         if is_concept_hierarchy_expression:
-            sub_expressions, is_function_subtype, is_function_composition_expr = _parse_expression_of_json_object(
+            sub_expressions, function_evaluation_reading, key_names_a_type = _parse_expression_of_json_object(
                 key,
                 value,
                 expr_type,
@@ -1032,16 +1045,35 @@ def _parse_syntax_of_expression_with_instantiated_type(
                 parse_template_expressions_without_type_checks,
                 is_function_evaluation,
                 is_function_evaluation_present,
+                function_evaluation_reading_from_caller,
                 ensure_expression_invariant,
                 attempts,
                 template_substitution,
                 expansion_depth,
             )
+            if function_evaluation_reading == FunctionEvaluationReading.IS_EVALUATION and all(
+                isinstance(x, IllFormedExpression) for x in sub_expressions
+            ):
+                sub_expressions = []
             expressions_res.extend(sub_expressions)
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
 
-        ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
+        # Whether the pop was right is only known once the key has been resolved.
+        # If the single-content-key is not a Concept Hierarchy type, the isFunctionEvaluation keyword must be put back.
+        if not key_names_a_type:
+            ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
+
+    if function_evaluation_reading_from_caller is FunctionEvaluationReading.IS_EVALUATION:
+        expressions_res.append(
+            IllFormedExpression(
+                f'the value is committed to being a Function evaluation by "isFunctionEvaluation", and '
+                f"{expr_type} does not accept one",
+                attempts=tuple(attempts),
+            )
+        )
+        return expressions_res
+
     # check Var expression
     #
     # A string that came from substituting a literal template variable is skipped here: it is a *value*,
@@ -1201,6 +1233,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
             location_id,
             template_substitution,
             expansion_depth,
+            function_evaluation_reading,
         )
         if inst_res.parsed is not None and inst_res.parsed.is_valid():
             # Whether this instantiation is *decided* (= fully parsed & not template-dependent) is not determined here.
@@ -1280,6 +1313,7 @@ def _check_instantiation_schema(
     location_id: LocationId,
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
+    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE,
 ) -> InstantiationSearch:
     expr_template_context = validator.get_current_template_context()
     instantiation_schema = validator.get_if_has_instantiation_schema(expr_type)
@@ -1331,10 +1365,57 @@ def _check_instantiation_schema(
             location_id,
             template_substitution,
             expansion_depth,
+            function_evaluation_reading,
         )
+        if function_evaluation_reading is FunctionEvaluationReading.IS_EVALUATION and not errors:
+            # The commitment is only *honoured* at a custom-type leaf, and a schema can match without ever
+            # reaching one -- a boolean schema (which is what a ValueDomain with no `instantiation`
+            # declares), or a structural one that happens to fit. Such a match would accept the value while
+            # silently ignoring `"isFunctionEvaluation": true`, so it has to be checked rather than assumed.
+            #
+            # The check is not "does a Function evaluation appear somewhere below": a *composition* holds
+            # one too (`"properties": "args"` stores it), and an argument of the value may be one, so
+            # either would answer yes for the wrong value. What must be true is that the node standing at
+            # *this* location -- the value the keyword was written on -- is the evaluation. Depth is not a
+            # factor: `$ref` and the composite keywords keep the location, and only a property or item
+            # descent changes it, so the consumer is always exactly here however many nodes were crossed.
+            if not _consumed_as_function_evaluation(parsed, location_id):
+                err = CHSemanticError(
+                    f'the value is committed to being a Function evaluation by "isFunctionEvaluation", '
+                    f"but the instantiation schema of {expr_type} accepted it without reading it as one",
+                    location_id=location_id,
+                    part=PathPart.VALUE,
+                )
+                # Recorded *on the parsed node*, not by returning `parsed=None`: that return means "this
+                # type declares no instantiation", and `_instantiation_attempt` renders it as "is
+                # abstract" -- which would mislabel every rejection this check makes. An error on the node
+                # makes `ParsedValue.is_valid()` False, which is the signal the caller actually reads.
+                parsed.errors.append(err)
+                errors = [*errors, err]
         groups.append(ConstraintGroupAttempt(type_application_constraint, matched=True, errors=tuple(errors)))
         return InstantiationSearch(parsed, tuple(errors), tuple(groups))
     raise RuntimeError(f"There should always be a fallback matching schema... This was not reached at {expr_type}!")
+
+
+def _consumed_as_function_evaluation(parsed: ParsedValue | None, location_id: LocationId) -> bool:
+    """
+    Whether the retained parse holds a `FunctionEvaluation` **at** ``location_id``.
+
+    Only retained nodes are walked, so a trial branch that read the value as an evaluation and then lost
+    does not count. Matching on the location is what makes this exact: a nested evaluation, and the one a
+    composition keeps in ``custom_expressions``, both sit at a deeper location and are not this value.
+    """
+    if parsed is None:
+        return False
+    for node in parsed.walk():
+        if (
+            isinstance(node, ParsedCustomValue)
+            and node.location_id == location_id
+            and node.expression is not None
+            and isinstance(node.expression.value, FunctionEvaluation)
+        ):
+            return True
+    return False
 
 
 def get_json_type_as_string(json_value: object, location_id: LocationId) -> str:
@@ -1758,7 +1839,13 @@ def parse_function_evaluation_expression(
     attempts: list[ExpressionAttempt],
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
-) -> tuple[list[ExpressionValue], TypeValue | None, bool, bool]:
+) -> tuple[list[ExpressionValue], TypeValue | None, bool, FunctionEvaluationReading]:
+    """
+    Returns ``(expressions, key_type, is_function_subtype, reading)``.
+
+    ``reading`` is what this site decided about the evaluation reading of ``{key: value}``,
+    for the instantiation schema below to honor; see :class:`FunctionEvaluationReading`.
+    """
     expr_template_context = validator.get_current_template_context()
     expressions_res = []
 
@@ -1785,16 +1872,15 @@ def parse_function_evaluation_expression(
             reason = f'"{key}" is not a concept or a template variable of this Concept Hierarchy'
             attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason))
             attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason))
-            return expressions_res, None, False, False
+            return expressions_res, None, False, FunctionEvaluationReading.FREE
         raise e
     if not isinstance(key_type, TemplateVariable) and validator.is_type_abstract(key_type):
         reason = f"{key_type} is an abstract type, so it can not be used in an expression value"
         attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
         attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason, tried_type=key_type))
         expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-        # `is_function_subtype` is not decided yet and is not consulted: one expression is present, so
-        # every caller stops here.
-        return expressions_res, key_type, False, False
+        # `is_function_subtype` is not decided yet and is not consulted => return False (at that position)
+        return expressions_res, key_type, False, FunctionEvaluationReading.FREE
 
     # decide whether to proceed with the FEval expression checking based on `force_function_evaluation_interpretation`
     """
@@ -1829,18 +1915,33 @@ def parse_function_evaluation_expression(
         and not isinstance(expr_type, TemplateVariable)
         and _check_if_subtype(validator, expr_type, function_composition_type, expr_template_context, f_location_id)
     )
-    # don't check FEval expr if this is a possible FunctionComposition or force_function_evaluation is False
-    if force_function_evaluation_interpretation is False or possible_function_composition or not is_function_subtype:
-        return expressions_res, key_type, is_function_subtype, possible_function_composition
+    # What this site decides about the evaluation reading, for the schema below to honor (`[CH].md` 10.2).
+    if force_function_evaluation_interpretation is False:
+        reading = FunctionEvaluationReading.RULED_OUT
+    elif force_function_evaluation_interpretation:
+        reading = FunctionEvaluationReading.IS_EVALUATION
+    elif possible_function_composition:
+        reading = FunctionEvaluationReading.RULED_OUT
+    else:
+        reading = FunctionEvaluationReading.FREE
 
+    # A `FunctionComposition` value is recognised by its instantiation schema and never by this function:
+    # no Function returns a `FunctionComposition`, so `res(K) <= tau` could not hold anyway, and asking it
+    # here is what used to reject `{"LessEqual<Number>": ...}` at a `FunctionCompositionRes<Boolean>` site
+    # with "Boolean is not a subtype of FunctionCompositionRes<Boolean>". Only the `"properties": "args"`
+    # node evaluates a composed Function, and it calls in with no expected type at all.
+    evaluate_here = (
+        is_function_subtype and not possible_function_composition and reading is not FunctionEvaluationReading.RULED_OUT
+    )
+    if not evaluate_here:
+        return expressions_res, key_type, is_function_subtype, reading
+
+    # wrong value kind; expected a JSON object in which the Function's arguments are defined
     if not isinstance(value, dict):
-        reason = (
-            f"Function evaluation expression should have the value of the json object an other json object, "
-            f"not {value}!"
-        )
+        reason = f"Wrong value type; expected a JSON object in which the Function's arguments are defined, not {value}!"
         attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
         expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-        return expressions_res, key_type, True, False
+        return expressions_res, key_type, True, FunctionEvaluationReading.FREE
 
     # create substitution mapping
     f_concept_name = key_type.clean_name
@@ -1855,14 +1956,14 @@ def parse_function_evaluation_expression(
     )
     if isinstance(res_of_check_return, IllFormedExpression):
         expressions_res.append(res_of_check_return)
-        return expressions_res, key_type, True, False
+        return expressions_res, key_type, True, reading
 
     function_return_type, is_result_modifiable, is_result_addressable, function_subtype_check = res_of_check_return
     if not function_subtype_check:
         reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
         attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
         expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-        return expressions_res, key_type, True, False
+        return expressions_res, key_type, True, reading
 
     # check function arguments
     f_args: dict[str, Expression] = {}
@@ -1876,7 +1977,7 @@ def parse_function_evaluation_expression(
                 reason = f'Function {key} does not have the argument "{f_arg_name}"; only {sorted(all_arguments)}'
                 attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
                 expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-                return expressions_res, key_type, True, False
+                return expressions_res, key_type, True, FunctionEvaluationReading.FREE
             f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(f_concept_name, f_arg_name)
             # substitute `f_arg_type` with template instantiation of Function
             arg_location_id = f_location_id + [f_arg_name]
@@ -1946,7 +2047,7 @@ def parse_function_evaluation_expression(
                     )
                 )
                 expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-                return expressions_res, key_type, True, False
+                return expressions_res, key_type, True, FunctionEvaluationReading.FREE
             f_args[f_arg_name] = arg_expr
         # verify required arguments are present
         required_arguments: set[str] = validator.get_required_function_arguments(f_concept_name)
@@ -1959,7 +2060,7 @@ def parse_function_evaluation_expression(
             )
             attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
             expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-            return expressions_res, key_type, True, False
+            return expressions_res, key_type, True, FunctionEvaluationReading.FREE
         # verify that the dependencies between the remaining default arguments are not cyclic
         supplied_arguments = set(f_args)
         unsupplied_arguments: set[str] = all_arguments - supplied_arguments
@@ -1986,7 +2087,7 @@ def parse_function_evaluation_expression(
             if default_failure is not None:
                 expressions_res.append(default_failure)
                 if ensure_expression_invariant(expressions_res, expr_type):
-                    return expressions_res, key_type, True, False
+                    return expressions_res, key_type, True, FunctionEvaluationReading.FREE
             elif default_argument_dependencies is not None and grounded_dependencies:
                 # Union rather than replacement. Grounding sees strictly more than the
                 # definition-time scan did -- the only way it could see *less* is if substitution
@@ -2008,7 +2109,7 @@ def parse_function_evaluation_expression(
             )
             attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
             expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-            return expressions_res, key_type, True, False
+            return expressions_res, key_type, True, FunctionEvaluationReading.FREE
 
     expressions_res.append(
         FunctionEvaluation(
@@ -2051,7 +2152,7 @@ def parse_function_evaluation_expression(
                     var_name = var_value.unparsed[2:]  # strip the "s:" prefix
             vars_to_add_in_existing_scope[var_name] = subst_var_type
         validator.add_variables_in_existing_scope(vars_to_add_in_existing_scope)
-    return expressions_res, key_type, True, False
+    return expressions_res, key_type, True, FunctionEvaluationReading.FREE
 
 
 def _parse_expression_of_json_object(
@@ -2064,13 +2165,30 @@ def _parse_expression_of_json_object(
     parse_template_expressions_without_type_checks: bool,
     is_function_evaluation: bool,
     is_function_evaluation_present: bool,
+    function_evaluation_reading_from_caller: FunctionEvaluationReading,
     ensure_expression_invariant: Callable[[list[ExpressionValue], TypeValue], bool | None],
     attempts: list[ExpressionAttempt],
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
-) -> tuple[list[ExpressionValue], bool, bool]:
+) -> tuple[list[ExpressionValue], FunctionEvaluationReading, bool]:
+    """
+    Returns ``(expressions, function_evaluation_reading, key_names_a_type)``.
+
+    ``key_names_a_type`` is what tells the caller whether an ``"isFunctionEvaluation"`` it popped was a
+    directive at all: the keyword only ever qualifies a key that names a type application, and beside
+    anything else it is a value the caller has to give back.
+    """
     expr_template_context = validator.get_current_template_context()
-    expressions_res, key_type, is_function_subtype, is_function_composition_expr = parse_function_evaluation_expression(
+    # The one place the written keyword and the carried reading meet.
+    # A reading handed down by an enclosing site says exactly what the keyword says (evaluation ruled out or required),
+    # so it is expressed as that, and only here, where nothing else reads it.
+    if function_evaluation_reading_from_caller is FunctionEvaluationReading.RULED_OUT:
+        force_function_evaluation_interpretation = False
+    elif function_evaluation_reading_from_caller is FunctionEvaluationReading.IS_EVALUATION:
+        force_function_evaluation_interpretation = True
+    else:
+        force_function_evaluation_interpretation = is_function_evaluation if is_function_evaluation_present else None
+    expressions_res, key_type, is_function_subtype, function_evaluation_reading = parse_function_evaluation_expression(
         key,
         value,
         expr_type,
@@ -2078,14 +2196,14 @@ def _parse_expression_of_json_object(
         location_id,
         recursively_parse,
         parse_template_expressions_without_type_checks,
-        is_function_evaluation if is_function_evaluation_present else None,
+        force_function_evaluation_interpretation,
         ensure_expression_invariant,
         attempts,
         template_substitution,
         expansion_depth,
     )
     if key_type is None or ensure_expression_invariant(expressions_res, expr_type):
-        return expressions_res, is_function_subtype, is_function_composition_expr
+        return expressions_res, function_evaluation_reading, key_type is not None
 
     # The keyword qualifies a *Function*-keyed object and nothing else.
     # The key resolved to a type that is not a Function, so a keyword written beside it is a misuse.
@@ -2099,13 +2217,19 @@ def _parse_expression_of_json_object(
             ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type, schema_errors=(misuse,))
         )
         expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-        return expressions_res, False, True
+        # `FREE`, not the reading the keyword asked for. The caller strips an `IS_EVALUATION` failure so
+        # that the site's instantiation schema gets a turn, and that is right for a failure *about the
+        # site's expected type* -- `res(K)` not fitting -- because a custom-type leaf may still fit. This
+        # failure is about the keyword itself and holds whatever the site expects, so stripping it would
+        # let `Inst` swallow the misuse whenever the schema happens to accept the object. A misused
+        # keyword decided nothing, which is exactly what `FREE` says.
+        return expressions_res, FunctionEvaluationReading.FREE, True
 
     if _check_if_subtype(validator, key_type, expr_type, expr_template_context, location_id):
         if not recursively_parse:
             expressions_res.append(NarrowExpression(None, key_type, key_type != expr_type))
             if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res, is_function_subtype, is_function_composition_expr
+                return expressions_res, function_evaluation_reading, True
         else:
             # abstract Types do not have instantiation schemas
             narrow_location_id = location_id + [key]
@@ -2116,11 +2240,12 @@ def _parse_expression_of_json_object(
                 narrow_location_id,
                 template_substitution,
                 expansion_depth,
+                function_evaluation_reading,
             )
             if narrow_res.parsed is not None and narrow_res.parsed.is_valid():
                 expressions_res.append(NarrowExpression(narrow_res.parsed, key_type, key_type != expr_type))
                 if ensure_expression_invariant(expressions_res, expr_type):
-                    return expressions_res, is_function_subtype, is_function_composition_expr
+                    return expressions_res, function_evaluation_reading, True
             attempts.append(_instantiation_attempt(ExpressionKind.NARROW, key_type, narrow_res))
     else:
         attempts.append(
@@ -2132,7 +2257,7 @@ def _parse_expression_of_json_object(
         )
 
     # if expr_type is InstantiatedTypes, this expression is neither a `FEval` nor a `Narrow`
-    return expressions_res, is_function_subtype, is_function_composition_expr
+    return expressions_res, function_evaluation_reading, True
 
 
 class SubtypeVerdict(Enum):

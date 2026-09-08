@@ -86,7 +86,7 @@ from typing import Callable
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression import Expression
-from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
+from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance, FunctionEvaluationReading
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural, ParsedValue
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
@@ -123,6 +123,7 @@ class ValueInstantiationContext(ABC):
         location_id: LocationId,
         template_substitution: dict | None,
         expansion_depth: int,
+        function_evaluation_reading: FunctionEvaluationReading,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         """Parse and validate ``value`` as an expression of ``custom_type``.
 
@@ -235,6 +236,9 @@ class _State:
     template_substitution: dict | None = None
     """Carried to every custom-type leaf; see `ValueInstantiationContext.parse_value_against_custom_type_expression`."""
     expansion_depth: int = 0
+    function_evaluation_reading_at: LocationId | None = None
+    """Where `function_evaluation_reading` applies; a different location is a different value."""
+    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE
     upper_level_object_key: str | None = None
 
     def record(self, err: ConceptHierarchyError) -> None:
@@ -261,6 +265,7 @@ def parse_value(
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
+    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE,
     collect_all_errors: bool = True,
 ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
     """Parse ``value`` against ``node``.
@@ -271,11 +276,13 @@ def parse_value(
         context: Handles custom-type leaves.
             is to be interpreted/parsed.
         location_id: Starting location in the Concept Hierarchy (``[]`` at the root).
-        collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
         template_substitution: If not ``None``, stores the mapping of template parameters that could have been used
             in this value and which must be substituted in the value to do a complete check of the value.
         expansion_depth: how many default-instantiation-expressions were triggered.
             This detects a possibly infinite expansion cycle.
+        function_evaluation_reading: What an enclosing expression site already decided about reading this
+            value as a Function evaluation; honoured at the custom-type leaf sitting at ``location_id``.
+        collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
 
     Returns:
         ``(result, errors)``.  ``result`` is always a tree, even on failure.  ``errors`` is the authoritative error
@@ -285,7 +292,15 @@ def parse_value(
     if location_id is None:
         location_id = []
 
-    state = _State(context, [], collect_all_errors, template_substitution, expansion_depth)
+    state = _State(
+        context,
+        [],
+        collect_all_errors,
+        template_substitution,
+        expansion_depth,
+        None if function_evaluation_reading is FunctionEvaluationReading.FREE else location_id,
+        function_evaluation_reading,
+    )
     result: ParsedValue | None = None
     try:
         result = _parse(node, value, True, location_id, state)
@@ -306,6 +321,7 @@ def validate_value(
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
+    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE,
     collect_all_errors: bool = True,
 ) -> list[ConceptHierarchyError]:
     """Error projection of :func:`parse_value`, for call sites that discard the result tree.
@@ -313,7 +329,14 @@ def validate_value(
     This performs the full parse; it is not cheaper.
     """
     _, errors = parse_value(
-        value, node, context, location_id, template_substitution, expansion_depth, collect_all_errors
+        value,
+        node,
+        context,
+        location_id,
+        template_substitution,
+        expansion_depth,
+        function_evaluation_reading,
+        collect_all_errors,
     )
     return errors
 
@@ -419,6 +442,11 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             local.append(err)
             state.record(err)
     if not used_default:
+        reading = (
+            state.function_evaluation_reading
+            if location_id == state.function_evaluation_reading_at
+            else FunctionEvaluationReading.FREE
+        )
         expression, errs = state.context.parse_value_against_custom_type_expression(
             node.custom_type,
             node.provenance,
@@ -426,6 +454,7 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             location_id,
             state.template_substitution,
             state.expansion_depth,
+            reading,
         )
         for err in errs:
             local.append(err)
@@ -644,6 +673,11 @@ def _parse_object(
             # Default values are not applicable here because it is the appearing/existing/available names of the JSON
             # object's keys that are checked; there is no MISSING case for which a default value/expression can be used.
             for key in value:
+                reading = (
+                    state.function_evaluation_reading
+                    if location_id == state.function_evaluation_reading_at
+                    else FunctionEvaluationReading.FREE
+                )
                 _, errs = state.context.parse_value_against_custom_type_expression(
                     pn.custom_type,
                     pn.provenance,
@@ -651,6 +685,7 @@ def _parse_object(
                     location_id + [key],
                     state.template_substitution,
                     state.expansion_depth,
+                    reading,
                 )
                 for err in errs:
                     err.part = PathPart.KEY
@@ -889,6 +924,7 @@ def _parse_one_of(
     structural: ParsedStructural,
     rec,
     child_silent,
+    state: _State,
 ) -> None:
     """Exactly one branch must match."""
     matching: list[ParsedValue] = []

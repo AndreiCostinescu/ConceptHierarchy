@@ -42,6 +42,43 @@ class FunctionArgumentAccessor(Enum):
     GET_MOD = "GetModify"
 
 
+class FunctionEvaluationReading(Enum):
+    """
+    What an enclosing expression site has already decided about reading one JSON object as a `FEval`.
+
+    Carried from the expression parser into an instantiation schema and back out at each custom-type leaf
+    (`documentation/TODO_FUNCTION_EVALUATION_VS_COMPOSITION.md`). The verdict has to travel because a
+    schema branch re-enters the expression parser with the *branch's* type: inside
+    ``FunctionCompositionRes<T>``'s ``oneOf: ["T", "FunctionComposition"]`` the ``"T"`` branch is asked
+    about a `Boolean`, where nothing is left of the fact that the site was a `FunctionComposition`.
+
+    Two of the three states are decisions, not hints, and a leaf that cannot honor one must fail rather
+    than fall back -- that is what makes the ``oneOf`` resolve to exactly one branch.
+    """
+
+    FREE = "free"
+    """No decision has been made; the site's own type and keyword decide, as usual."""
+
+    RULED_OUT = "ruled out"
+    """
+    This object is *not* a Function evaluation.
+
+    Written as ``"isFunctionEvaluation": false``, or implied by a site whose type is a
+    `FunctionComposition` and that carries no keyword. A leaf must not read the object as a `FEval`.
+    """
+
+    IS_EVALUATION = "is an evaluation"
+    """
+    This object *is* a Function evaluation, and could not be one at the site itself.
+
+    Written as ``"isFunctionEvaluation": true`` where ``res(K)`` is not a subtype of the site's type --
+    always so at a `FunctionComposition` site (because no Function returns a FunctionComposition). 
+    The reading has to be consumed by a custom-type leaf of the site's instantiation schema whose own type 
+    ``res(K)`` does satisfy, and every other reading of the object is off the table: 
+    a leaf that cannot evaluate it fails, and no `Narrow`, `Var`, `Inst` or default serialization may stand in for it.
+    """
+
+
 class ExpressionDefinition(Enum):
     """
     Don't allow empty instantiation: VALUE_DOMAIN_EMPTY_INSTANTIATION = { Type: None }
