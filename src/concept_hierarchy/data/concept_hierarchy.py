@@ -122,9 +122,9 @@ class FunctionData(ValueDomainData):
 
     procedure: Expression
 
-    sub_scope_vars: frozendict[str, frozendict[str, TypeValue]]
+    sub_scope_vars: frozendict[str, frozendict[str, tuple[TypeValue, bool]]]
     """Maps evaluation argument names to new variables available in their scope and their type."""
-    new_vars_in_scope: frozendict[str, TypeValue]
+    new_vars_in_scope: frozendict[str, tuple[TypeValue, bool]]
     """Maps the new variables introduced after the evaluation of this Function to their type."""
 
     def __init__(self, name: str, parents: frozendict[str, ConceptData]):
