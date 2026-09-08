@@ -84,6 +84,7 @@ from concept_hierarchy.data.validators.template_argument_constraints_validator i
     validate_template_argument_value_against_constraint,
     validate_type_against_constraint_formula,
 )
+from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
@@ -301,7 +302,7 @@ class ExpressionParserValidator(ABC):
 
     @abstractmethod
     def function_argument_scope(
-        self, arguments: dict[str, TypeValue], template_context: TemplateContext
+        self, arguments: dict[str, TypeValue], template_context: TemplateContext | None, *, append: bool
     ) -> AbstractContextManager[None]:
         """
         Run in the Function's scope: its arguments as the variables, and its own template context.
@@ -341,6 +342,20 @@ class ExpressionParserValidator(ABC):
         Record a grounding, or (with `GroundedArgumentDefault.in_progress`) that one has begun.
         Overwrites existing content.
         """
+
+    @abstractmethod
+    def get_function_variables_to_add_in_existing_scope(self, f_name: str) -> frozendict[str, tuple[TypeValue, bool]]:
+        pass
+
+    @abstractmethod
+    def add_variables_in_existing_scope(self, vars_to_add: dict[str, TypeValue]) -> None:
+        pass
+
+    @abstractmethod
+    def get_function_variables_to_add_per_argument(
+        self, f_name: str
+    ) -> frozendict[str, frozendict[str, tuple[TypeValue, bool]]]:
+        pass
 
     @abstractmethod
     def get_current_template_context(self) -> TemplateContext:
@@ -1475,7 +1490,7 @@ def _ground_unsupplied_argument_defaults_in_instantiated_context(
     assert f_template_context.name_of_type_defining_the_template_variables == f_type.clean_name, "{} - {}".format(
         f_template_context.name_of_type_defining_the_template_variables, f_type.clean_name
     )
-    with validator.function_argument_scope(argument_types, f_template_context):
+    with validator.function_argument_scope(argument_types, f_template_context, append=False):
         for argument, declared_source in to_ground.items():
             argument_type = argument_types[argument]
             arg_location_id = location_id + [argument]
@@ -1793,8 +1808,9 @@ def parse_function_evaluation_expression(
         return expressions_res, key_type, True
 
     # create substitution mapping
+    f_concept_name = key_type.clean_name
     f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument] = {}
-    f_template_context: TemplateContext = validator.get_template_context(key_type.clean_name)
+    f_template_context: TemplateContext = validator.get_template_context(f_concept_name)
     for t_arg_name, t_arg_val in zip(f_template_context.variables, key_type.template_arguments):
         f_substitution_mapping[t_arg_name] = t_arg_val
 
@@ -1813,16 +1829,15 @@ def parse_function_evaluation_expression(
     applied_defaults: dict[str, Expression] = {}
     if recursively_parse:
         # verify sub-expressions + make sure that the Function arguments are actually correct ones
-        all_arguments = validator.get_function_arguments(key_type.clean_name)
+        all_arguments = validator.get_function_arguments(f_concept_name)
+        sub_scope_vars = validator.get_function_variables_to_add_per_argument(f_concept_name)
         for f_arg_name, f_arg_expr_val in value.items():
-            if not validator.is_function_argument(key_type.clean_name, f_arg_name):
+            if not validator.is_function_argument(f_concept_name, f_arg_name):
                 reason = f'Function {key} does not have the argument "{f_arg_name}"; only {sorted(all_arguments)}'
                 attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
                 expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
                 return expressions_res, key_type, True
-            f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(
-                key_type.clean_name, f_arg_name
-            )
+            f_arg_type, f_arg_access, f_arg_prov = validator.get_function_argument_interface(f_concept_name, f_arg_name)
             # substitute `f_arg_type` with template instantiation of Function
             arg_location_id = f_location_id + [f_arg_name]
             f_arg_type, _ = substitute(
@@ -1834,20 +1849,53 @@ def parse_function_evaluation_expression(
                 arg_location_id,
             )
             assert isinstance(f_arg_type, TYPE_VALUE_IS_INSTANCE_CHECK)
-            arg_expr = parse_expression(
-                f_arg_expr_val,
-                f_arg_type,
-                f_arg_prov,
-                f_arg_access,
-                validator,
-                arg_location_id,
-                parse_template_expressions_without_type_checks,
-                template_substitution,
-                expansion_depth,
-            )
+            f_arg_sub_scope_vars: dict[str, TypeValue] = {}
+            for f_arg_sub_scope_var_name, f_arg_sub_scope_var_type in sub_scope_vars.get(f_arg_name, {}).items():
+                sub_scope_var_location_id = f_location_id + [
+                    FunctionDefinition.function_sub_scopes,
+                    f_arg_name,
+                    f_arg_sub_scope_var_name,
+                ]
+                subst_f_arg_sub_scope_var_type, _ = substitute(
+                    f_arg_sub_scope_var_type[0],
+                    f_substitution_mapping,
+                    f_template_context,
+                    expr_template_context,
+                    validator.get_type_template_instantiation_validator(),
+                    sub_scope_var_location_id,
+                )
+                if f_arg_sub_scope_var_type[1]:
+                    if f_arg_sub_scope_var_name[1]:
+                        assert f_arg_sub_scope_var_name in f_args or f_arg_sub_scope_var_name in applied_defaults
+                        var_value = f_args.get(
+                            f_arg_sub_scope_var_name, applied_defaults.get(f_arg_sub_scope_var_name, None)
+                        )
+                        assert var_value is not None and isinstance(var_value, Expression)
+                        if not isinstance(var_value.value, InstExpression):
+                            raise NotImplementedError(
+                                "Did not implement setting a dynamic variable name in argument subscope..."
+                            )
+                        assert isinstance(var_value.unparsed, str)
+                        if isinstance(var_value.value, DefaultSerializationExpression):
+                            f_arg_sub_scope_var_name = var_value.unparsed
+                        else:
+                            f_arg_sub_scope_var_name = var_value.unparsed[2:]  # strip the "s:" prefix
+                f_arg_sub_scope_vars[f_arg_sub_scope_var_name] = subst_f_arg_sub_scope_var_type
+            with validator.function_argument_scope(f_arg_sub_scope_vars, None, append=True):
+                arg_expr = parse_expression(
+                    f_arg_expr_val,
+                    f_arg_type,
+                    f_arg_prov,
+                    f_arg_access,
+                    validator,
+                    arg_location_id,
+                    parse_template_expressions_without_type_checks,
+                    template_substitution,
+                    expansion_depth,
+                )
             if not arg_expr.is_valid:
                 assert isinstance(arg_expr.value, IllFormedExpression)
-                reason = f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid: {arg_expr.value.reason}"
+                reason = f"{key} argument {f_arg_name}'s value {f_arg_expr_val} is invalid:\n{arg_expr.value.reason}"
                 attempts.append(
                     ExpressionAttempt(
                         ExpressionKind.FUNCTION_EVALUATION,
@@ -1861,7 +1909,7 @@ def parse_function_evaluation_expression(
                 return expressions_res, key_type, True
             f_args[f_arg_name] = arg_expr
         # verify required arguments are present
-        required_arguments: set[str] = validator.get_required_function_arguments(key_type.clean_name)
+        required_arguments: set[str] = validator.get_required_function_arguments(f_concept_name)
         missing_arguments: set[str] = set(
             required_arg for required_arg in required_arguments if required_arg not in f_args
         )
@@ -1875,7 +1923,7 @@ def parse_function_evaluation_expression(
         # verify that the dependencies between the remaining default arguments are not cyclic
         supplied_arguments = set(f_args)
         unsupplied_arguments: set[str] = all_arguments - supplied_arguments
-        default_argument_dependencies = validator.get_default_argument_dependencies(key_type.clean_name)
+        default_argument_dependencies = validator.get_default_argument_dependencies(f_concept_name)
         # Ground first, then check the graph. Once the application is ground, each unsupplied
         # default has to be a valid expression *for it* -- and grounding is also the only place the
         # complete dependency set exists, because the definition-time scan stops wherever the type
@@ -1922,7 +1970,6 @@ def parse_function_evaluation_expression(
             expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
             return expressions_res, key_type, True
 
-    # is the access character not relevant here? it should be...
     expressions_res.append(
         FunctionEvaluation(
             key_type,
@@ -1935,6 +1982,36 @@ def parse_function_evaluation_expression(
         )
     )
     return expressions_res, key_type, True
+
+    if recursively_parse:
+        # add variables in existing scope
+        vars_to_add_in_existing_scope: dict[str, TypeValue] = {}
+        for var_name, var_type in validator.get_function_variables_to_add_in_existing_scope(f_concept_name).items():
+            var_location_id = f_location_id + [
+                FunctionDefinition.function_add_new_variables_in_existing_scope,
+                var_name,
+            ]
+            subst_var_type, _ = substitute(
+                var_type[0],
+                f_substitution_mapping,
+                f_template_context,
+                expr_template_context,
+                validator.get_type_template_instantiation_validator(),
+                var_location_id,
+            )
+            if var_type[1]:
+                assert var_name in f_args or var_name in applied_defaults
+                var_value = f_args.get(var_name, applied_defaults.get(var_name, None))
+                assert var_value is not None and isinstance(var_value, Expression)
+                if not isinstance(var_value.value, InstExpression):
+                    raise NotImplementedError("Did not implement setting a dynamic variable name...")
+                assert isinstance(var_value.unparsed, str)
+                if isinstance(var_value.value, DefaultSerializationExpression):
+                    var_name = var_value.unparsed
+                else:
+                    var_name = var_value.unparsed[2:]  # strip the "s:" prefix
+            vars_to_add_in_existing_scope[var_name] = subst_var_type
+        validator.add_variables_in_existing_scope(vars_to_add_in_existing_scope)
 
 
 def _parse_expression_of_json_object(

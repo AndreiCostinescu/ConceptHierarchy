@@ -417,26 +417,47 @@ class ExpressionValidator(ExpressionParserValidator):
 
     @contextmanager
     def function_argument_scope(
-        self, arguments: dict[str, TypeValue], template_context: TemplateContext
+        self, arguments: dict[str, TypeValue], template_context: TemplateContext | None, *, append: bool
     ) -> Iterator[None]:
         previous = self.context.variable_context
         assert previous is not None, "there is no variable context to scope"
-        # Frame 0 is the global variables -- `check_expressions_in_concept_hierarchy` starts from an empty
-        # context and `init_expressions` pushes them first, before anything Function- or ValueDomain-local.
-        # Those stay; every frame above them is dropped for the duration.
-        globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
-        self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(arguments)]))
+        if append:
+            self.context.variable_context.push_variable_context(VariableStackFrame(arguments))
+        else:
+            # Frame 0 is the global variables -- `check_expressions_in_concept_hierarchy` starts from an empty
+            # context and `init_expressions` pushes them first, before anything Function- or ValueDomain-local.
+            # Those stay; every frame above them is dropped for the duration.
+            globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
+            self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(arguments)]))
         try:
-            with self.template_context_scope(template_context):
+            if template_context is None:
                 yield
+            else:
+                with self.template_context_scope(template_context):
+                    yield
         finally:
-            self.context.set_variable_context(previous)
+            if append:
+                self.context.variable_context.pop_variable_context()
+            else:
+                self.context.set_variable_context(previous)
 
     def get_grounded_function_default(self, application: str, argument: str) -> GroundedArgumentDefault | None:
         return self._grounded_function_defaults.get((application, argument))
 
     def put_grounded_function_default(self, application: str, argument: str, grounded: GroundedArgumentDefault) -> None:
         self._grounded_function_defaults[(application, argument)] = grounded
+
+    def get_function_variables_to_add_in_existing_scope(self, f_name: str) -> frozendict[str, tuple[TypeValue, bool]]:
+        return self.context.model.functions[f_name].new_vars_in_scope
+
+    def add_variables_in_existing_scope(self, vars_to_add: dict[str, TypeValue]) -> None:
+        if vars_to_add:
+            self.context.variable_context = self.context.variable_context.add_variables(vars_to_add)
+
+    def get_function_variables_to_add_per_argument(
+        self, f_name: str
+    ) -> frozendict[str, frozendict[str, tuple[TypeValue, bool]]]:
+        return self.context.model.functions[f_name].sub_scope_vars
 
     def get_current_template_context(self) -> TemplateContext:
         return self.context.template_context
