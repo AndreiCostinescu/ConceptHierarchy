@@ -189,15 +189,19 @@ class ExpressionParserValidator(ABC):
         pass
 
     @abstractmethod
-    def get_type_of_instance_property(self, instance_type: InstantiatedType, prop_name: str) -> InstantiatedType:
+    def get_type_of_instance_property_or_function(
+        self, instance_name: str, instance_type: InstantiatedType, prop_or_func_name: str, location_id: LocationId
+    ) -> InstantiatedType:
         """
         This must raise a CHSemanticError if:
             - instance_type is not a subtype of InstanceBase
-            - prop_name is not a property of the type represented by instance_type
+            - prop_or_func_name is not a property/function of the type represented by instance_type
 
-        :param instance_type: the type which is to-be-checked that it is an instance type that has the property
-        :param prop_name: the name of the property whose type is to be determined by the function
-        :return: the InstantiatedType type of the property `prop_name` of `instance_type`
+        :param instance_name: the name of the instance variable that has the property/function
+        :param instance_type: the type which is to-be-checked that it is an instance type that has the property/function
+        :param prop_or_func_name: the name of the property/function whose type is to be determined by the function
+        :param location_id: the location where this check is being performed
+        :return: the InstantiatedType type of the property/function `prop_or_func_name` of `instance_type`
         """
 
     @abstractmethod
@@ -1099,11 +1103,16 @@ def _parse_syntax_of_expression_with_instantiated_type(
                 types_in_property_chain = [validator.get_variable_type(possible_instance_property_chain[0])]
                 # The chain is rooted at its first name, so that is the reference whose scope it has.
                 var_scope = validator.get_variable_scope_index(possible_instance_property_chain[0])
-                for prop in possible_instance_property_chain[1:]:
+                for index, prop in enumerate(possible_instance_property_chain[1:]):
                     # The below raises a CHSemanticError if:
                     #  - instance_type is not a subtype of InstanceBase
-                    #  - prop_name is not a property of the type represented by instance_typ
-                    prop_type = validator.get_type_of_instance_property(types_in_property_chain[-1], prop)
+                    #  - prop_name is not a property/function of the type represented by instance_type
+                    prop_type = validator.get_type_of_instance_property_or_function(
+                        ".".join(possible_instance_property_chain[: index + 1]),
+                        types_in_property_chain[-1],
+                        prop,
+                        location_id,
+                    )
                     types_in_property_chain.append(prop_type)
                 var_type = types_in_property_chain[-1]
                 assert isinstance(var_type, InstantiatedType)
