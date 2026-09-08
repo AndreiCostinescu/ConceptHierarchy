@@ -2087,13 +2087,21 @@ def _parse_expression_of_json_object(
     if key_type is None or ensure_expression_invariant(expressions_res, expr_type):
         return expressions_res, is_function_subtype, is_function_composition_expr
 
+    # The keyword qualifies a *Function*-keyed object and nothing else.
+    # The key resolved to a type that is not a Function, so a keyword written beside it is a misuse.
+    if is_function_evaluation_present and not is_function_subtype:
+        reason = (
+            f'the "isFunctionEvaluation" keyword only qualifies an object keyed by a Function, '
+            f"and {key_type} is not a Function"
+        )
+        misuse = CHSemanticError(reason, location_id=location_id + ["isFunctionEvaluation"], part=PathPart.KEY)
+        attempts.append(
+            ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type, schema_errors=(misuse,))
+        )
+        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+        return expressions_res, False, True
+
     if _check_if_subtype(validator, key_type, expr_type, expr_template_context, location_id):
-        if is_function_evaluation_present and not is_function_subtype:
-            raise CHSemanticError(
-                f'Invalid use of the "isFunctionEvaluation" keyword at single-content-key object "{key_type}"!',
-                location_id=location_id + ["isFunctionEvaluation"],
-                part=PathPart.KEY,
-            )
         if not recursively_parse:
             expressions_res.append(NarrowExpression(None, key_type, key_type != expr_type))
             if ensure_expression_invariant(expressions_res, expr_type):
