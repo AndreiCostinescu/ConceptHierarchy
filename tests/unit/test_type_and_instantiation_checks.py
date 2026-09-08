@@ -305,8 +305,11 @@ class TestDefaultInstanceNaming:
         check_concepts(
             {
                 **INSTANCE_BASE,
-                "Instance": {"directParents": ["InstanceBase"], "data": {}},
-                **naming_property("Instance"),
+                "Instance": {
+                    "directParents": ["InstanceBase"],
+                    "data": {"templateContext": {"order": ["T"], "T": "And(Concept, Not(ValueDomain))"}},
+                },
+                **naming_property("Instance<Animal>"),
             }
         )
 

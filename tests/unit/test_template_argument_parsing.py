@@ -65,7 +65,7 @@ class TestTemplateArgumentParsing:
                     },
                     "functions": {
                         "f1": {},
-                        "f2": {"Add<Number>": {"arg1": 2, "arg2": 2}},
+                        "f2": {"Add<Number>": {"arg1": 2, "arg2": 2}, "isFunctionEvaluation": False},
                         "f3": {
                             "interface": {"arg": "Number", "res": "Number"},
                             "procedure": {"Return<Number>": {"what": {"Add<Number>": {"arg1": "arg", "arg2": 2}}}},
@@ -87,6 +87,7 @@ class TestTemplateArgumentParsing:
             # an alias: a second name for Dog, not a second definition of it
             "DogClone": "Dog",
             "ValueDomain": {"directParents": ["Concept"], "data": {}, "abstract": True},
+            "Number": {"directParents": ["ValueDomain"], "data": {"defaultSerialization": "number"}},
             "Integer": {"directParents": ["ValueDomain"], "data": {}},
             "Duration": {"directParents": ["ValueDomain"], "data": {}},
             "String": {

@@ -155,7 +155,7 @@ def parse_evaluation(
     *,
     site_type: object = _SITE_TYPE_UNSET,
     recursively_parse: bool = True,
-    is_function_evaluation: bool = True,
+    is_function_evaluation: bool | None = None,
 ) -> Parsed:
     """
     Call `parse_function_evaluation_expression` with the arguments the ``args`` schema node can supply.
@@ -294,7 +294,10 @@ class TestArgumentsAreParsedAndChecked:
 
     def test_a_non_object_value_gives_an_ill_formed_expression(self, context):
         parsed = parse_evaluation(context, "Add", 5)
-        assert "should have the value of the json object an other json object" in parsed.ill_formed.reason
+        assert (
+            "Wrong value type; expected a JSON object in which the Function's arguments are defined, not"
+            in parsed.ill_formed.reason
+        )
         assert parsed.key_type is not None, "the key was still resolved; only the value was wrong"
 
     def test_without_recursive_parsing_no_argument_is_looked_at(self, context):
@@ -363,10 +366,10 @@ class TestTheCallWithoutAnExpectedType:
         need not decide what to pass -- both spellings produce the evaluation.
         """
         for flag in (True, False):
-            parsed = parse_evaluation(
-                context, "Add", {"arg1": 1, "arg2": 2}, site_type=None, is_function_evaluation=flag
-            )
-            assert sorted(parsed.evaluation.arguments) == ["arg1", "arg2"], flag
+            with pytest.raises(
+                RuntimeError, match=f"Impossible case: expr_type: None, force FEval: {'True' if flag else 'False'}"
+            ):
+                parse_evaluation(context, "Add", {"arg1": 1, "arg2": 2}, site_type=None, is_function_evaluation=flag)
 
     def test_defaults_are_still_grounded_without_an_expected_type(self, context):
         """The checks the ``args`` node is being wired up for do not depend on there being a site type."""

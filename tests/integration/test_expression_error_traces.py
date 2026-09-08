@@ -467,7 +467,7 @@ class TestFunctionEvaluationFailures:
     def test_function_evaluation_value_is_not_an_object(self):
         text = explanation({**ADD, **site("Integer", {"Add<Integer>": 5})}, {"Add<Integer>": 5})
         assert "as FEval" in text
-        assert "json object" in text
+        assert "Wrong value type; expected a JSON object in which the Function's arguments are defined, not" in text
 
     def test_result_type_is_not_a_subtype(self):
         value = {"Add<Integer>": {"arg1": 1, "arg2": 2}}
