@@ -116,15 +116,15 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
 
     def create_substitution_for(
         self,
-        parent_type_name: str,
+        parent_concept_name: str,
         sub_type: ConceptHierarchyType,
         location_id: LocationId,
         template_context: TemplateContext | None = None,
     ) -> tuple[tuple[str, ConceptHierarchyTemplateArgument], ...] | None:
         # `parent_type_name` comes from a constraint literal, which is a concept-name position, which could be an alias
-        parent_type_name = self.context.ch.canonical_concept_name(parent_type_name)
+        parent_concept_name = self.context.ch.canonical_concept_name(parent_concept_name)
         sub_type_def_data = self.context.ch.concepts[self.context.ch.canonical_concept_name(sub_type.clean_name)]
-        parent_def_data = self.context.ch.concepts[parent_type_name]
+        parent_def_data = self.context.ch.concepts[parent_concept_name]
         if not isinstance(parent_def_data, HiddenImplementationDefinition) or not parent_def_data.is_templatable():
             return ()
         # now, parent is definitely templatable
@@ -146,16 +146,16 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
 
         substituted_t_args_of_parent: list[ConceptHierarchyTemplateArgument] = []
         for literal_t_arg in parent_def_data.template_argument_order:
-            if (parent_type_name, literal_t_arg) not in all_substitutions_of_sub_type:
-                assert sub_type.clean_name == parent_type_name, (
-                    f"sub_type.clean_name = {sub_type.clean_name}, parent_type_name = {parent_type_name}"
+            if (parent_concept_name, literal_t_arg) not in all_substitutions_of_sub_type:
+                assert sub_type.clean_name == parent_concept_name, (
+                    f"sub_type.clean_name = {sub_type.clean_name}, parent_concept_name = {parent_concept_name}"
                 )
                 if literal_t_arg in parent_def_data.variadic_template_arguments:
                     substitution_type = VariadicTemplateVariable(literal_t_arg, parent_def_data.name)
                 else:
                     substitution_type = NonVariadicTemplateVariable(literal_t_arg, parent_def_data.name)
             else:
-                substitution_type = all_substitutions_of_sub_type[parent_type_name, literal_t_arg]
+                substitution_type = all_substitutions_of_sub_type[parent_concept_name, literal_t_arg]
             subst_val, subst_context = substitute(
                 substitution_type,
                 substitution,
@@ -173,12 +173,12 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
             substituted_t_args_of_parent.append(subst_val)
         subst_tuple = tuple(substituted_t_args_of_parent)
         errors = validate_complete_instantiation_of_concept(
-            parent_type_name, subst_tuple, TemplateContextDeterminator(template_context), self, location_id
+            parent_concept_name, subst_tuple, TemplateContextDeterminator(template_context), self, location_id
         )
         if errors:
             raise RuntimeError(
                 f"Wrong substitution {substituted_t_args_of_parent!r} because it doesn't satisfy all constraints of "
-                f"{parent_type_name}"
+                f"{parent_concept_name}"
             )
         return tuple(zip(parent_def_data.template_argument_order, subst_tuple))
 
