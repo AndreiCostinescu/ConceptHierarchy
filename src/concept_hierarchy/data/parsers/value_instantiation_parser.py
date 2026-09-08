@@ -79,6 +79,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from typing import Callable
 
@@ -92,7 +93,11 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     NonStructureConstraintFormula,
     TemplateConstraintFormula,
 )
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ConceptHierarchyTemplateArgument,
+    InstantiatedType,
+    TypeValue,
+)
 from concept_hierarchy.data.utils import MISSING, StopValidation, record
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
@@ -193,6 +198,21 @@ class ValueInstantiationContext(ABC):
     def validate_string_constraint(
         self, constraint: NonStructureConstraintFormula, value: str, location_id: LocationId
     ) -> bool:
+        pass
+
+    @abstractmethod
+    def parse_type(
+        self,
+        type_candidate: str,
+        template_substitution: dict[str, ConceptHierarchyTemplateArgument],
+        location_id: LocationId,
+    ) -> tuple[InstantiatedType, list[ConceptHierarchyError]]:
+        pass
+
+    @abstractmethod
+    def replace_variable_scope_for_custom_function(
+        self, new_variables: dict[str, TypeValue]
+    ) -> AbstractContextManager[None]:
         pass
 
 
@@ -528,14 +548,63 @@ def _parse_object(
             )
 
     # --- properties -----------------------------------------------------------------------------------
-    for key, child_schema in node.properties.items():
-        matched_keys.add(key)
+    if node.schema_owner == "CustomFunction" and all(x in node.properties for x in ["interface", "procedure"]):
+        new_vars: dict[str, InstantiatedType] = {}
+        # First process the `interface` (the prerequisite for the `procedure`'s variable scope) and then the `procedure`
+        key = "interface"
+        child_schema = node.properties[key]
         if key in value:
+            matched_keys.add(key)
             result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
+            if result is not None:
+                # Transform interface definition into variables
+                assert isinstance(result, ParsedStructural)
+                assert isinstance(result.value, dict)
+                for new_var, new_var_def in result.value.items():
+                    if isinstance(new_var_def, str):
+                        new_var_type = new_var_def
+                    elif isinstance(new_var_def, list):
+                        new_var_type = new_var_def[0]
+                    else:
+                        raise RuntimeError(
+                            "Expected schema does not match the written interface schema of CustomFunction!"
+                        )
+                    new_var_instantiated_type, errors = state.context.parse_type(
+                        new_var_type[2:] if new_var_type.startswith("s:") else new_var_type,
+                        state.template_substitution,
+                        location_id,
+                    )
+                    if errors:
+                        for err in errors:
+                            state.record(err)
+                    else:
+                        assert new_var_instantiated_type is not None
+                        new_vars[new_var] = new_var_instantiated_type
         else:
             result = child_a(child_schema, location_id + [key], state.new_state(key))
         if result is not None:
             structural.properties_parsed[key] = result
+        # process procedure
+        key = "procedure"
+        child_schema = node.properties[key]
+        if key in value:
+            matched_keys.add(key)
+            # replace the variable scope in which the procedure of the CustomFunction is parsed!
+            with state.context.replace_variable_scope_for_custom_function(new_vars):
+                result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
+        else:
+            result = child_a(child_schema, location_id + [key], state.new_state(key))
+        if result is not None:
+            structural.properties_parsed[key] = result
+    else:
+        for key, child_schema in node.properties.items():
+            matched_keys.add(key)
+            if key in value:
+                result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
+            else:
+                result = child_a(child_schema, location_id + [key], state.new_state(key))
+            if result is not None:
+                structural.properties_parsed[key] = result
 
     # --- required -------------------------------------------------------------------------------------
     # A required key is satisfied either by being present or by having been materialised from a default

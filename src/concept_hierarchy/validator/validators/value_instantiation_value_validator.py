@@ -11,8 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from contextlib import contextmanager
+from typing import Iterator
 
-from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
+from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext
+from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     ExpressionProvenance,
@@ -30,7 +33,14 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     NonStructureConstraintFormula,
     TemplateConstraintFormula,
 )
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.type_template_variables.template_substitution import substitute
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    TYPE_VALUE_IS_INSTANCE_CHECK,
+    ConceptHierarchyTemplateArgument,
+    Instantiated,
+    InstantiatedType,
+    TypeValue,
+)
 from concept_hierarchy.data.utils import MISSING
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
     TemplateContextDeterminator,
@@ -179,3 +189,37 @@ class ValueValidator(ValueInstantiationContext):
             constraint, value, template_context, self.context.type_application_constraints_validator, {}, location_id
         )
         return errors == []
+
+    def parse_type(
+        self,
+        type_candidate: str,
+        template_substitution: dict[str, ConceptHierarchyTemplateArgument],
+        location_id: LocationId,
+    ) -> tuple[InstantiatedType | None, list[ConceptHierarchyError]]:
+        try:
+            res = parse_convert_type_in_template_context(type_candidate, self.context.type_validator, location_id)
+            if not isinstance(res, Instantiated):
+                res = substitute(
+                    res,
+                    template_substitution,
+                    self.context.template_context,
+                    TemplateContext("global"),
+                    self.context.type_application_constraints_validator,
+                    location_id,
+                )
+                assert isinstance(res, TYPE_VALUE_IS_INSTANCE_CHECK)
+            return res, []
+        except ConceptHierarchyError as e:
+            return None, [e]
+
+    @contextmanager
+    def replace_variable_scope_for_custom_function(self, new_variables: dict[str, TypeValue]) -> Iterator[None]:
+        previous = self.context.variable_context
+        assert previous is not None, "there is no variable context to scope"
+        # Frame 0 is the global variables: those stay; every frame above them is dropped for the duration.
+        globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
+        self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(new_variables)]))
+        try:
+            yield
+        finally:
+            self.context.set_variable_context(previous)
