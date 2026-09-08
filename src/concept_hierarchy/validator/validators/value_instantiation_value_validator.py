@@ -120,13 +120,12 @@ class ValueValidator(ValueInstantiationContext):
                     part=PathPart.KEY,
                 )
             ]
-        if not is_function_subtype:
-            # The one case the expression parser reports nothing for, because there it simply means "try
-            # `Narrow` instead". Here there is no other alternative: only an evaluation may stand.
+        if len(expressions) == 0:
+            # This is the case where the type is not a Function; normally, the `Narrow` expression check would follow.
+            # But here, there is no other alternative: only an evaluation may stand.
             return None, [
                 CHSemanticError(
-                    f"{function_name!r} names {function_type}, which is not a Function, so it can not be "
-                    f"evaluated here!",
+                    f"{function_type!r} (of concept {function_name}) is not a Function; it can not be evaluated here!",
                     location_id=arguments_location_id,
                     part=PathPart.KEY,
                 )

@@ -193,7 +193,7 @@ class TestTheKeyMustNameAFunction:
 
     def test_a_key_naming_a_type_that_is_not_a_function_is_rejected(self):
         text = rejection({"p": {"FunctionComposition": {"Leaf": {}}}})
-        assert "'Leaf' names Leaf, which is not a Function" in text
+        assert "Leaf (of concept Leaf) is not a Function; it can not be evaluated here" in text
 
     def test_a_key_naming_nothing_at_all_is_rejected(self):
         text = rejection({"p": {"FunctionComposition": {"NoSuchThing": {}}}})
@@ -234,7 +234,7 @@ class TestInvalidEvaluationsAreRecordedNotRaised:
 
     def test_an_abstract_key(self):
         text = rejection({"p": {"FunctionComposition": {"ValueDomain": {}}}})
-        assert "is an abstract type" in text
+        assert "ValueDomain is an abstract type, so it can not be used in an expression value" in text
 
 
 # ==================================================================================================
