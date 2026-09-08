@@ -95,7 +95,7 @@ class ValueValidator(ValueInstantiationContext):
         # Where the arguments are, which is where everything this method reports belongs: the key error is
         # about that key, and the evaluation is the value under it.
         arguments_location_id = location_id + [function_name]
-        expressions, function_type, is_function_subtype = parse_function_evaluation_expression(
+        expressions, function_type, is_function_subtype, _ = parse_function_evaluation_expression(
             function_name,
             arguments,
             None,  # no expected result type!
@@ -104,7 +104,7 @@ class ValueValidator(ValueInstantiationContext):
             # The whole point of the call: parse and check the argument expressions.
             recursively_parse=True,
             parse_template_expressions_without_type_checks=False,
-            is_function_evaluation=True,
+            force_function_evaluation_interpretation=None,  # whether the "isFunctionEvaluation" keyword was present
             # The caller's half of the protocol. The expression parser's version additionally asserts that
             # the expected type is a `TypeValue`, which is of no use to a caller that has none.
             ensure_expression_invariant=lambda produced, _expected: len(produced) == 1,

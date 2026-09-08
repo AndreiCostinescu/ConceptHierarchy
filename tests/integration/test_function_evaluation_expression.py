@@ -60,7 +60,7 @@ from concept_hierarchy.data.expressions.subexpressions import (
 )
 from concept_hierarchy.data.parsers.expression_parser import parse_expression, parse_function_evaluation_expression
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
-from concept_hierarchy.errors import ConceptHierarchyError
+from concept_hierarchy.errors import ConceptHierarchyError, LocationId
 from concept_hierarchy.validator.expression_checks import ill_formed_parts, invalid_expression_error
 from tests.integration.test_expression_parsing import build_hierarchy, check_concepts, check_hierarchy
 from tests.integration.test_function_default_arguments import GROUND, add_like, function
@@ -168,17 +168,17 @@ def parse_evaluation(
     asserts on ``expr_type``, which a caller passing ``None`` cannot use.
     """
     resolved_site_type = (
-        context.expression_parser_validator.create_instantiated_type("Integer", [])
+        context.expression_parser_validator.create_instantiated_type("Integer", LocationId())
         if site_type is _SITE_TYPE_UNSET
         else site_type
     )
     attempts: list[ExpressionAttempt] = []
-    expressions, key_type, is_function_subtype = parse_function_evaluation_expression(
+    expressions, key_type, is_function_subtype, _ = parse_function_evaluation_expression(
         key,
         value,
         resolved_site_type,
         context.expression_parser_validator,
-        [],
+        LocationId(),
         recursively_parse,
         False,
         is_function_evaluation,
@@ -207,7 +207,7 @@ class TestTheReturnedTriple:
         parsed = parse_evaluation(context, "NoSuchConcept", {"arg1": 1})
         assert parsed.expressions == []
         assert parsed.key_type is None
-        assert parsed.is_function_subtype is True, "no type was resolved, so nothing contradicts it"
+        assert parsed.is_function_subtype is False, "no type was resolved, so nothing contradicts or confirms it"
 
     def test_a_key_that_is_not_a_type_records_both_alternatives_as_impossible(self, context):
         """
