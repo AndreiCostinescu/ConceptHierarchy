@@ -18,7 +18,6 @@ from concept_hierarchy.data.concept_hierarchy import (
     DomainConceptData,
     FunctionData,
     GlobalVariableData,
-    TypeData,
     ValueDomainData,
 )
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext
@@ -33,9 +32,11 @@ from concept_hierarchy.data.expressions.subexpressions import (
 )
 from concept_hierarchy.data.parsers.expression_parser import get_expression_type, parse_expression
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, frozendict
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    DomainConceptDefinition,
+    FunctionDefinitionKeywords,
+)
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
-from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.errors import CHSemanticError, LocationId, PathPart
 
@@ -113,30 +114,116 @@ def check_expressions_in_domain_concept_definition(
         - initialization function procedure
         - consolidation function procedure
     """
-    pass
+    context.set_template_context(TemplateContext(c.name))
 
+    prev_var_context = context.variable_context
+    # add properties and functions to available variables
+    domain_concept_vars: dict[str, TypeValue] = {}
+    for prop_name, prop_type in datum.property_types.items():
+        domain_concept_vars[prop_name] = prop_type
+    for func_name, func_type in datum.function_types.items():
+        domain_concept_vars[func_name] = func_type
+    base_variable_context = prev_var_context.add_variables(domain_concept_vars)
 
-def check_expressions_in_hidden_implementation_definition(
-    c: HiddenImplementationDefinition, datum: TypeData, context: ConceptHierarchyContext
-):
-    """No expressions in HiddenImplementationDefinitions."""
-    pass
+    variable_context_with_instance, instance_type_name = None, f"Instance<{c.name}>"
+    if context.ch.is_concept("Instance"):
+        instance_type = context.expression_parser_validator.create_instantiated_type(
+            instance_type_name, c.location_of(c.name)
+        )
+        variable_context_with_instance = base_variable_context.add_variable("instance", instance_type)
+
+    function_composition_type = None
+    if context.ch.is_concept("FunctionComposition"):
+        function_composition_type = context.expression_parser_validator.create_instantiated_type(
+            "FunctionComposition", c.location_of(c.name)
+        )
+    custom_function_type = None
+    if context.ch.is_concept(DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions):
+        custom_function_type = context.expression_parser_validator.create_instantiated_type(
+            DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions, c.location_of(c.name)
+        )
+
+    context.variable_context = base_variable_context
+
+    functions: dict[str, Expression] = {}
+    for func_name, func_def in c.functions.items():
+        f_def_location_id = c.location_of("functions", func_name)
+        if custom_function_type is None:
+            raise CHSemanticError(
+                "DomainConcept functions are written as CustomFunction expressions, but the CustomFunction concept was "
+                "not defined in this hierarchy.",
+                location_id=f_def_location_id,
+            )
+        if FunctionDefinitionKeywords.DEFAULT not in func_def:
+            continue
+        if not func_def[FunctionDefinitionKeywords.STATIC]:
+            # with property/function names and the instance variable
+            context.variable_context = variable_context_with_instance
+        else:
+            # without the instance variable and without (implicit) property/function names as variables!
+            context.variable_context = prev_var_context
+        expr_res = parse_expression(
+            func_def[FunctionDefinitionKeywords.DEFAULT],
+            custom_function_type,
+            FunctionArgumentProvenance.ANY,
+            FunctionArgumentAccessor.GET,
+            context.expression_parser_validator,
+            f_def_location_id,
+        )
+        if not expr_res.is_valid:
+            raise invalid_expression_error(expr_res, f_def_location_id)
+        functions[func_name] = expr_res
+    datum.functions = frozendict(functions)
+
+    # the variable context is checked inside the "management"-parsing loop
+    if variable_context_with_instance is not None:
+        context.variable_context = variable_context_with_instance
+    management_functions: dict[str, Expression] = {}
+    for management_function_name, management_function_def in c.management.items():
+        management_f_location_id = c.location_of("management", management_function_name)
+        if function_composition_type is None:
+            raise CHSemanticError(
+                "Concept management functions are written as FunctionComposition expressions, "
+                "but the FunctionComposition concept was not defined in this hierarchy!",
+                location_id=management_f_location_id,
+            )
+        if variable_context_with_instance is None:
+            raise CHSemanticError(
+                f'Concept management functions are written as FunctionComposition expressions that have the "instance"'
+                f" as an implicit variable of type {instance_type_name}. However, the Instance-concept is not defined "
+                f"in the hierarchy! Please define the Instance-concept to define management functions!",
+                location_id=management_f_location_id,
+            )
+        expr_res = parse_expression(
+            management_function_def,
+            function_composition_type,
+            FunctionArgumentProvenance.ANY,
+            FunctionArgumentAccessor.GET,
+            context.expression_parser_validator,
+            management_f_location_id,
+        )
+        if not expr_res.is_valid:
+            raise invalid_expression_error(expr_res, management_f_location_id)
+        management_functions[management_function_name] = expr_res
+    datum.management = frozendict(management_functions)
+
+    context.variable_context = prev_var_context
+    context.reset_template_context()
 
 
 def check_expressions_in_value_domain_definition(
     c: ValueDomainDefinition, datum: ValueDomainData, context: ConceptHierarchyContext
 ):
-    """
-    Check default values of value domain instantiations (plus type-check value domain instantiations themselves)
-    """
-    pass
+    """No expressions to check (default values of instantiation-schemas were already processed)."""
+    return
 
 
 def check_expressions_in_function_definition(
     c: FunctionDefinition, datum: FunctionData, context: ConceptHierarchyContext
 ):
     """
-    Check Function evaluation default argument values, variations, procedure, and inversions
+    Function evaluation default argument values were already checked.
+    Remaining: Function variations, procedure, and inversions
 
     :param c: Function concept for which to check expressions
     :param datum: the output data container
@@ -532,11 +619,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         context.pop_last_variable_stack_frame()
         context.reset_template_context()
 
-    # Second, process template types
-    for c_name, c in context.ch.concepts.items():
-        if isinstance(c, HiddenImplementationDefinition):
-            check_expressions_in_hidden_implementation_definition(c, context.model.value_domains[c_name], context)
-    # Then, check types in the Concept Hierarchy (property default values, Function argument default values, etc.)
+    # Check types in the Concept Hierarchy (property default values, Function argument default values, etc.)
     for c_name, c in context.ch.concepts.items():
         if isinstance(c, DomainConceptDefinition):
             check_expressions_in_domain_concept_definition(c, context.model.domain_concepts[c_name], context)
