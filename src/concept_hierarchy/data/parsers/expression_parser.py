@@ -1707,14 +1707,13 @@ def _check_function_return(
     f_template_context: TemplateContext,
     template_substitution: dict[str, ConceptHierarchyTemplateArgument],
     location_id: LocationId,
-) -> tuple[TypeValue | None, bool | None, bool | None, bool]:
+) -> tuple[TypeValue | None, bool | None, bool | None, bool] | IllFormedExpression:
     expr_template_context = validator.get_current_template_context()
     function_return = validator.get_function_return_interface(f_type.clean_name)
     if function_return is None and expr_type is not None:
-        raise CHSemanticError(
-            f"Function {f_type.full_name} does not return anything; expected a return type of {expr_type}!",
-            location_id=location_id,
-            part=PathPart.KEY,
+        reason = f"Function {f_type.full_name} does not return anything; expected a return type of {expr_type}!"
+        return IllFormedExpression(
+            reason, (ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=f_type),)
         )
     if function_return is None:
         return None, None, None, True
@@ -1824,9 +1823,14 @@ def parse_function_evaluation_expression(
         f_substitution_mapping[t_arg_name] = t_arg_val
 
     # check function result type (if any)
-    function_return_type, is_result_modifiable, is_result_addressable, function_subtype_check = _check_function_return(
+    res_of_check_return = _check_function_return(
         key_type, expr_type, validator, f_template_context, f_substitution_mapping, f_location_id
     )
+    if isinstance(res_of_check_return, IllFormedExpression):
+        expressions_res.append(res_of_check_return)
+        return expressions_res, key_type, True, False
+
+    function_return_type, is_result_modifiable, is_result_addressable, function_subtype_check = res_of_check_return
     if not function_subtype_check:
         reason = f"Function result type {function_return_type} is not a subtype of {expr_type}"
         attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
