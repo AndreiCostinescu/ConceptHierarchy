@@ -24,7 +24,7 @@ from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
-    FunctionEvaluationReading,
+    FunctionInterpretation,
     FunctionResultAccessor,
     ValueDomainArgumentProvenance,
 )
@@ -273,7 +273,7 @@ class ExpressionValidator(ExpressionParserValidator):
         location_id: LocationId,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
-        function_evaluation_reading: FunctionEvaluationReading,
+        function_interpretation: FunctionInterpretation,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
         return parse_value(
             value,
@@ -282,7 +282,7 @@ class ExpressionValidator(ExpressionParserValidator):
             location_id,
             template_substitution,
             expansion_depth,
-            function_evaluation_reading,
+            function_interpretation,
         )
 
     def register_default_site(

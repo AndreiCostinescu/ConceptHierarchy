@@ -21,7 +21,7 @@ from concept_hierarchy.data.expressions.expression_utils import (
     ExpressionProvenance,
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
-    FunctionEvaluationReading,
+    FunctionInterpretation,
     ValueDomainArgumentProvenance,
 )
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedValue
@@ -63,7 +63,7 @@ class ValueValidator(ValueInstantiationContext):
         location_id: LocationId,
         template_substitution: dict | None,
         expansion_depth: int,
-        function_evaluation_reading: FunctionEvaluationReading,
+        function_interpretation: FunctionInterpretation,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         expr = parse_expression(
             value,
@@ -74,7 +74,7 @@ class ValueValidator(ValueInstantiationContext):
             location_id,
             template_substitution=template_substitution,
             expansion_depth=expansion_depth,
-            function_evaluation_reading=function_evaluation_reading,
+            function_interpretation=function_interpretation,
         )
         if expr.is_valid:
             return expr, []

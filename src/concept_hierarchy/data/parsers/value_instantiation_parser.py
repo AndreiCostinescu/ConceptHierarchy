@@ -86,7 +86,11 @@ from typing import Callable
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression import Expression
-from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance, FunctionEvaluationReading
+from concept_hierarchy.data.expressions.expression_utils import (
+    ExpressionProvenance,
+    FunctionInterpretation,
+    split_function_interpretation_marker,
+)
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural, ParsedValue
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
@@ -124,7 +128,7 @@ class ValueInstantiationContext(ABC):
         location_id: LocationId,
         template_substitution: dict | None,
         expansion_depth: int,
-        function_evaluation_reading: FunctionEvaluationReading,
+        function_interpretation: FunctionInterpretation,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         """Parse and validate ``value`` as an expression of ``custom_type``.
 
@@ -247,9 +251,9 @@ class _State:
     but the shorthand *is* the value, so it sits at this location, while ``procedure`` sits at the "properties" key.
     A full trace of the walk would answer the same question; but the root alone is enough for it.
     """
-    function_evaluation_reading_at: LocationId | None = None
-    """Where `function_evaluation_reading` applies; a different location is a different value."""
-    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE
+    function_interpretation_at: LocationId | None = None
+    """Where `function_interpretation` applies; a different location is a different value."""
+    function_interpretation: FunctionInterpretation = FunctionInterpretation.UNSPECIFIED
     upper_level_object_key: str | None = None
 
     def record(self, err: ConceptHierarchyError) -> None:
@@ -276,7 +280,7 @@ def parse_value(
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
-    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE,
+    function_interpretation: FunctionInterpretation = FunctionInterpretation.UNSPECIFIED,
     collect_all_errors: bool = True,
 ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
     """Parse ``value`` against ``node``.
@@ -291,7 +295,7 @@ def parse_value(
             in this value and which must be substituted in the value to do a complete check of the value.
         expansion_depth: how many default-instantiation-expressions were triggered.
             This detects a possibly infinite expansion cycle.
-        function_evaluation_reading: What an enclosing expression site already decided about reading this
+        function_interpretation: What an enclosing expression site already decided about reading this
             value as a Function evaluation; honored at the custom-type leaf sitting at ``location_id``.
         collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
 
@@ -310,8 +314,8 @@ def parse_value(
         template_substitution,
         expansion_depth,
         location_id,
-        None if function_evaluation_reading is FunctionEvaluationReading.FREE else location_id,
-        function_evaluation_reading,
+        None if function_interpretation is FunctionInterpretation.UNSPECIFIED else location_id,
+        function_interpretation,
     )
     result: ParsedValue | None = None
     try:
@@ -333,7 +337,7 @@ def validate_value(
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
-    function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE,
+    function_interpretation: FunctionInterpretation = FunctionInterpretation.UNSPECIFIED,
     collect_all_errors: bool = True,
 ) -> list[ConceptHierarchyError]:
     """Error projection of :func:`parse_value`, for call sites that discard the result tree.
@@ -347,7 +351,7 @@ def validate_value(
         location_id,
         template_substitution,
         expansion_depth,
-        function_evaluation_reading,
+        function_interpretation,
         collect_all_errors,
     )
     return errors
@@ -455,9 +459,9 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             state.record(err)
     if not used_default:
         reading = (
-            state.function_evaluation_reading
-            if location_id == state.function_evaluation_reading_at
-            else FunctionEvaluationReading.FREE
+            state.function_interpretation
+            if location_id == state.function_interpretation_at
+            else FunctionInterpretation.UNSPECIFIED
         )
 
         def _parse_expr():
@@ -711,9 +715,9 @@ def _parse_object(
             # object's keys that are checked; there is no MISSING case for which a default value/expression can be used.
             for key in value:
                 reading = (
-                    state.function_evaluation_reading
-                    if location_id == state.function_evaluation_reading_at
-                    else FunctionEvaluationReading.FREE
+                    state.function_interpretation
+                    if location_id == state.function_interpretation_at
+                    else FunctionInterpretation.UNSPECIFIED
                 )
                 _, errs = state.context.parse_value_against_custom_type_expression(
                     pn.custom_type,
@@ -783,8 +787,11 @@ def _parse_evaluation_arguments_of_function(
     # parser appends the key itself, to the convention every expression caller uses. Handing it the
     # location it is standing on spelled the key twice: `.../procedure/Condition/Condition/condition`.
     assert location_id and str(location_id[-1]) == state.upper_level_object_key, (location_id, state)
+    # The key names the Function whose arguments these are, so an interpretation marker on it is not part of the name.
+    # The *location* keeps the marker -- it is what the author wrote.
+    _, function_name = split_function_interpretation_marker(state.upper_level_object_key)
     parsed, errors = state.context.parse_function_evaluation(
-        state.upper_level_object_key,
+        function_name,
         value,
         node,
         location_id[:-1],
@@ -856,7 +863,12 @@ def _parse_string(node: CHSchemaNode, value: str, location_id: LocationId, rec, 
     # node.custom_string_format and node.custom_string_constraint must be checked.
     if node.custom_string_format is not None:
         assert node.custom_string_format in {"Concept", "Type"}
-        value_to_check = value[2:] if value.startswith("s:") else value
+        # A `format: "Type"` string may be an expression key.
+        # `FunctionComposition` constrains its `propertyNames` to a Type,
+        # so the possible marker must be stripper to check whether the remaining key is a Type.
+        marker, value_to_check = split_function_interpretation_marker(value)
+        if marker is None and value_to_check.startswith("s:"):
+            value_to_check = value_to_check[2:]
         if node.custom_string_format == "Concept":
             if not state.context.is_concept(value_to_check):
                 rec(

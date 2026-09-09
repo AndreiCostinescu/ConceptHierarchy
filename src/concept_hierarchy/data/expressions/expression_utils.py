@@ -42,41 +42,109 @@ class FunctionArgumentAccessor(Enum):
     GET_MOD = "GetModify"
 
 
-class FunctionEvaluationReading(Enum):
+class FunctionInterpretation(Enum):
     """
-    What an enclosing expression site has already decided about reading one JSON object as a `FEval`.
+    Which of its readings a single-content-key JSON object keyed by a _Function_ has been decided to have.
 
-    Carried from the expression parser into an instantiation schema and back out at each custom-type leaf
-    (`documentation/TODO_FUNCTION_EVALUATION_VS_COMPOSITION.md`). The verdict has to travel because a
-    schema branch re-enters the expression parser with the *branch's* type: inside
-    ``FunctionCompositionRes<T>``'s ``oneOf: ["T", "FunctionComposition"]`` the ``"T"`` branch is asked
-    about a `Boolean`, where nothing is left of the fact that the site was a `FunctionComposition`.
+    A `{F: args}` object has three: the **evaluation** of `F`, a `FunctionComposition` **composing** `F`,
+    and a `Narrow` -- the **instantiation** of `F`, its value. Which one is meant is decided at the
+    expression site, and the decision then has to *travel*, because a schema branch re-enters the
+    expression parser with the *branch's* type: inside ``FunctionCompositionRes<T>``'s
+    ``oneOf: ["T", "FunctionComposition"]`` the ``"T"`` branch is asked about a `Boolean`, where nothing is
+    left of the fact that the site was a `FunctionComposition`.
 
-    Two of the three states are decisions, not hints, and a leaf that cannot honor one must fail rather
-    than fall back -- that is what makes the ``oneOf`` resolve to exactly one branch.
+    Carried from the expression parser into an instantiation schema and back out at each custom-type leaf;
+    see `documentation/TODO_FUNCTION_EVALUATION_VS_COMPOSITION.md`. Every member but `UNSPECIFIED` is a
+    decision, not a hint, and a leaf that cannot honor one must **fail** rather than fall back -- that is
+    what makes the ``oneOf`` resolve to exactly one branch.
     """
 
-    FREE = "free"
+    UNSPECIFIED = "unspecified"
     """No decision has been made; the site's own type and keyword decide, as usual."""
 
     RULED_OUT = "ruled out"
     """
-    This object is *not* a Function evaluation.
+    This object is *not* a Function evaluation -- but *which* of the other two it is, is not said.
 
     Written as ``"isFunctionEvaluation": false``, or implied by a site whose type is a
     `FunctionComposition` and that carries no keyword. A leaf must not read the object as a `FEval`.
+
+    **This member is the conflation, and it is the next thing to split.** "Not an evaluation" cannot choose
+    between a composition and an instantiation, which is why an argument-less Function at a
+    ``FunctionCompositionRes<T>`` site whose ``T`` admits a Function type matches *both* branches and no
+    keyword can separate them -- see `TODO_FUNCTION_INTERPRETATION_MARKER.md` §1 and
+    `TestNarrowVersusCompositionIsStillAmbiguous`. Splitting it into ``COMPOSITION`` and ``INSTANTIATION``
+    needs the `fComp:` / `fInst:` markers to exist first, because only they can say which was meant; §5 of
+    that plan says how each present-day producer of this value has to be re-decided.
     """
 
-    IS_EVALUATION = "is an evaluation"
+    COMPOSITION = "composition"
+    """
+    This object is a `FunctionComposition` **composing** `K` -- not a call of it, and not its value.
+
+    Written as ``fComp:``. Only an `Inst` whose type is a `FunctionComposition` may produce it; `Narrow`
+    is off, which is what separates it from `INSTANTIATION` where both would otherwise match.
+    """
+
+    INSTANTIATION = "instantiation"
+    """
+    This object is the _Function_ **value** -- a `Narrow` to `K`.
+
+    Written as ``fInst:``. Only a `Narrow` may produce it. This is the reading that never has a default:
+    at every site one of the other two is what an unmarked key means, which is why
+    ``isFunctionEvaluation: false`` could never select it on its own.
+    """
+
+    EVALUATION = "evaluation"
     """
     This object *is* a Function evaluation, and could not be one at the site itself.
 
     Written as ``"isFunctionEvaluation": true`` where ``res(K)`` is not a subtype of the site's type --
-    always so at a `FunctionComposition` site (because no Function returns a FunctionComposition). 
-    The reading has to be consumed by a custom-type leaf of the site's instantiation schema whose own type 
-    ``res(K)`` does satisfy, and every other reading of the object is off the table: 
-    a leaf that cannot evaluate it fails, and no `Narrow`, `Var`, `Inst` or default serialization may stand in for it.
+    always so at a `FunctionComposition` site, because no Function returns a `FunctionComposition`. The
+    reading has to be consumed by a custom-type leaf of the site's instantiation schema whose own type
+    ``res(K)`` does satisfy, and every other reading of the object is off the table: a leaf that cannot
+    evaluate it fails, and no `Narrow`, `Var`, `Inst` or default serialization may stand in for it.
     """
+
+
+FUNCTION_INTERPRETATION_MARKERS: dict[str, "FunctionInterpretation"] = {
+    "fEval": FunctionInterpretation.EVALUATION,
+    "fComp": FunctionInterpretation.COMPOSITION,
+    "fInst": FunctionInterpretation.INSTANTIATION,
+}
+"""
+The marker a key may carry to say which of its three readings it has.
+
+One entry per reading, and the only place the three words are written down. `RULED_OUT` is deliberately
+not among them: it is what ``isFunctionEvaluation: false`` still means -- "not an evaluation", without
+saying which of the other two -- and a marker never needs to be that vague.
+"""
+
+
+def split_function_interpretation_marker(key: str) -> tuple["FunctionInterpretation | None", str]:
+    """
+    Split a leading ``fEval:`` / ``fComp:`` / ``fInst:`` marker off an expression key.
+
+    Returns ``(interpretation, key_without_the_marker)``, and ``(None, key)`` when there is no marker.
+
+    **The first colon only.** Everything after it is the key, however many colons it holds: a type
+    application may carry a *string literal* template argument, which is arbitrary text and may contain
+    colons -- including these very words. ``Tagged<"fEval:x">`` is a valid application today, and
+    splitting anywhere but the first colon, or refusing keys with more than one, would break it.
+
+    There is no competing reading of a leading ``word:``. A type application's name is alphanumeric plus
+    ``_``, so it cannot contain a colon; ``s:`` marks a `String` *value* and never reaches a type position;
+    and the qualified-variable form ``Add:T`` is not a valid type application. These three are therefore
+    **markers, not reserved concept names** -- nothing ever resolves ``fEval`` as a type, so a concept of
+    that name would not collide.
+    """
+    prefix, separator, remainder = key.partition(":")
+    if not separator:
+        return None, key
+    interpretation = FUNCTION_INTERPRETATION_MARKERS.get(prefix)
+    if interpretation is None:
+        return None, key
+    return interpretation, remainder
 
 
 class ExpressionDefinition(Enum):
