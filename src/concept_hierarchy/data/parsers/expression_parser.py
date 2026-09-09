@@ -1874,7 +1874,19 @@ def parse_function_evaluation_expression(
             attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason))
             return expressions_res, None, False, FunctionEvaluationReading.FREE
         raise e
-    if not isinstance(key_type, TemplateVariable) and validator.is_type_abstract(key_type):
+    if not isinstance(key_type, TemplateVariable) and not validator.is_a_subtype_of_b(
+        key_type, validator.create_instantiated_type("ValueDomain", f_location_id), f_location_id
+    ):
+        reason = (
+            f"{key_type} is not a ValueDomain Type. It seems to be a DomainConcept. "
+            f"Only a ValueDomain Type can be used in an expression value!"
+        )
+        attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
+        attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason, tried_type=key_type))
+        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
+        # `is_function_subtype` is not decided yet and is not consulted => return False (at that position)
+        return expressions_res, None, False, FunctionEvaluationReading.FREE
+    elif not isinstance(key_type, TemplateVariable) and validator.is_type_abstract(key_type):
         reason = f"{key_type} is an abstract type, so it can not be used in an expression value"
         attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
         attempts.append(ExpressionAttempt(ExpressionKind.NARROW, reason, tried_type=key_type))
