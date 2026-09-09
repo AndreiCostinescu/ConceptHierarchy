@@ -35,6 +35,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, froz
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
     DomainConceptDefinition,
     FunctionDefinitionKeywords,
+    PropertyDefinitionKeywords,
 )
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
@@ -117,12 +118,16 @@ def check_expressions_in_domain_concept_definition(
     context.set_template_context(TemplateContext(c.name))
 
     prev_var_context = context.variable_context
-    # add properties and functions to available variables
+    # add (inherited and defined) properties and functions to available variables
     domain_concept_vars: dict[str, TypeValue] = {}
-    for prop_name, prop_type in datum.property_types.items():
-        domain_concept_vars[prop_name] = prop_type
-    for func_name, func_type in datum.function_types.items():
-        domain_concept_vars[func_name] = func_type
+    for prop_name, prop_def_data in datum.available_property_data.items():
+        domain_concept_vars[prop_name] = context.model.domain_concepts[
+            prop_def_data[PropertyDefinitionKeywords.VALUE_DOMAIN]
+        ].property_types[prop_name]
+    for func_name, func_def_data in datum.available_function_data.items():
+        domain_concept_vars[func_name] = context.model.domain_concepts[
+            func_def_data[FunctionDefinitionKeywords.VALUE_DOMAIN]
+        ].function_types[func_name]
     base_variable_context = prev_var_context.add_variables(domain_concept_vars)
 
     variable_context_with_instance, instance_type_name = None, f"Instance<{c.name}>"
