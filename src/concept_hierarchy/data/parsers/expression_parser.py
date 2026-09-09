@@ -2006,21 +2006,19 @@ def parse_function_evaluation_expression(
                     sub_scope_var_location_id,
                 )
                 if f_arg_sub_scope_var_type[1]:
-                    if f_arg_sub_scope_var_name[1]:
-                        assert f_arg_sub_scope_var_name in f_args or f_arg_sub_scope_var_name in applied_defaults
-                        var_value = f_args.get(
-                            f_arg_sub_scope_var_name, applied_defaults.get(f_arg_sub_scope_var_name, None)
+                    assert f_arg_sub_scope_var_name in f_args or f_arg_sub_scope_var_name in applied_defaults
+                    var_value = f_args.get(
+                        f_arg_sub_scope_var_name, applied_defaults.get(f_arg_sub_scope_var_name, None)
+                    )
+                    assert var_value is not None and isinstance(var_value, Expression)
+                    if not isinstance(var_value.value, InstExpression) or not isinstance(var_value.unparsed, str):
+                        raise NotImplementedError(
+                            "Did not implement setting a dynamic variable name in argument subscope..."
                         )
-                        assert var_value is not None and isinstance(var_value, Expression)
-                        if not isinstance(var_value.value, InstExpression):
-                            raise NotImplementedError(
-                                "Did not implement setting a dynamic variable name in argument subscope..."
-                            )
-                        assert isinstance(var_value.unparsed, str)
-                        if isinstance(var_value.value, DefaultSerializationExpression):
-                            f_arg_sub_scope_var_name = var_value.unparsed
-                        else:
-                            f_arg_sub_scope_var_name = var_value.unparsed[2:]  # strip the "s:" prefix
+                    if isinstance(var_value.value, DefaultSerializationExpression):
+                        f_arg_sub_scope_var_name = var_value.unparsed
+                    else:
+                        f_arg_sub_scope_var_name = var_value.unparsed[2:]  # strip the "s:" prefix
                 f_arg_sub_scope_vars[f_arg_sub_scope_var_name] = subst_f_arg_sub_scope_var_type
             with validator.function_argument_scope(f_arg_sub_scope_vars, None, append=True):
                 arg_expr = parse_expression(
@@ -2143,9 +2141,8 @@ def parse_function_evaluation_expression(
                 assert var_name in f_args or var_name in applied_defaults
                 var_value = f_args.get(var_name, applied_defaults.get(var_name, None))
                 assert var_value is not None and isinstance(var_value, Expression)
-                if not isinstance(var_value.value, InstExpression):
+                if not isinstance(var_value.value, InstExpression) or not isinstance(var_value.unparsed, str):
                     raise NotImplementedError("Did not implement setting a dynamic variable name...")
-                assert isinstance(var_value.unparsed, str)
                 if isinstance(var_value.value, DefaultSerializationExpression):
                     var_name = var_value.unparsed
                 else:
