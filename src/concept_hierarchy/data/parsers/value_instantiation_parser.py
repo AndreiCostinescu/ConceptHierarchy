@@ -99,6 +99,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TypeValue,
 )
 from concept_hierarchy.data.utils import MISSING, StopValidation, record
+from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
 # ===========================================================================================================
@@ -236,6 +237,16 @@ class _State:
     template_substitution: dict | None = None
     """Carried to every custom-type leaf; see `ValueInstantiationContext.parse_value_against_custom_type_expression`."""
     expansion_depth: int = 0
+    root_location_id: LocationId | None = None
+    """
+    Where this ``parse_value`` started, so that a node can ask whether it *is* the value being parsed.
+
+    One question needs it: `CustomFunction`'s instantiation offers a bare `FunctionComposition` as a
+    shorthand for the whole function, and also declares a `FunctionComposition` at its ``procedure`` property.
+    Both are custom-type leaves owned by `CustomFunction` and are otherwise indistinguishable --
+    but the shorthand *is* the value, so it sits at this location, while ``procedure`` sits at the "properties" key.
+    A full trace of the walk would answer the same question; but the root alone is enough for it.
+    """
     function_evaluation_reading_at: LocationId | None = None
     """Where `function_evaluation_reading` applies; a different location is a different value."""
     function_evaluation_reading: FunctionEvaluationReading = FunctionEvaluationReading.FREE
@@ -298,6 +309,7 @@ def parse_value(
         collect_all_errors,
         template_substitution,
         expansion_depth,
+        location_id,
         None if function_evaluation_reading is FunctionEvaluationReading.FREE else location_id,
         function_evaluation_reading,
     )
@@ -447,15 +459,23 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             if location_id == state.function_evaluation_reading_at
             else FunctionEvaluationReading.FREE
         )
-        expression, errs = state.context.parse_value_against_custom_type_expression(
-            node.custom_type,
-            node.provenance,
-            value,
-            location_id,
-            state.template_substitution,
-            state.expansion_depth,
-            reading,
-        )
+
+        def _parse_expr():
+            return state.context.parse_value_against_custom_type_expression(
+                node.custom_type,
+                node.provenance,
+                value,
+                location_id,
+                state.template_substitution,
+                state.expansion_depth,
+                reading,
+            )
+
+        if _is_the_custom_function_shorthand(node, location_id, state):
+            with state.context.replace_variable_scope_for_custom_function({}):
+                expression, errs = _parse_expr()
+        else:
+            expression, errs = _parse_expr()
         for err in errs:
             local.append(err)
             state.record(err)
@@ -475,6 +495,21 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
 # ===========================================================================================================
 # Structural / composite node
 # ===========================================================================================================
+
+
+def _is_the_custom_function_shorthand(node: CHSchemaNode, location_id: LocationId, state: _State) -> bool:
+    """
+    Whether ``node`` is `CustomFunction`'s bare-`FunctionComposition` shorthand rather than its ``procedure``.
+
+    Both are custom-type leaves declared by `CustomFunction`; what separates them is position.
+    The shorthand is the whole value, so it stands at the root of this parse;
+    ``procedure`` is a property of the object form and stands one key below it.
+    """
+    return (
+        node.schema_owner == DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions
+        and state.root_location_id is not None
+        and location_id == state.root_location_id
+    )
 
 
 def _parse_structural(node: CHSchemaNode, value: object, location_id: LocationId, state: _State) -> ParsedStructural:
@@ -577,7 +612,9 @@ def _parse_object(
             )
 
     # --- properties -----------------------------------------------------------------------------------
-    if node.schema_owner == "CustomFunction" and all(x in node.properties for x in ["interface", "procedure"]):
+    if node.schema_owner == DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions and all(
+        x in node.properties for x in ["interface", "procedure"]
+    ):
         new_vars: dict[str, InstantiatedType] = {}
         # First process the `interface` (the prerequisite for the `procedure`'s variable scope) and then the `procedure`
         key = "interface"
