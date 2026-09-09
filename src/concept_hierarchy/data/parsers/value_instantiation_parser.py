@@ -566,7 +566,7 @@ def _parse_structural(node: CHSchemaNode, value: object, location_id: LocationId
 
     # --- oneOf (exactly one branch) --------------------------------------
     if node.one_of:
-        _parse_one_of(node, value, location_id, structural, rec, child_silent)
+        _parse_one_of(node, value, location_id, structural, rec, child_silent, state)
 
     # --- not -------------------------------------------------------------
     if node.not_ is not None:
@@ -974,7 +974,9 @@ def _parse_one_of(
         else:
             failed_branch_errors.extend(errs)
 
-    if len(matching) == 1:
+    # the state.template_substitution is None guards against the cases in which the schema is template dependent
+    # but processing of the value/schema is not being done with a ground instantiation!
+    if len(matching) == 1 or (len(matching) > 1 and node.is_template_dependent and state.template_substitution is None):
         structural.one_of_parsed = matching[0]
         return
 
