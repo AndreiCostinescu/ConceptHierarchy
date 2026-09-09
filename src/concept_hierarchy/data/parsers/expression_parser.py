@@ -46,7 +46,9 @@ from concept_hierarchy.data.expressions.subexpressions import (
     InstExpression,
     LiteralTemplateVariableValue,
     NarrowExpression,
+    PossibleFunctionEvaluationExpression,
     PossibleInstExpression,
+    PossibleNarrowExpression,
     PossibleVariableExpression,
     TemplateDependentExpression,
     Variable,
@@ -2086,6 +2088,21 @@ def parse_function_evaluation_expression(
         expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
         return expressions_res, key_type, True, FunctionInterpretation.UNSPECIFIED
 
+    # A key that is a bare template variable -- `{"T": {...}}` -- names no concept, so almost nothing about
+    # the evaluation can be decided: not which Function this is, not its interface, not whether its `res`
+    # fits the site. `_check_if_subtype(T, Function)` answers MAYBE and `SubtypeCheckResult.__bool__`
+    # treats only a definite NO as falsy, so control reaches here with `is_function_subtype` truthy -- and
+    # everything below needs a concept name (`get_template_context(key_type.clean_name)` asserted).
+    #
+    # The one thing that *is* decidable is the shape checked just above: a Function evaluation's value is
+    # an object of arguments, whatever the Function turns out to be. That much having held, the expression
+    # is recorded as *possible* and left for the grounded reparse, where `T` is substituted and the key
+    # names a real type. `PossibleFunctionEvaluationExpression` is template dependent and not fully
+    # parsed, which is exactly what "decide this later" means to `_ground_unsupplied_argument_defaults`.
+    if isinstance(key_type, TemplateVariable):
+        expressions_res.append(PossibleFunctionEvaluationExpression())
+        return expressions_res, key_type, True, FunctionInterpretation.UNSPECIFIED
+
     # create substitution mapping
     f_concept_name = key_type.clean_name
     f_substitution_mapping: dict[str, ConceptHierarchyTemplateArgument] = {}
@@ -2389,9 +2406,25 @@ def _parse_expression_of_json_object(
         # keyword decided nothing, which is exactly what `FREE` says.
         return expressions_res, FunctionInterpretation.UNSPECIFIED, True
 
-    if _check_if_subtype(validator, key_type, expr_type, expr_template_context, location_id):
+    # `COMPOSITION` says the object is a composition of `K`, and `EVALUATION` that it is a call of it --
+    # neither is the Function *value*, which is what a `Narrow` builds. Only `INSTANTIATION` and the two
+    # undecided states may take this branch, and that is what separates the two readings of an
+    # argument-less Function at a `FunctionCompositionRes<T>` site: they are otherwise identical JSON.
+    narrow_is_admissible = function_interpretation not in (
+        FunctionInterpretation.COMPOSITION,
+        FunctionInterpretation.EVALUATION,
+    )
+    if narrow_is_admissible and _check_if_subtype(validator, key_type, expr_type, expr_template_context, location_id):
         if not recursively_parse:
             expressions_res.append(NarrowExpression(None, key_type, key_type != expr_type))
+            if ensure_expression_invariant(expressions_res, expr_type):
+                return expressions_res, function_interpretation, True
+        elif isinstance(key_type, TemplateVariable):
+            # `T` names no concept, so there is no instantiation schema to check the value against and no
+            # `is_type_abstract` to ask -- the schema is whatever `T` turns out to be. The interpretation is still
+            # *possible*, though, so it is recorded as one rather than dropped: at a template-dependent
+            # site every interpretation the value could still have is kept, and the grounded reparse decides.
+            expressions_res.append(PossibleNarrowExpression(key_type))
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res, function_interpretation, True
         else:
