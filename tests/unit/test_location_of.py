@@ -90,6 +90,17 @@ model_data = {
                 }
             },
         },
+        "Instance": {
+            "directParents": ["InstanceBase"],
+            "data": {
+                "templateContext": {
+                    "order": ["AcceptConcepts...", "RejectConcepts..."],
+                    "AcceptConcepts": "And(Concept, Not(ValueDomain))",
+                    "RejectConcepts": "And(Concept, Not(ValueDomain))",
+                    "variadicGroupIdentifiers": {"AcceptConcepts": "", "RejectConcepts": "!"},
+                }
+            },
+        },
         "List": {
             "directParents": ["ValueDomain"],
             "data": {"templateContext": ["T"], "instantiation": {"type": "array", "items": "T"}},

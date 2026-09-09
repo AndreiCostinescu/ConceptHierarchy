@@ -162,6 +162,12 @@ def check_expressions_in_domain_concept_definition(
         if FunctionDefinitionKeywords.DEFAULT not in func_def:
             continue
         if not func_def[FunctionDefinitionKeywords.STATIC]:
+            if variable_context_with_instance is None:
+                raise CHSemanticError(
+                    'Non-static DomainConcept functions need the "instance" variable of type '
+                    "Instance<AcceptConcepts, RejectConcepts>; but that type is not defined in this hierarchy.",
+                    location_id=f_def_location_id,
+                )
             # with property/function names and the instance variable
             context.variable_context = variable_context_with_instance
         else:
