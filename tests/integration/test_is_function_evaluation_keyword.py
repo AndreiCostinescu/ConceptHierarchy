@@ -178,6 +178,16 @@ fixture that can show a malformed evaluation being rejected on its own merits ra
 leaf that would have taken it.
 """
 
+TAGGED = vd(
+    "Tagged",
+    {"type": "object", "additionalProperties": False, "required": ["v"], "properties": {"v": {"type": "Integer"}}},
+    template={"order": ["N"], "N": "Literal:string"},
+)
+"""
+A ValueDomain with a *string literal* template parameter, so its argument may contain anything -- colons
+included. ``Tagged<"fEval:x">`` is what makes first-colon splitting necessary for a key-prefix marker.
+"""
+
 CUSTOM_FUNCTION_INSTANTIATION = {
     "oneOf": [
         "FunctionComposition",
@@ -223,6 +233,9 @@ HOLDER = vd(
             "paired": {"type": "Paired"},
             "labelled": {"type": "Labelled"},
             "resLeaf": {"type": "FunctionCompositionRes<Leaf>"},
+            "resAnyValue": {"type": "FunctionCompositionRes<ValueDomain>"},
+            "resAnyFunction": {"type": "FunctionCompositionRes<Function>"},
+            "tagged": {"type": 'Tagged<"fEval:x">'},
             "cf": {"type": "CustomFunction"},
             "swallow": {"type": "Swallow"},
             "permissive": {"type": "Permissive"},
@@ -250,6 +263,7 @@ CONCEPTS = {
     **BOXY,
     **FLAGGED,
     **CUSTOM_FUNCTION,
+    **TAGGED,
     **STRUCTURAL,
     **SWALLOW,
     **PERMISSIVE,
@@ -1311,3 +1325,169 @@ class TestTheCommitmentMustBeHonoredNotMerelyMatched:
             )
         messages = " ".join(message for _, message in error_sites(excinfo.value))
         assert "committed to being a Function evaluation" in messages, messages[:400]
+
+
+# ==================================================================================================
+# 13. The ambiguity the keyword cannot express: Narrow versus composition
+# ==================================================================================================
+
+
+class TestNarrowVersusCompositionIsStillAmbiguous:
+    """
+    ``isFunctionEvaluation`` settles *evaluation versus not*. It has nothing to say about the other two
+    readings, and at a ``FunctionCompositionRes<T>`` whose ``T`` admits a Function type they collide:
+
+    * the ``"T"`` branch matches as a **Narrow** -- ``Nullary`` is a subtype of `ValueDomain` / `Function`,
+      and ``{}`` is exactly `Nullary`'s instantiation (a Function's default, ``maxProperties: 0``);
+    * the `FunctionComposition` branch matches as a **composition** of the same Function.
+
+    It takes an argument-less Function to collide, because the two readings need the same JSON: a Function
+    with arguments has a non-empty object, which its own instantiation refuses.
+
+    These are the tests behind the "a new keyword is needed" conclusion, and the ``false`` row is the one
+    worth keeping: the hint the parser prints at exactly this point recommends a keyword that cannot help.
+    """
+
+    ARGUMENTLESS = {"Nullary": {}}
+
+    def test_a_function_typed_t_collides(self):
+        error = rejection(at(resAnyFunction=dict(self.ARGUMENTLESS)))
+        assert "matches 2 schemas" in " ".join(m for _, m in error_sites(error))
+
+    def test_a_value_domain_typed_t_collides(self):
+        error = rejection(at(resAnyValue=dict(self.ARGUMENTLESS)))
+        assert "matches 2 schemas" in " ".join(m for _, m in error_sites(error))
+
+    def test_the_parser_prints_its_hint_here(self):
+        """The hint in `_parse_one_of` is live, not dead code -- this is the value that reaches it."""
+        error = rejection(at(resAnyFunction=dict(self.ARGUMENTLESS)))
+        assert "isFunctionEvaluation" in " ".join(m for _, m in error_sites(error))
+
+    def test_false_does_not_help_which_is_what_the_hint_recommends(self):
+        """
+        The heart of it. ``false`` removes the *evaluation* reading, and neither of the two that collided
+        is an evaluation -- so both still match and the same hint is printed again.
+        """
+        for key in ("resAnyFunction", "resAnyValue"):
+            error = rejection(at(**{key: {**self.ARGUMENTLESS, "isFunctionEvaluation": False}}))
+            messages = " ".join(m for _, m in error_sites(error))
+            assert "matches 2 schemas" in messages, f"{key}: {messages[:300]}"
+
+    def test_true_does_not_select_either_of_them_but_a_third_reading(self):
+        """
+        ``true`` resolves the ``oneOf``, but by switching to the *evaluation* -- a reading neither branch
+        offered. It therefore succeeds or fails on ``res(K)``, not on the collision: `Nullary` returns an
+        `Integer`, which is a `ValueDomain` but not a `Function`.
+        """
+        context = check(at(resAnyValue={**self.ARGUMENTLESS, "isFunctionEvaluation": True}))
+        assert oneof_branch(field(context, "resAnyValue")) == "ValueDomain"
+
+        error = rejection(at(resAnyFunction={**self.ARGUMENTLESS, "isFunctionEvaluation": True}))
+        messages = " ".join(m for _, m in error_sites(error))
+        assert "does not match any schema" in messages, messages[:300]
+
+    def test_a_function_with_arguments_does_not_collide(self):
+        """
+        The control that identifies what makes the collision: `Add`'s value is a non-empty object, which
+        `Add`'s own instantiation refuses, so only the composition branch can take it.
+        """
+        context = check(at(resAnyFunction={"Add": {"arg1": 1, "arg2": 2}}))
+        assert oneof_branch(field(context, "resAnyFunction")) == "FunctionComposition"
+
+    def test_a_narrow_of_a_non_function_type_still_does_not_collide(self):
+        """`Leaf` is not a Function, so the `FunctionComposition` branch cannot take it at all."""
+        context = check(at(resAnyValue={"Leaf": {}}))
+        assert field(context, "resAnyValue").is_valid
+
+
+# ==================================================================================================
+# 14. The grammar a key-prefix marker would rely on
+# ==================================================================================================
+
+
+class TestTheGrammarAKeyPrefixMarkerWouldRelyOn:
+    """
+    Two facts about ``:`` in a key position, pinned because a proposed marker --
+    ``{"fEval:Nullary": {}}`` / ``fComp:`` / ``fInst:``, in place of a sibling keyword
+    (`documentation/TODO_FUNCTION_INTERPRETATION_KEYWORD.md`) -- depends on both.
+
+    They point in opposite directions, which is the interesting part: the qualified-variable form is *not*
+    in the way, but a string literal is.
+    """
+
+    def test_a_qualified_template_variable_is_not_a_valid_expression_key(self):
+        """
+        ``Add:T`` is the ``templateContext.substitution`` syntax for disambiguating same-named variables
+        of several parameterised parents, and it is compiler-facing besides. It is not a type application,
+        so it cannot appear as the key of an expression -- which is why a reserved ``fEval:`` prefix would
+        not collide with it.
+        """
+        error = rejection(at(num={"Add:T": {"arg1": 1, "arg2": 2}}))
+        text = " ".join(m for _, m in error_sites(error))
+        assert '"Add:T" is not a concept or a template variable' in text, text[:300]
+
+    def test_the_same_holds_for_an_argument_less_function(self):
+        error = rejection(at(num={"Nullary:T": {}}))
+        text = " ".join(m for _, m in error_sites(error))
+        assert '"Nullary:T" is not a concept or a template variable' in text, text[:300]
+
+    def test_a_type_application_may_carry_a_colon_inside_a_string_literal_argument(self):
+        """
+        The other direction, and the reason a prefix must split on the **first** colon only: a literal
+        template argument is arbitrary text. This one contains a colon *and* the marker word.
+        """
+        context = check(at(tagged={"v": 1}))
+        assert field(context, "tagged").is_valid
+
+
+# ==================================================================================================
+# 15. What kind of type the key may name
+# ==================================================================================================
+
+
+TEMPLATED_ADD = function("AddT", {"arg1": ["T"], "arg2": ["T"], "res": "T"})
+"""``AddT<T: Numeric>``, so a key can be written *template-dependently* as ``AddT<T>``."""
+
+
+def with_defaulted_argument(default: object) -> dict:
+    """A templated Function whose argument default is ``default``, parsed with ``T`` in scope."""
+    return {**TEMPLATED_ADD, **function("Wrapper", {"a": ["T"], "res": "T"}, defaults={"a": default})}
+
+
+def check_default(default: object) -> ConceptHierarchyContext:
+    return check_hierarchy(build_hierarchy({**CONCEPTS, **with_defaulted_argument(default)}))
+
+
+class TestTheKindOfTypeTheKeyMayName:
+    """
+    The keyword qualifies a key that names a **Function**, and a key can name a type in three ways: a
+    ground application (`Add<Integer>`), a *template-dependent* one (`AddT<T>` -- an application with a
+    template variable among its arguments), or a bare **template variable** (`T`).
+
+    The middle one must work: the concept is known to be a Function even though its argument is not
+    settled. The last one cannot: nothing about ``T`` says it is a Function, so there is no interpretation
+    to assert. These matter for any successor spelling of the keyword, which has to draw the same line.
+    """
+
+    def test_a_template_dependent_key_is_accepted(self):
+        assert check_default({"AddT<T>": {"arg1": 1, "arg2": 2}}) is not None
+
+    def test_a_template_dependent_key_is_accepted_with_the_keyword(self):
+        assert check_default({"AddT<T>": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}) is not None
+
+    @pytest.mark.xfail(raises=AssertionError, strict=True, reason="a template-variable key hits a bare assert")
+    def test_a_bare_template_variable_key_is_diagnosed(self):
+        """
+        ``T`` is not known to be a Function, so this should be reported -- ideally naming the key. Instead
+        `parse_function_evaluation_expression` proceeds: `_check_if_subtype(T, Function)` answers **MAYBE**,
+        which is truthy, so it reaches ``get_template_context("T")`` and asserts there. The author gets a
+        traceback with no location.
+        """
+        with pytest.raises(ConceptHierarchyError):
+            check_default({"T": {"arg1": 1}})
+
+    @pytest.mark.xfail(raises=AssertionError, strict=True, reason="a template-variable key hits a bare assert")
+    def test_the_keyword_does_not_change_that(self):
+        """The crash is in resolving the key, so it happens with or without a directive on it."""
+        with pytest.raises(ConceptHierarchyError):
+            check_default({"T": {"arg1": 1}, "isFunctionEvaluation": True})
