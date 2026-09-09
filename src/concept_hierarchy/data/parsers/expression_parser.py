@@ -1242,7 +1242,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
     # check Inst expression (abstract Types do not have instantiation schemas)
     #
     # Skipped for a substituted literal, like the name alternatives above: a literal template argument is
-    # recognised *only* by defaultSerialization. Letting it match an instantiation schema as well would
+    # recognized *only* by defaultSerialization. Letting it match an instantiation schema as well would
     # make the same literal mean different things at different sites -- `"s:hello"` would be a `String`
     # built from String's schema at one site and a defaultSerialized `String` at another -- and would give
     # a literal a structural reading it was never meant to have.
@@ -2068,7 +2068,7 @@ def parse_function_evaluation_expression(
     else:
         interpretation = FunctionInterpretation.UNSPECIFIED
 
-    # A `FunctionComposition` value is recognised by its instantiation schema and never by this function:
+    # A `FunctionComposition` value is recognized by its instantiation schema and never by this function:
     # no Function returns a `FunctionComposition`, so `res(K) <= tau` could not hold anyway, and asking it
     # here is what used to reject `{"LessEqual<Number>": ...}` at a `FunctionCompositionRes<Boolean>` site
     # with "Boolean is not a subtype of FunctionCompositionRes<Boolean>". Only the `"properties": "args"`
