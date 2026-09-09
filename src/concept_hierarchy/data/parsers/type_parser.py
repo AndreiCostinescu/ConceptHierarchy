@@ -210,7 +210,7 @@ class TypeParser(StringParser):
         """
         Return ``True`` iff the current position begins a literal value, without advancing the parser.
 
-        Recognises:
+        Recognizes:
          - ``"``           → string literal
          - ``-`` or digit  → numeric literal  (names must start with a letter per the grammar)
          - ``true`` / ``false`` followed by a non-identifier character (or EOF) → boolean literal

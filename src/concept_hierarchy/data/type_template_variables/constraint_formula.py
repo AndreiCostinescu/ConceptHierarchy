@@ -532,7 +532,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
     Semantic validation is performed eagerly at construction time via the
     supplied ``validator``:
 
-    * The ``literal`` must be recognised as either a concept or a template
+    * The ``literal`` must be recognized as either a concept or a template
       variable; anything else raises ``CHSemanticError``.
     * Template variables may not carry template-argument constraints, because a
       template variable stands for an unknown concept whose own template

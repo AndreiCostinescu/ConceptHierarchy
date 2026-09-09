@@ -211,7 +211,7 @@ class TypeApplicationValidator(TypeTemplateInstantiationValidator):
         if template_context is None:
             subst_formula = create_exact_match_constraint_from_value(value, formula_validator, location_id)
         else:
-            # `value` may reference template variables; they are only recognised as such while they are in
+            # `value` may reference template variables; they are only recognized as such while they are in
             # the formula validator's scope. Registering the context's variables (rather than the ones the
             # value happens to mention) keeps the out-of-scope check intact: a reference to a variable that
             # is not in `template_context` still fails as "not a concept and not a template variable".

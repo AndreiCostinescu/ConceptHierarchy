@@ -248,7 +248,7 @@ HOLDER = vd(
 One site of each kind, so a test picks a site by naming a key. ``nested`` is what makes depth cheap.
 
 ``additionalProperties: false`` is load-bearing *for the tests themselves*: without it, ``{"Holder": ...}``
-also matches `Holder`'s own instantiation as an `Inst` -- one unrecognised key, every property optional --
+also matches `Holder`'s own instantiation as an `Inst` -- one unrecognized key, every property optional --
 so a value that fails at its site is silently rescued one level up and the test passes for the wrong reason.
 """
 
@@ -794,7 +794,7 @@ class TestTheExpressionValueIsTheAnswer:
     def test_a_value_at_a_composition_site_is_always_an_inst(self):
         """
         Every reading that a `FunctionComposition` site accepts is an `InstExpression` at the top, because
-        a composition is recognised by its instantiation schema and by nothing else -- the top-level
+        a composition is recognized by its instantiation schema and by nothing else -- the top-level
         `FEval` alternative is never even tried there, which is what stopped the parser asking whether
         `Boolean` is a subtype of ``FunctionCompositionRes<Boolean>``.
         """
