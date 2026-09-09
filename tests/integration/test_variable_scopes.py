@@ -1005,7 +1005,7 @@ class TestShadowingACustomFunctionArgument:
     *not* refuse ``argument n; create n``, and the difference is not a decision anyone took: the interface
     frame ends up below the frame `CreateLocalVariable` writes into, so the duplicate check never sees it.
 
-    These tests describe today's behaviour rather than endorse it, so that changing it is visible. What
+    These tests describe today's behavior rather than endorse it, so that changing it is visible. What
     they pin either way is the *shape* of the collision: the argument is in scope before the local exists
     and hidden after it, with no block boundary marking the switch.
     """

@@ -24,7 +24,7 @@ is only the first line of it. For ``Inst``/``Narrow`` the attempt also carries e
 that was tried and the :class:`~instantiated_value.ParsedValue` errors of the one that matched, which is
 what says *which property* was missing, additional, or wrongly typed.
 
-These tests were written against the *old* behaviour, where all of this was lost, and are now the
+These tests were written against the *old* behavior, where all of this was lost, and are now the
 regression guard on the trace that replaced it.
 
 The asserts deliberately look for content (a property name, a type name, a constraint) rather than exact

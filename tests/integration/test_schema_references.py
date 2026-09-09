@@ -18,9 +18,9 @@ Integration tests: ``$ref`` inside an instantiation schema.
 A reference is a **JSON Pointer from the schema root**, as it is in JSON Schema itself: ``#``,
 ``#/$defs/a``, ``#/$defs/a/$defs/b``, ``#/$defs/d/oneOf/1/properties/x``.
 
-It did not used to be. The previous resolver matched ``^#/(definitions|$defs)/([^/]+)$`` and looked the
+It did not use to be. The previous resolver matched ``^#/(definitions|$defs)/([^/]+)$`` and looked the
 single name up in a map built by flattening *every* ``$defs`` in the tree with ``setdefault``. Three things
-followed, and all three are pinned as changed behaviour below:
+followed, and all three are pinned as changed behavior below:
 
 * a nested definition resolved **by accident**, addressed by a name that says nothing about where it is;
 * two definitions sharing a name resolved to whichever the walk reached first, silently;
@@ -232,7 +232,7 @@ class TestPointersThatDoNotResolve:
 
     def test_a_bare_name_no_longer_finds_a_nested_definition(self, navigable):
         """
-        The behaviour change. ``deep`` lives under ``nested``; the flattened lookup found it anyway, and
+        The behavior change. ``deep`` lives under ``nested``; the flattened lookup found it anyway, and
         would have found an unrelated ``deep`` in a sibling subtree just as happily.
         """
         assert "there is no definition named 'deep'" in failure_at(navigable, "#/$defs/deep")

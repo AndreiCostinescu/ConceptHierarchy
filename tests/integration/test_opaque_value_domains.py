@@ -146,7 +146,7 @@ class TestTheSameValuesAreCheckedAtATypedSite:
 
 class TestTheIsFunctionEvaluationCommitmentCannotReachHere:
     """
-    ``"isFunctionEvaluation": true`` is honoured at a custom-type leaf; an accept-everything schema has
+    ``"isFunctionEvaluation": true`` is honored at a custom-type leaf; an accept-everything schema has
     none, so the commitment is never created and there is nothing to enforce. This is the boundary of the
     check in `_check_instantiation_schema`, and it is by design rather than by omission.
     """

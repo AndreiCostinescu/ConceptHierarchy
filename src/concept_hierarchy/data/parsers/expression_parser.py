@@ -1368,7 +1368,7 @@ def _check_instantiation_schema(
             function_evaluation_reading,
         )
         if function_evaluation_reading is FunctionEvaluationReading.IS_EVALUATION and not errors:
-            # The commitment is only *honoured* at a custom-type leaf, and a schema can match without ever
+            # The commitment is only *honored* at a custom-type leaf, and a schema can match without ever
             # reaching one -- a boolean schema (which is what a ValueDomain with no `instantiation`
             # declares), or a structural one that happens to fit. Such a match would accept the value while
             # silently ignoring `"isFunctionEvaluation": true`, so it has to be checked rather than assumed.

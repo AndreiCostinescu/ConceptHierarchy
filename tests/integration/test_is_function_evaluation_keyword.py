@@ -1177,7 +1177,7 @@ class TestOnlyASiteTypeFailureIsSetAsideForTheSchema:
 
     def test_a_property_leaf_is_unaffected_by_the_commitment(self):
         """
-        Only a leaf at the value's own location can honour it. `Permissive`'s other branch reaches an
+        Only a leaf at the value's own location can honor it. `Permissive`'s other branch reaches an
         `Integer` leaf through the ``lhs`` *property*, one location further down, and parses as it always
         would.
         """
@@ -1235,13 +1235,13 @@ class TestAMisusedKeywordIsNeverSetAside:
 # ==================================================================================================
 
 
-class TestTheCommitmentMustBeHonouredNotMerelyMatched:
+class TestTheCommitmentMustBeHonoredNotMerelyMatched:
     """
-    ``"isFunctionEvaluation": true`` is honoured at a **custom-type leaf**, and a schema can match the
+    ``"isFunctionEvaluation": true`` is honored at a **custom-type leaf**, and a schema can match the
     value without ever reaching one -- a structural schema that happens to fit, or a boolean one. Such a
     match would accept the value with the keyword silently ignored.
 
-    Two readings of "was it honoured" are wrong, and both are pinned below:
+    Two readings of "was it honored" are wrong, and both are pinned below:
 
     * *does a Function evaluation appear anywhere below?* -- a **composition** holds one too
       (``"properties": "args"`` stores it), so this answers yes for the reading the keyword ruled out;
@@ -1253,26 +1253,26 @@ class TestTheCommitmentMustBeHonouredNotMerelyMatched:
     changes it, so the consumer is always exactly there however many schema nodes were crossed.
     """
 
-    def test_a_structural_match_does_not_honour_it(self):
+    def test_a_structural_match_does_not_honor_it(self):
         """`Structural` matches ``{"Add": {...}}`` as an object; no custom-type leaf is reached."""
         error = rejection(at(structural={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
         assert_reported(error, message="without reading it as one", location='"structural"')
 
     def test_the_same_value_is_accepted_when_it_claims_not_to_be_an_evaluation(self):
         """
-        The control: nothing about this value is wrong except the keyword nobody honoured. ``false`` is
+        The control: nothing about this value is wrong except the keyword nobody honored. ``false`` is
         what it takes to reach `Structural`'s schema at all -- with the keyword absent the default
         evaluation reading commits and hard-fails on ``res(Add)`` before `Inst` is tried.
         """
         context = check(at(structural={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
         assert field(context, "structural").is_valid
 
-    def test_a_leaf_at_the_value_s_own_location_does_honour_it(self):
+    def test_a_leaf_at_the_value_s_own_location_does_honor_it(self):
         """`Permissive`'s root-level ``"ValueDomain"`` branch is such a leaf, and the value is accepted."""
         context = check(at(permissive={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
         assert oneof_branch(field(context, "permissive")) == "ValueDomain"
 
-    def test_a_composition_holding_an_evaluation_does_not_count_as_honouring_it(self):
+    def test_a_composition_holding_an_evaluation_does_not_count_as_honoring_it(self):
         """
         The first wrong reading. A composition of `Add` contains a `FunctionEvaluation` in
         ``custom_expressions``, so "contains one" would accept a `FunctionComposition` site's ``true`` --

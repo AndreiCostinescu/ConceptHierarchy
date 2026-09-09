@@ -292,7 +292,7 @@ def parse_value(
         expansion_depth: how many default-instantiation-expressions were triggered.
             This detects a possibly infinite expansion cycle.
         function_evaluation_reading: What an enclosing expression site already decided about reading this
-            value as a Function evaluation; honoured at the custom-type leaf sitting at ``location_id``.
+            value as a Function evaluation; honored at the custom-type leaf sitting at ``location_id``.
         collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
 
     Returns:

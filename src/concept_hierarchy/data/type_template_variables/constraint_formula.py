@@ -332,7 +332,7 @@ class TemplateConstraintOr(NonStructureConstraintFormula):
     sub-formula.  Written ``Or(F₁, F₂, …)``.
 
     Every operand must be a ``TypeTemplateConstraintFormula``; the same
-    restrictions and error behaviour as ``TemplateConstraintAnd`` apply.
+    restrictions and error behavior as ``TemplateConstraintAnd`` apply.
     At least one operand is required.
 
     Example: ``Or(Mammal, Bird)`` matches any concrete type that is a
