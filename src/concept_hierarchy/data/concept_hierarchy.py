@@ -62,6 +62,9 @@ class DomainConceptData(ConceptData):
     property_constraints: frozendict[str, Expression]
     function_types: frozendict[str, InstantiatedType]
 
+    management: frozendict[str, Expression]
+    """The registered management functions of this concept alone."""
+
     available_property_data: frozendict[str, frozendict[str, str]]
     """
     Every property available to this concept -- defined here or inherited -- mapped to, per definition
