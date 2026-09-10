@@ -727,7 +727,10 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
         if keyword in work:
             arr = work.pop(keyword)
             if isinstance(arr, list):
-                setattr(node, attr, [child(sub, keyword, i) for i, sub in enumerate(arr)])
+                if len(arr) == 0:
+                    state.record(CHSyntaxError(f'"{keyword}" must be a non-empty array!', location_id + [keyword]))
+                else:
+                    setattr(node, attr, [child(sub, keyword, i) for i, sub in enumerate(arr)])
             else:
                 state.record(CHSyntaxError(f'"{keyword}" must be an array of schemas', location_id + [keyword]))
 

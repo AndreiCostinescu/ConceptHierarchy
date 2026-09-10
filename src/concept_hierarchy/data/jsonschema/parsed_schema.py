@@ -270,9 +270,9 @@ class CHSchemaNode:
     multiple_of_def: str | None = None  # must be positive number
 
     # --- composition --------------------------------------------------
-    all_of: list[CHSchemaNode] = field(default_factory=list)
-    any_of: list[CHSchemaNode] = field(default_factory=list)
-    one_of: list[CHSchemaNode] = field(default_factory=list)
+    all_of: list[CHSchemaNode] = field(default_factory=list)  # the Draft7Validator forbids empty arrays for these
+    any_of: list[CHSchemaNode] = field(default_factory=list)  # the Draft7Validator forbids empty arrays for these
+    one_of: list[CHSchemaNode] = field(default_factory=list)  # the Draft7Validator forbids empty arrays for these
     not_: CHSchemaNode | None = None
     if_: CHSchemaNode | None = None
     then_: CHSchemaNode | None = None
