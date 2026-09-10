@@ -490,10 +490,10 @@ class TestFunctionEvaluationFailures:
         assert 'argument "arg2" is not a valid Integer expression' in text
         assert "Nope" in text, "the argument's own failure must be nested underneath"
 
-    def test_is_function_evaluation_on_a_non_function_key(self):
-        value = {"Point": {"x": 1, "y": 2}, "isFunctionEvaluation": True}
+    def test_a_marker_on_a_non_function_key(self):
+        value = {"fEval:Point": {"x": 1, "y": 2}}
         text = explanation({**POINT, **site("Point", value)}, value)
-        assert "isFunctionEvaluation" in text
+        assert "fEval:" in text
         assert "Point" in text
 
 

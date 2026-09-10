@@ -19,11 +19,11 @@ A _ValueDomain_ that declares no ``instantiation`` says nothing about its values
 its value is therefore **opaque**. A boolean schema is handled before the custom-type branch of `_parse`,
 so such a value never reaches a custom-type leaf -- and a custom-type leaf is the only place an expression
 is parsed. Nothing inside is read as one: not a variable, not a Function name, not an argument name, and
-not the ``"isFunctionEvaluation"`` keyword.
+not the `fEval:` / `fComp:` / `fInst:` markers.
 
 That is the intended reading of "no instantiation", not a gap. It is worth pinning because it is the
 **default** shape for a ValueDomain -- ``"data": {}`` silently disables all checking of its values -- and
-because it is the one place the `isFunctionEvaluation` commitment
+because it is the one place a marker's commitment
 (`documentation/TODO_FUNCTION_EVALUATION_VS_COMPOSITION.md` 2.4) provably cannot be enforced.
 
 `examples/animal_kingdom.json` is the base: it declares `Open` (no instantiation) and the global
@@ -87,7 +87,7 @@ NONSENSE = {
     "an argument the Function does not have": {"Add<Number>": {"nope": 1}},
     "a Function that does not exist": {"NoSuchFunction<Q>": {"arg1": 1}},
     "structure that is not an expression at all": {"???": [1, {"x": None}]},
-    "a committed isFunctionEvaluation": {"Add<Number>": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True},
+    "a committed marker": {"fEval:Add<Number>": {"arg1": 1, "arg2": 2}},
 }
 
 
@@ -102,11 +102,21 @@ class TestAnOpaquePayloadIsNotChecked:
         assert check(opaque(payload)).model.instances["probe"].value.is_valid
 
     def test_the_shipped_example_relies_on_this(self):
-        """``unconstrained`` in `animal_kingdom.json` is exactly this shape, keyword and all."""
+        """``unconstrained`` in `animal_kingdom.json` is exactly this shape, marker and all."""
         declared = BASE["instances"]["unconstrained"]
         assert "Open" in declared, declared
-        assert "isFunctionEvaluation" in declared["Open"], declared
+        assert any(k.startswith("fEval:") for k in declared["Open"]), declared
         assert check({}).model.instances["unconstrained"].value.is_valid
+
+    def test_a_marker_inside_an_opaque_payload_is_inert(self):
+        """
+        Not a contradiction of the consumption check, which refuses a commitment an accept-everything
+        schema drops: that check fires where the marker is written on the value's *own* key. Here the
+        site's key is ``Open`` -- unmarked -- and everything under it is `Open`'s unread payload, so the
+        ``fEval:`` inside is text in that payload and commits nothing.
+        """
+        assert check(opaque({"fEval:Add<Number>": {"arg1": 1, "arg2": 2}})).model.instances["probe"].value.is_valid
+        assert check(opaque({"fInst:NoSuchFunction": {"nonsense": True}})).model.instances["probe"].value.is_valid
 
 
 class TestTheSameValuesAreCheckedAtATypedSite:
@@ -144,27 +154,26 @@ class TestTheSameValuesAreCheckedAtATypedSite:
         assert check(opaque({"Add<Number>": {"arg1": 1, "arg2": 2}})).model.instances["probe"].value.is_valid
 
 
-class TestTheIsFunctionEvaluationCommitmentCannotReachHere:
+class TestACommitmentCannotReachHere:
     """
-    ``"isFunctionEvaluation": true`` is honored at a custom-type leaf; an accept-everything schema has
-    none, so the commitment is never created and there is nothing to enforce. This is the boundary of the
-    check in `_check_instantiation_schema`, and it is by design rather than by omission.
+    A marker is honored at a custom-type leaf; an accept-everything schema has none, so the commitment is
+    never created and there is nothing to enforce. This is the boundary of the check in
+    `_check_instantiation_schema`, and it is by design rather than by omission.
     """
 
     def test_a_committed_evaluation_is_accepted_unread(self):
-        payload = {"Add<Number>": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}
-        assert check(opaque(payload)).model.instances["probe"].value.is_valid
+        assert check(opaque({"fEval:Add<Number>": {"arg1": 1, "arg2": 2}})).model.instances["probe"].value.is_valid
 
     def test_it_is_accepted_for_the_same_reason_nonsense_is(self):
-        """If the keyword were being read, these two would not behave alike."""
-        with_keyword = check(opaque({"Add<Number>": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        """If the marker were being read, these two would not behave alike."""
+        marked = check(opaque({"fEval:Add<Number>": {"arg1": 1, "arg2": 2}}))
         nonsense = check(opaque({"???": [1, {"x": None}]}))
-        assert with_keyword.model.instances["probe"].value.is_valid
+        assert marked.model.instances["probe"].value.is_valid
         assert nonsense.model.instances["probe"].value.is_valid
 
-    def test_a_misused_keyword_is_not_diagnosed_either(self):
-        """Beside a non-Function type this is an error anywhere a schema describes the value."""
-        assert check(opaque({"Integer": 1, "isFunctionEvaluation": True})).model.instances["probe"].value.is_valid
+    def test_a_misused_marker_is_not_diagnosed_either(self):
+        """On a non-Function key this is an error anywhere a schema describes the value."""
+        assert check(opaque({"fEval:Integer": 1})).model.instances["probe"].value.is_valid
 
 
 def _messages(error: ConceptHierarchyError) -> str:

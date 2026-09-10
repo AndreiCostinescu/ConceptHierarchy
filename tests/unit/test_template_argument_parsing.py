@@ -65,7 +65,12 @@ class TestTemplateArgumentParsing:
                     },
                     "functions": {
                         "f1": {},
-                        "f2": {"Add<Number>": {"arg1": 2, "arg2": 2}, "isFunctionEvaluation": False},
+                        # This hierarchy declares no instantiation for `CustomFunction`, so the value is
+                        # opaque payload rather than a composition -- no marker can be honored here. The
+                        # explicit `Narrow` is how that is written ([CH].md 10.2); it used to be spelled
+                        # `"isFunctionEvaluation": false`, which made the object two-keyed and so kept the
+                        # classifier away from it entirely.
+                        "f2": {"CustomFunction": {"Add<Number>": {"arg1": 2, "arg2": 2}}},
                         "f3": {
                             "interface": {"arg": "Number", "res": "Number"},
                             "procedure": {"Return<Number>": {"what": {"Add<Number>": {"arg1": "arg", "arg2": 2}}}},
