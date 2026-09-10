@@ -399,25 +399,30 @@ class ConceptHierarchyChecker:
         for c_name in self.ch.concept_topo_sort:
             c = self.ch.concepts[c_name]
             parents_concept_data: dict[str, ConceptData] = {}
+            all_parents_concept_data: dict[str, ConceptData] = {}
             for parent in c.parents:
                 assert parent in self.model.concepts
-                parents_concept_data[parent] = self.model.concepts[parent]
+                parent_model = self.model.concepts[parent]
+                parents_concept_data[parent] = parent_model
+                all_parents_concept_data[parent] = parent_model
+                all_parents_concept_data.update(parent_model.all_parents)
             parents_concepts = frozendict(parents_concept_data)
+            all_parents_concepts = frozendict(all_parents_concept_data)
             try:
                 if self.ch.is_function(c_name):
                     self.ch.concepts[c_name] = FunctionDefinition.from_node(c)
-                    concept_data = FunctionData(c_name, parents_concepts)
+                    concept_data = FunctionData(c_name, parents_concepts, all_parents_concepts)
                     self.model.concepts[c_name] = concept_data
                     self.model.value_domains[c_name] = concept_data
                     self.model.functions[c_name] = concept_data
                 elif self.ch.is_value_domain(c_name):
                     self.ch.concepts[c_name] = ValueDomainDefinition.from_node(c)
-                    concept_data = ValueDomainData(c_name, parents_concepts)
+                    concept_data = ValueDomainData(c_name, parents_concepts, all_parents_concepts)
                     self.model.concepts[c_name] = concept_data
                     self.model.value_domains[c_name] = concept_data
                 elif self.ch.is_domain_concept(c_name):
                     self.ch.concepts[c_name] = DomainConceptDefinition.from_node(c)
-                    concept_data = DomainConceptData(c_name, parents_concepts)
+                    concept_data = DomainConceptData(c_name, parents_concepts, all_parents_concepts)
                     self.model.concepts[c_name] = concept_data
                     self.model.domain_concepts[c_name] = concept_data
                 else:

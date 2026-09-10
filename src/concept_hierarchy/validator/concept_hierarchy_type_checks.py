@@ -290,7 +290,7 @@ def check_types_in_hidden_implementation_definition(
         parent_def_data = context.ch.concepts[parent]
         if not isinstance(parent_def_data, HiddenImplementationDefinition) or not parent_def_data.is_templatable():
             continue
-        parent_model_data = datum.parents[parent]
+        parent_model_data = datum.direct_parents[parent]
         assert isinstance(parent_model_data, TypeData)
         instantiation_values_of_parent_template_variables: list[ConceptHierarchyTemplateArgument] = []
         parent_template_substitution: dict[str, ConceptHierarchyTemplateArgument] = {}

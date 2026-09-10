@@ -363,7 +363,7 @@ def init_expressions(context: ConceptHierarchyContext):
                 all_default_argument_values[default_arg_name] = parsed_default_value_expr
 
         # collect default arguments of parents as well and set them in the model's Function data!
-        for p_name, p_model in c.parents.items():
+        for p_name, p_model in c.direct_parents.items():
             if p_name not in context.ch.functions:
                 continue
             assert isinstance(p_model, FunctionData)

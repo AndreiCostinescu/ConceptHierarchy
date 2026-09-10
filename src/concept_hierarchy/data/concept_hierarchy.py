@@ -50,9 +50,10 @@ class ConceptData(ConceptHierarchyData):
     An abstract Function can not be instantiated and does not have to define its interface (but it can)!
     """
 
-    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
+    def __init__(self, name: str, parents: frozendict[str, ConceptData], all_parents: frozendict[str, ConceptData]):
         super().__init__(name)
-        self.parents = parents
+        self.direct_parents = parents
+        self.all_parents = all_parents
 
 
 @lazy_properties
@@ -76,8 +77,10 @@ class DomainConceptData(ConceptData):
     available_function_data: frozendict[str, frozendict[str, str]]
     """As :attr:`available_property_data`, for the concept's ``functions`` members."""
 
-    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
-        super().__init__(name, parents)
+    def __init__(self, name: str, parents: frozendict[str, ConceptData], all_parents: frozendict[str, ConceptData]):
+        super().__init__(name, parents, all_parents)
+        self._all_available_property_types = None
+        self._all_available_function_types = None
 
 
 @lazy_properties
@@ -86,8 +89,8 @@ class TypeData(ConceptData):
     parent_template_variable_substitution: frozendict[tuple[str, str], ConceptHierarchyTemplateArgument]
     """Contains all substitution values of the template arguments of all parents (also non direct parents!)"""
 
-    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
-        super().__init__(name, parents)
+    def __init__(self, name: str, parents: frozendict[str, ConceptData], all_parents: frozendict[str, ConceptData]):
+        super().__init__(name, parents, all_parents)
 
 
 @lazy_properties
@@ -95,8 +98,8 @@ class ValueDomainData(TypeData):
     instantiation: tuple[tuple[ConstraintGroup | None, CHSchemaNode], ...]
     """`None` appears as the first element of the instantiation when the type does not have template arguments"""
 
-    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
-        super().__init__(name, parents)
+    def __init__(self, name: str, parents: frozendict[str, ConceptData], all_parents: frozendict[str, ConceptData]):
+        super().__init__(name, parents, all_parents)
 
 
 @lazy_properties
@@ -130,8 +133,8 @@ class FunctionData(ValueDomainData):
     new_vars_in_scope: frozendict[str, tuple[TypeValue, bool]]
     """Maps the new variables introduced after the evaluation of this Function to their type."""
 
-    def __init__(self, name: str, parents: frozendict[str, ConceptData]):
-        super().__init__(name, parents)
+    def __init__(self, name: str, parents: frozendict[str, ConceptData], all_parents: frozendict[str, ConceptData]):
+        super().__init__(name, parents, all_parents)
 
     @property
     def knows_what_it_returns(self):
