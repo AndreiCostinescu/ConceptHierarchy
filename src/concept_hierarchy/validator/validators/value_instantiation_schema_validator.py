@@ -27,8 +27,6 @@ from concept_hierarchy.errors import ConceptHierarchyError, LocationId
 
 
 class SchemaValidator(CHSchemaValidator):
-    x_template_variable_constraint: NonStructureConstraintFormula | None = None
-
     def __init__(self, context: ConceptHierarchyContext):
         self.context = context
         self.type_validator = self.context.type_validator
@@ -41,7 +39,7 @@ class SchemaValidator(CHSchemaValidator):
                 type_name, self.type_validator, location_id, in_variadic_context
             )
 
-        if SchemaValidator.x_template_variable_constraint is None:
+        if self.context.model.x_template_variable_constraint is None:
             res = parse_constraint_definition(
                 HiddenImplementationDefinition.default_template_argument_constraint,
                 self.context.template_constraint_formula_validator,
@@ -49,12 +47,12 @@ class SchemaValidator(CHSchemaValidator):
                 allow_unconstrained=True,
             )
             assert isinstance(res, NonStructureConstraintFormula)
-            SchemaValidator.x_template_variable_constraint = res
+            self.context.model.x_template_variable_constraint = res
 
         # FIXME: add as identifier to the x template variable the location_id!
         #  Because in an instantiation schema, there can be multiple x template variables defined,
         #  and all of them must be uniquely identifiable.
-        self.type_validator.add_template_variable("x", SchemaValidator.x_template_variable_constraint, location_id)
+        self.type_validator.add_template_variable("x", self.context.model.x_template_variable_constraint, location_id)
         try:
             res = parse_convert_type_in_template_context(
                 type_name, self.type_validator, location_id, in_variadic_context
