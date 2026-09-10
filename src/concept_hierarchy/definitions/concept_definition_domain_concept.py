@@ -88,6 +88,11 @@ class ForPropertyOrFunction(Enum):
     PROPERTY = 1
 
 
+class HookType(Enum):
+    PRE = "pre"
+    POST = "post"
+
+
 class DomainConceptDefinition(ConceptDefinition):
     domain_concept_name: str = "Domain Concept"
     domain_concept_properties: str = "properties"
@@ -145,13 +150,6 @@ class DomainConceptDefinition(ConceptDefinition):
 
         self.is_shorthand_property_definition: set[str] = set()  # set of property names who use a shorthand definition
         self.is_shorthand_function_definition: set[str] = set()  # set of function names who use a shorthand definition
-
-        # (property name, concept that defines it, property type)
-        # self.all_properties: dict[str, tuple[str, str, ValueDomainType]] = {}
-        # self.own_properties: dict[str, PropertyDefinition] = {}
-        # (function name, concept that defines it, function type)
-        # self.all_functions: dict[str, tuple[str, str, ValueDomainType]] = {}
-        # self.own_functions: dict[str, FunctionDefinition] = {}
 
     @classmethod
     def from_node(cls, concept_definition: ConceptDefinition):
@@ -716,14 +714,14 @@ class DomainConceptDefinition(ConceptDefinition):
                     #    TYPE CHECK
                     if not isinstance(hook_f_data, dict):
                         raise CHSyntaxError(
-                            f"The structure of hooks should be a JSON object mapping template-instantiated Function "
-                            f"types to a JSON object mapping arguments of the template-instantiated Function to "
-                            f"FunctionComposition values of the hook.\nExpected a JSON object at Function {hook_f_name}"
-                            f", got {hook_f_data!r}!",
+                            f"The structure of hooks should be a JSON object mapping Function type applications"
+                            f" types to a JSON object mapping arguments of the Function type application to a "
+                            f'JSON object mapping the "pre" or "post" hook types to FunctionComposition values '
+                            f"of the hook.\nExpected a JSON object at Function {hook_f_name}, got {hook_f_data!r}!",
                             location_id=location_id + [PropertyDefinitionKeywords.HOOKS, hook_f_name],
                             part=PathPart.VALUE,
                         )
-                    for hook_f_arg, hook_f_procedure in hook_f_data.items():
+                    for hook_f_arg, hook_f_pre_post in hook_f_data.items():
                         # assertion, not check because this is a key of a JSON object
                         assert isinstance(hook_f_arg, str)
                         # missing checks:
@@ -734,18 +732,43 @@ class DomainConceptDefinition(ConceptDefinition):
                         #       on which the hook is attached
                         #    REQUIRES types to be processable and validatable
                         #    TYPE CHECK
-                        if not isinstance(hook_f_procedure, dict):
+
+                        if not isinstance(hook_f_pre_post, dict):
                             raise CHSyntaxError(
-                                f"The structure of hooks should be a JSON object mapping template-instantiated Function"
-                                f" types to a JSON object mapping arguments of the template-instantiated Function to "
-                                f"FunctionComposition values of the hook.\nExpected a JSON object as "
-                                f"FunctionComposition value, not {hook_f_procedure!r}",
+                                f"The structure of hooks should be a JSON object mapping Function type applications"
+                                f" types to a JSON object mapping arguments of the Function type application to a "
+                                f'JSON object mapping the "pre" or "post" hook types to FunctionComposition values '
+                                f"of the hook.\nExpected a JSON object as the hook type container, not "
+                                f"{hook_f_pre_post!r}",
                                 location_id=location_id + [PropertyDefinitionKeywords.HOOKS, hook_f_name, hook_f_arg],
                                 part=PathPart.VALUE,
                             )
-                        # missing checks:
-                        #  - check that hook_f_procedure is a valid FunctionComposition expression.
-                        #    EXPRESSION CHECK
+
+                        for hook_type, hook_f_procedure in hook_f_pre_post.items():
+                            if hook_type not in {"pre", "post"}:
+                                raise CHSyntaxError(
+                                    f"The structure of hooks should be a JSON object mapping Function type applications"
+                                    f" types to a JSON object mapping arguments of the Function type application to a "
+                                    f'JSON object mapping the "pre" or "post" hook types to FunctionComposition values '
+                                    f'of the hook.\nExpected "pre" of "post" as hook types, got "{hook_type}"',
+                                    location_id=location_id
+                                    + [PropertyDefinitionKeywords.HOOKS, hook_f_name, hook_f_arg, hook_type],
+                                    part=PathPart.KEY,
+                                )
+                            if not isinstance(hook_f_procedure, dict):
+                                raise CHSyntaxError(
+                                    f"The structure of hooks should be a JSON object mapping Function type applications"
+                                    f" types to a JSON object mapping arguments of the Function type application to a "
+                                    f'JSON object mapping the "pre" or "post" hook types to FunctionComposition values '
+                                    f"of the hook.\nExpected a JSON object as FunctionComposition value, not "
+                                    f"{hook_f_procedure!r}",
+                                    location_id=location_id
+                                    + [PropertyDefinitionKeywords.HOOKS, hook_f_name, hook_f_arg, hook_type],
+                                    part=PathPart.VALUE,
+                                )
+                            # missing checks:
+                            #  - check that hook_f_procedure is a valid FunctionComposition expression.
+                            #    EXPRESSION CHECK
         if PropertyDefinitionKeywords.COMPUTATIONS in prop_data:
             prop_def_val = prop_data[PropertyDefinitionKeywords.COMPUTATIONS]
             if for_specialization and not specialize_for_sub:
@@ -1031,6 +1054,7 @@ class DomainConceptDefinition(ConceptDefinition):
                 }
                 self.is_shorthand_function_definition.add(func_name)
             else:
+                assert isinstance(func_data, dict)
                 func_def_data_keys = set(func_data.keys())
                 if not (func_def_data_keys <= DomainConceptDefinition.function_data_keys):
                     if not func_def_data_keys.isdisjoint(DomainConceptDefinition.function_data_keys):
