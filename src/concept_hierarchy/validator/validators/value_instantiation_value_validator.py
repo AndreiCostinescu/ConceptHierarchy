@@ -234,35 +234,6 @@ class ValueValidator(ValueInstantiationContext):
             key in self.context.ch.all_domain_concept_functions or key in self.context.ch.all_domain_concept_properties
         )
 
-    def validate_concept_data_key(
-        self,
-        key: str,
-        for_properties_or_functions: ForPropertyOrFunction,
-        include_parent_data: bool,
-        concept_restriction: list[InstantiatedType] | None,
-    ) -> InstantiatedType | None:
-        def get_domain_concept_in_which_defined_and_type(_prop_or_func_name: str) -> tuple[str, InstantiatedType]:
-            if _prop_or_func_name in self.context.ch.all_domain_concept_properties:
-                _domain_concept = self.context.ch.all_domain_concept_properties[key]
-                return _domain_concept, self.context.model.domain_concepts[_domain_concept].property_types[key]
-            assert key in self.context.ch.all_domain_concept_functions
-            _domain_concept = self.context.ch.all_domain_concept_functions[key]
-            return _domain_concept, self.context.model.domain_concepts[_domain_concept].function_types[key]
-
-        domain_concept, type_of_key = get_domain_concept_in_which_defined_and_type(key)
-        if concept_restriction is None:
-            return type_of_key
-        assert all(self.context.ch.is_domain_concept(x.full_name) for x in concept_restriction)
-        for candidate_domain_concept in concept_restriction:
-            if (
-                include_parent_data
-                and self.context.ch.is_a_subconcept_of_b(
-                    candidate_domain_concept.full_name, domain_concept, include_self=True
-                )
-            ) or (not include_parent_data and candidate_domain_concept.full_name == domain_concept):
-                return type_of_key
-        return None
-
     def substitute_with_x(
         self,
         custom_type: TypeValue,

@@ -227,15 +227,6 @@ class ValueInstantiationContext(ABC):
     def is_domain_concept_datum_in_concept_hierarchy(self, key: str) -> bool:
         pass
 
-    def validate_concept_data_key(
-        self,
-        key: str,
-        for_properties_or_functions: ForPropertyOrFunction,
-        include_parent_data: bool,
-        concept_restriction: list[InstantiatedType] | None,
-    ) -> InstantiatedType | None:
-        pass
-
     def substitute_with_x(
         self,
         custom_type: TypeValue,
