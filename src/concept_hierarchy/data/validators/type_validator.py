@@ -275,7 +275,7 @@ def _validate_type_and_parse_to_variadic_groups(
         is_variadic_template_argument = t_arg_name in template_context.variadic_variables
         new_location_id = location_id + [f"{ch_type.clean_name} template argument {t_arg.full_name}"]
         t_arg_valid = _validate_template_argument_value(
-            t_arg, validator, new_location_id, is_variadic_template_argument
+            t_arg, validator, new_location_id, is_variadic_template_argument, False
         )
         new_template_arguments.append(t_arg_valid)
     return ParsedType(
@@ -436,6 +436,7 @@ def _validate_template_argument_value(
     validator: TypeValidator,
     location_id: LocationId | None,
     is_argument_for_variadic_template_parameter: bool,
+    is_argument_inside_variadic_group: bool,
 ) -> TemplateArgumentValue:
     """
     This is always called for parsing a template argument (from the var-groups canonical form) in a type application.
@@ -479,7 +480,7 @@ def _validate_template_argument_value(
     if isinstance(t, TemplateArgumentLiteral):
         return t
     if isinstance(t, ParsedType):
-        return _validate_type(t, validator, location_id, inside_variadic_group=False)
+        return _validate_type(t, validator, location_id, inside_variadic_group=is_argument_inside_variadic_group)
     assert isinstance(t, TemplateArgumentVariadicGroup)
     validated_variadic_group = []
     for elem_index, group_elem in enumerate(t.variadic_group):
@@ -565,7 +566,11 @@ def _convert_template_argument_to_concept_hierarchy_template_argument(
 
 
 def convert_template_argument_to_concept_hierarchy_template_argument(
-    t_arg: str | list[str], validator: TypeValidator, location_id: LocationId, is_variadic_argument_value: bool
+    t_arg: str | list[str],
+    validator: TypeValidator,
+    location_id: LocationId,
+    is_variadic_argument_value: bool,
+    is_variadic_group_entry: bool = False,
 ) -> ConceptHierarchyTemplateArgument:
     """
     This function is called with either a type (never a variadic argument) or a value from the `substitution` data.
@@ -574,14 +579,15 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
     :param validator: is the type validator
     :param location_id: the location where the type was used
     :param is_variadic_argument_value: whether the value is for a variadic argument or not
+    :param is_variadic_group_entry: whether the value is inside a variadic group where the '...' expansion is allowed
     :return: the converted value
     """
     # Start validation of the syntax of the substitution value:
     #  1) Convert json object to TemplateArgumentValue
-    parsed_t_arg_value = TemplateArgumentParser(t_arg, location_id).parse()
+    parsed_t_arg_value = TemplateArgumentParser(t_arg, location_id).parse(is_variadic_group_entry)
     #  2) Validate nr. template args, create variadic groups from var.ids., don't check template constraints
     validated_t_arg_value = _validate_template_argument_value(
-        parsed_t_arg_value, validator, location_id, is_variadic_argument_value
+        parsed_t_arg_value, validator, location_id, is_variadic_argument_value, is_variadic_group_entry
     )
     # 3) Check the semantic of the value
     res = _convert_template_argument_to_concept_hierarchy_template_argument(validated_t_arg_value, validator)
@@ -602,12 +608,14 @@ def convert_template_argument_to_concept_hierarchy_template_argument(
 
 
 def _parse_convert_no_check(
-    type_def: str, validator: TypeValidator, location_id: LocationId
+    type_def: str, validator: TypeValidator, location_id: LocationId, in_variadic_context: bool = False
 ) -> ConceptHierarchyTemplateArgument:
     if type_def.strip() == "":
         raise CHSyntaxError("The given type is empty!", location_id=location_id)
     # check the syntax and semantics of the type
-    return convert_template_argument_to_concept_hierarchy_template_argument(type_def, validator, location_id, False)
+    return convert_template_argument_to_concept_hierarchy_template_argument(
+        type_def, validator, location_id, False, in_variadic_context
+    )
 
 
 def parse_convert_type(type_def: str, validator: TypeValidator, location_id: LocationId) -> InstantiatedType:
@@ -619,7 +627,7 @@ def parse_convert_type(type_def: str, validator: TypeValidator, location_id: Loc
 
 
 def parse_convert_type_in_template_context(
-    type_def: str, validator: TypeValidator, location_id: LocationId
+    type_def: str, validator: TypeValidator, location_id: LocationId, in_variadic_context: bool = False
 ) -> TypeValue:
     """
     As :func:`parse_convert_type`, but the result may still depend on the template variables in scope.
@@ -628,7 +636,7 @@ def parse_convert_type_in_template_context(
     one that means checking that *no* substitution could satisfy them, and that the constraints it implies
     are compatible with the ones already on those variables.
     """
-    ch_type = _parse_convert_no_check(type_def, validator, location_id)
+    ch_type = _parse_convert_no_check(type_def, validator, location_id, in_variadic_context)
     if not isinstance(ch_type, TYPE_VALUE_IS_INSTANCE_CHECK):
         raise CHSemanticError(
             f"Expected an InstantiatedType, a TemplateDependentType, a NonVariadicTemplateVariable or a "

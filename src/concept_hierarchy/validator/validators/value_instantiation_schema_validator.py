@@ -34,10 +34,12 @@ class SchemaValidator(CHSchemaValidator):
         self.type_validator = self.context.type_validator
 
     def parse_custom_type(
-        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool
+        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool, in_variadic_context: bool
     ) -> TypeValue:
         if not allow_x_as_template_variable:
-            return parse_convert_type_in_template_context(type_name, self.type_validator, location_id)
+            return parse_convert_type_in_template_context(
+                type_name, self.type_validator, location_id, in_variadic_context
+            )
 
         if SchemaValidator.x_template_variable_constraint is None:
             res = parse_constraint_definition(
@@ -54,7 +56,9 @@ class SchemaValidator(CHSchemaValidator):
         #  and all of them must be uniquely identifiable.
         self.type_validator.add_template_variable("x", SchemaValidator.x_template_variable_constraint, location_id)
         try:
-            res = parse_convert_type_in_template_context(type_name, self.type_validator, location_id)
+            res = parse_convert_type_in_template_context(
+                type_name, self.type_validator, location_id, in_variadic_context
+            )
             self.type_validator.delete_template_variable("x", location_id)
             return res
         except ConceptHierarchyError as e:

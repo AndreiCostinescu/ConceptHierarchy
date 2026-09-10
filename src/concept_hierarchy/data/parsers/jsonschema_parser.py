@@ -151,7 +151,7 @@ class CHSchemaValidator(ABC):
 
     @abstractmethod
     def parse_custom_type(
-        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool
+        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool, in_variadic_context: bool
     ) -> TypeValue:
         """
         Parse ``type_name`` into a valid type value in this context.
@@ -412,7 +412,9 @@ def _finish_custom_type_node(
         )
 
     try:
-        node.custom_type = state.context.parse_custom_type(type_name, type_location_id, allow_x_as_template_variable)
+        node.custom_type = state.context.parse_custom_type(
+            type_name, type_location_id, allow_x_as_template_variable, False
+        )
     except ConceptHierarchyError as e:
         state.record(e)
 

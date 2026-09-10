@@ -77,7 +77,7 @@ class TypeParser(StringParser):
         self.check_finished()
         return results
 
-    def parse(self) -> tuple[TemplateArgumentValue, ...]:
+    def parse(self, allow_template_expansion_operator: bool = False) -> tuple[TemplateArgumentValue, ...]:
         """
         Parse a complete domain expression and verify the entire input is consumed.
         Returns a ``TemplateArgumentValue`` per comma-separated top-level entry.
@@ -85,7 +85,9 @@ class TypeParser(StringParser):
         domain ::= entry_list_with_grp ::= ((group | literal | named_type) (',' (group | literal | named_type))*) | ε
         """
         results: tuple[TemplateArgumentValue, ...] = self._parse_entry_list(
-            stop_chars=frozenset(), allow_variadic_identifiers=False, allow_template_expansion_operator=False
+            stop_chars=frozenset(),
+            allow_variadic_identifiers=False,
+            allow_template_expansion_operator=allow_template_expansion_operator,
         )
         self.check_finished()
         return results
@@ -412,7 +414,7 @@ class TemplateArgumentParser:
                 location_id=self.location_id,
             )
 
-    def parse(self) -> TemplateArgumentValue:
+    def parse(self, allow_template_expansion_operator: bool = False) -> TemplateArgumentValue:
         expect_variadic_group = False
         expect_literal = False
         if isinstance(self.argument_value, list):
@@ -421,7 +423,9 @@ class TemplateArgumentParser:
             expect_literal = True
         elif isinstance(self.argument_value, (bool, int, float)):
             expect_literal = True
-        res = TypeParser(self.convert_to_string(self.argument_value), self.location_id).parse()
+        res = TypeParser(self.convert_to_string(self.argument_value), self.location_id).parse(
+            allow_template_expansion_operator
+        )
         if len(res) != 1:
             raise CHSyntaxError(
                 f"Expected a single value to be specified, but got {len(res)} values {res!r}",
