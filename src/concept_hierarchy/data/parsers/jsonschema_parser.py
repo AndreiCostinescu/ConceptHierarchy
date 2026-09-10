@@ -497,7 +497,7 @@ def _parse_custom_concept_data_constraint(
         has_concept_restriction = True
     else:
         has_concept_restriction = custom_concept_data_parser.try_consume("(")
-    concept_restriction = []
+    concept_restriction = None
     index = 0
     if has_concept_restriction:
         # process list of uppercase names separated by ', '
@@ -524,12 +524,12 @@ def _parse_custom_concept_data_constraint(
             assert isinstance(
                 concept_type, (ExpandedVariadicTemplateVariable, InstantiatedType, NonVariadicTemplateVariable)
             )
-            concept_restriction.append(concept_type)
+            return concept_type
 
-        parse_name(index)
+        concept_restriction = [parse_name(index)]
         while custom_concept_data_parser.try_consume(", "):
             index += 1
-            parse_name(index)
+            concept_restriction.append(parse_name(index))
         custom_concept_data_parser.consume(")")
     return CustomConceptDataConstraint(
         for_properties_of_functions, include_parent_data, concept_restriction, value_schema, require_all_keys

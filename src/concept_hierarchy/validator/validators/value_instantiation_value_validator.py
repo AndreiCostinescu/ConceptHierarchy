@@ -48,6 +48,7 @@ from concept_hierarchy.data.validators.template_argument_constraints_validator i
     validate_template_argument_value_against_constraint,
 )
 from concept_hierarchy.data.validators.type_validator import parse_convert_type_in_template_context
+from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
 
@@ -227,3 +228,99 @@ class ValueValidator(ValueInstantiationContext):
             yield
         finally:
             self.context.set_variable_context(previous)
+
+    def is_domain_concept_datum_in_concept_hierarchy(self, key: str) -> bool:
+        return (
+            key in self.context.ch.all_domain_concept_functions or key in self.context.ch.all_domain_concept_properties
+        )
+
+    def validate_concept_data_key(
+        self,
+        key: str,
+        for_properties_or_functions: ForPropertyOrFunction,
+        include_parent_data: bool,
+        concept_restriction: list[InstantiatedType] | None,
+    ) -> InstantiatedType | None:
+        def get_domain_concept_in_which_defined_and_type(_prop_or_func_name: str) -> tuple[str, InstantiatedType]:
+            if _prop_or_func_name in self.context.ch.all_domain_concept_properties:
+                _domain_concept = self.context.ch.all_domain_concept_properties[key]
+                return _domain_concept, self.context.model.domain_concepts[_domain_concept].property_types[key]
+            assert key in self.context.ch.all_domain_concept_functions
+            _domain_concept = self.context.ch.all_domain_concept_functions[key]
+            return _domain_concept, self.context.model.domain_concepts[_domain_concept].function_types[key]
+
+        domain_concept, type_of_key = get_domain_concept_in_which_defined_and_type(key)
+        if concept_restriction is None:
+            return type_of_key
+        assert all(self.context.ch.is_domain_concept(x.full_name) for x in concept_restriction)
+        for candidate_domain_concept in concept_restriction:
+            if (
+                include_parent_data
+                and self.context.ch.is_a_subconcept_of_b(
+                    candidate_domain_concept.full_name, domain_concept, include_self=True
+                )
+            ) or (not include_parent_data and candidate_domain_concept.full_name == domain_concept):
+                return type_of_key
+        return None
+
+    def substitute_with_x(
+        self,
+        custom_type: TypeValue,
+        substitution: dict[str, ConceptHierarchyTemplateArgument],
+        schema_owner: str,
+        key_location_id: LocationId,
+    ) -> TypeValue:
+        model_value_domain = self.context.model.value_domains[schema_owner]
+        template_context_in_which_type_was_written = model_value_domain.template_context
+        assert self.context.model.x_template_variable_constraint is not None
+        self.context.type_validator.add_template_variable(
+            "x", self.context.model.x_template_variable_constraint, key_location_id
+        )
+        try:
+            res = substitute(
+                custom_type,
+                substitution,
+                self.context.template_context,
+                template_context_in_which_type_was_written,
+                self.context.type_application_constraints_validator,
+                key_location_id,
+            )[0]
+            self.context.type_validator.delete_template_variable("x", key_location_id)
+            return res
+        except ConceptHierarchyError:
+            self.context.type_validator.delete_template_variable("x", key_location_id)
+            raise
+
+    def collect_data(
+        self,
+        concept_restriction: list[InstantiatedType] | None,
+        for_properties_or_functions: ForPropertyOrFunction,
+        include_parent_data: bool,
+    ) -> dict[str, InstantiatedType]:
+        res: dict[str, InstantiatedType] = {}
+        if concept_restriction is None:
+            if for_properties_or_functions is ForPropertyOrFunction.PROPERTY:
+                for prop_name, concept_defining_prop in self.context.ch.all_domain_concept_properties.items():
+                    res[prop_name] = self.context.model.domain_concepts[concept_defining_prop].property_types[prop_name]
+            else:
+                assert for_properties_or_functions is ForPropertyOrFunction.FUNCTION
+                for func_name, concept_defining_func in self.context.ch.all_domain_concept_functions.items():
+                    res[func_name] = self.context.model.domain_concepts[concept_defining_func].function_types[func_name]
+        else:
+            for domain_concept in concept_restriction:
+                if for_properties_or_functions is ForPropertyOrFunction.PROPERTY:
+                    if include_parent_data:
+                        res.update(
+                            self.context.model.domain_concepts[domain_concept.full_name].all_available_property_types
+                        )
+                    else:
+                        res.update(self.context.model.domain_concepts[domain_concept.full_name].property_types)
+                else:
+                    assert for_properties_or_functions is ForPropertyOrFunction.FUNCTION
+                    if include_parent_data:
+                        res.update(
+                            self.context.model.domain_concepts[domain_concept.full_name].all_available_function_types
+                        )
+                    else:
+                        res.update(self.context.model.domain_concepts[domain_concept.full_name].function_types)
+        return res

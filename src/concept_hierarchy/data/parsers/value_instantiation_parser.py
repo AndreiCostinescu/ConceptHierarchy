@@ -103,7 +103,10 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TypeValue,
 )
 from concept_hierarchy.data.utils import MISSING, StopValidation, record
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    DomainConceptDefinition,
+    ForPropertyOrFunction,
+)
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
 # ===========================================================================================================
@@ -221,6 +224,35 @@ class ValueInstantiationContext(ABC):
     ) -> AbstractContextManager[None]:
         pass
 
+    def is_domain_concept_datum_in_concept_hierarchy(self, key: str) -> bool:
+        pass
+
+    def validate_concept_data_key(
+        self,
+        key: str,
+        for_properties_or_functions: ForPropertyOrFunction,
+        include_parent_data: bool,
+        concept_restriction: list[InstantiatedType] | None,
+    ) -> InstantiatedType | None:
+        pass
+
+    def substitute_with_x(
+        self,
+        custom_type: TypeValue,
+        substitution: dict[str, ConceptHierarchyTemplateArgument],
+        schema_owner: str,
+        key_location_id: LocationId,
+    ) -> TypeValue:
+        pass
+
+    def collect_data(
+        self,
+        concept_restriction: list[InstantiatedType] | None,
+        for_properties_or_functions: ForPropertyOrFunction,
+        include_parent_data: bool,
+    ) -> dict[str, InstantiatedType]:
+        pass
+
 
 # ===========================================================================================================
 # Traversal state
@@ -266,6 +298,13 @@ class _State:
 
     def new_state(self, upper_level_object_key: str | None = None) -> _State:
         return replace(self, upper_level_object_key=upper_level_object_key)
+
+    def reading(self, location_id: LocationId):
+        return (
+            self.function_interpretation
+            if location_id == self.function_interpretation_at
+            else FunctionInterpretation.UNSPECIFIED
+        )
 
 
 # ===========================================================================================================
@@ -458,11 +497,6 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             local.append(err)
             state.record(err)
     if not used_default:
-        reading = (
-            state.function_interpretation
-            if location_id == state.function_interpretation_at
-            else FunctionInterpretation.UNSPECIFIED
-        )
 
         def _parse_expr():
             return state.context.parse_value_against_custom_type_expression(
@@ -472,7 +506,7 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
                 location_id,
                 state.template_substitution,
                 state.expansion_depth,
-                reading,
+                state.reading(location_id),
             )
 
         if _is_the_custom_function_shorthand(node, location_id, state):
@@ -604,7 +638,7 @@ def _parse_object(
 
     # process "properties": [("props", "x"), ("funcs+(Dog)", "x")]
     if node.custom_concept_data_constraints:
-        _parse_custom_concept_data(node, value, location_id, structural, rec, state)
+        _parse_custom_concept_data(node, value, location_id, structural, matched_keys, rec, state)
 
     # process "properties": "args"
     if node.custom_object_properties is not None:
@@ -714,11 +748,6 @@ def _parse_object(
             # Default values are not applicable here because it is the appearing/existing/available names of the JSON
             # object's keys that are checked; there is no MISSING case for which a default value/expression can be used.
             for key in value:
-                reading = (
-                    state.function_interpretation
-                    if location_id == state.function_interpretation_at
-                    else FunctionInterpretation.UNSPECIFIED
-                )
                 _, errs = state.context.parse_value_against_custom_type_expression(
                     pn.custom_type,
                     pn.provenance,
@@ -726,7 +755,7 @@ def _parse_object(
                     location_id + [key],
                     state.template_substitution,
                     state.expansion_depth,
-                    reading,
+                    state.reading(location_id),
                 )
                 for err in errs:
                     err.part = PathPart.KEY
@@ -748,13 +777,104 @@ def _parse_object(
 
 def _parse_custom_concept_data(
     node: CHSchemaNode,
-    value: dict,
+    concept_data: dict,
     location_id: LocationId,
     structural: ParsedStructural,
+    matched_keys: set[str],
     rec: Callable[[ConceptHierarchyError], None],
     state: _State,
 ):
-    pass
+    # What to do with concept data constraints that have unsubstituted template variables in them? match everything!
+    if node.custom_concept_data_constraints is not None and any(
+        isinstance(x, InstantiatedType) for x in node.custom_concept_data_constraints
+    ):
+        # Match every key... defer the true check to the substituted schema.
+        matched_keys.update(concept_data.keys())
+        return
+
+    constraints_to_satisfy: list[dict[str, InstantiatedType]] = []
+    for concept_data_constraint in node.custom_concept_data_constraints:
+        constraints_to_satisfy.append(
+            state.context.collect_data(
+                concept_data_constraint.concept_restriction,
+                concept_data_constraint.for_properties_or_functions,
+                concept_data_constraint.include_parent_data,
+            )
+        )
+
+    local_matches: set[str] = set()
+    satisfied_parsed_values: list[dict[str, ParsedCustomValue]] = [{} for _ in node.custom_concept_data_constraints]
+    for key, value in concept_data.items():
+        if not state.context.is_domain_concept_datum_in_concept_hierarchy(key):
+            continue
+        key_location_id = location_id + [key]
+        constraint_index, value_type, node_value_type = None, None, None
+        # check if the key is contained in one of the constraints
+        for constraint_index, (constraint_to_satisfy, concept_data_constraint) in enumerate(
+            zip(constraints_to_satisfy, node.custom_concept_data_constraints)
+        ):
+            if key in constraint_to_satisfy:
+                value_type, node_value_type = constraint_to_satisfy[key], concept_data_constraint.value
+                break
+        if value_type is None:
+            continue
+        local_matches.add(key)
+        assert constraint_index is not None
+        assert node_value_type is not None
+        # create the x-substitution
+        substitution: dict[str, ConceptHierarchyTemplateArgument] = {"x": value_type}
+        # update the substitution with the template_substitution of the context
+        if state.template_substitution is not None:
+            substitution.update(state.template_substitution)
+        # do the substitution
+        assert node_value_type.custom_type is not None
+        assert state.context.is_concept(node_value_type.schema_owner)
+        substituted_value = state.context.substitute_with_x(
+            node_value_type.custom_type, substitution, node_value_type.schema_owner, key_location_id
+        )
+        # check the expression at that site
+        expr_res, errors = state.context.parse_value_against_custom_type_expression(
+            substituted_value,
+            node_value_type.provenance,
+            value,
+            key_location_id,
+            state.template_substitution,
+            state.expansion_depth,
+            state.reading(key_location_id),
+        )
+        for err in errors:
+            rec(err)
+
+        # How to convert the Expression value into a ParsedValue?
+        parsed = ParsedCustomValue(
+            location_id=key_location_id,
+            schema_node=node_value_type,
+            errors=[],
+            custom_type=substituted_value,
+            provenance=node_value_type.provenance,  # TODO: is this the provenance of the schema or of the expression?
+            used_default=False,
+            default_expr=MISSING,
+            expression=expr_res,
+        )
+        satisfied_parsed_values[constraint_index][key] = parsed
+
+    matched_keys.update(local_matches)
+    for constraint, concept_data_constraint in zip(constraints_to_satisfy, node.custom_concept_data_constraints):
+        if not concept_data_constraint.require_all_keys:
+            continue
+        required_keys = set(constraint.keys())
+        if not (required_keys < local_matches):
+            rec(
+                CHSemanticError(
+                    f"The custom concept data constraint {concept_data_constraint}\nwas not satisfied because not all "
+                    f"keys were present; missing keys are: {sorted(required_keys - local_matches)}",
+                    location_id=location_id,
+                )
+            )
+
+    for constraint_index, parse_res in enumerate(satisfied_parsed_values):
+        for key, parsed_value in parse_res.items():
+            structural.custom_expressions[key] = [(constraint_index, parsed_value)]
 
 
 def _parse_evaluation_arguments_of_function(
