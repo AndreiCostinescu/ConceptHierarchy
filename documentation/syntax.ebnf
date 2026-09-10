@@ -361,7 +361,7 @@ ValueDomainMemberCreation
 FunctionComposition
         ::= ws '{' InstantiatedFunctionReference ':' ws '{'
                 (ws | (FunctionArgumentCall (',' FunctionArgumentCall)*))
-            '}' (ws ',' ws '"isFunctionEvaluation"' ws ':' ws boolean)? ws '}' ws
+            '}' ws '}' ws
 FunctionArgumentCall
         ::= FunctionArgumentReference ':' ConceptHierarchyValue
 DurationSerialization

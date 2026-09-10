@@ -1089,18 +1089,12 @@
         },
 
         "functionProcedure": {
-          "description": "Function procedure: a JSON object with function name as key. RECURSION POINT - add maxDepth here if needed",
+          "description": "Function procedure: a JSON object with the function name as its single key. The key may carry an fEval:/fComp:/fInst: marker saying which reading is meant. RECURSION POINT - add maxDepth here if needed",
           "type": "object",
           "minProperties": 1,
-          "maxProperties": 2,
-          "properties": {
-            "isFunctionEvaluation": {
-              "type": "boolean",
-              "description": "Disambiguates function evaluation from procedure definition"
-            }
-          },
+          "maxProperties": 1,
           "patternProperties": {
-            "^[A-Z][A-Za-z0-9_]*(<.*>)?$": {
+            "^(fEval:|fComp:|fInst:)?[A-Z][A-Za-z0-9_]*(<.*>)?$": {
               "type": "object",
               "description": "Function arguments",
               "patternProperties": {

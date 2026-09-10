@@ -54,28 +54,63 @@ class FunctionInterpretation(Enum):
     left of the fact that the site was a `FunctionComposition`.
 
     Carried from the expression parser into an instantiation schema and back out at each custom-type leaf;
-    see `documentation/TODO_FUNCTION_EVALUATION_VS_COMPOSITION.md`. Every member but `UNSPECIFIED` is a
+    see `documentation/TODO_FUNCTION_INTERPRETATION_MARKER.md`. Every member but `UNSPECIFIED` is a
     decision, not a hint, and a leaf that cannot honor one must **fail** rather than fall back -- that is
     what makes the ``oneOf`` resolve to exactly one branch.
+
+    **A member is a constraint, not a default.** This is the distinction the enum has been misread on
+    twice, and both times the same way, so it is worth stating plainly:
+
+    * the **default** is the reading the classification cascade lands on when nothing rules it out. It is
+      not represented here at all -- it is implicit in the order of the cascade (`[CH].md` 10.2);
+    * a **constraint** says which readings may be *attempted*. `COMPOSITION` does not mean "prefer the
+      composition", it means "it must be the composition; do not try anything else".
+
+    The two come apart wherever a site has a default but no exclusive claim on it, and a
+    `FunctionComposition` site is exactly that: the composition is its default, and yet a `Narrow` to a
+    `FunctionComposition` subtype is equally legal there, so the only thing the site can rule out is the evaluation.
+    That is `NOT_AN_EVALUATION`, and it is why the member cannot be replaced by `COMPOSITION`
+    even though "a composition is what you get here" is a true description of the site.
     """
 
     UNSPECIFIED = "unspecified"
-    """No decision has been made; the site's own type and keyword decide, as usual."""
+    """No decision has been made; the site's own type decides, as usual."""
 
-    RULED_OUT = "ruled out"
+    NOT_AN_EVALUATION = "not an evaluation"
     """
-    This object is *not* a Function evaluation -- but *which* of the other two it is, is not said.
+    This object is *not* a Function evaluation. Nothing is said about which of the other readings it is.
 
-    Written as ``"isFunctionEvaluation": false``, or implied by a site whose type is a
-    `FunctionComposition` and that carries no keyword. A leaf must not read the object as a `FEval`.
+    Every other member says what the value **is**; this one says only what it is **not**, and that is not
+    a shortcoming to be split away -- it is a weaker statement than any marker can make, and three
+    readings survive it: a `Narrow`, an `Inst` reading the object as a composition, and an `Inst` reading
+    it as ordinary data for the site's schema. `COMPOSITION` admits only the second, `INSTANTIATION` only
+    the first, so this is *not* their disjunction and cannot be rewritten as either.
 
-    **This member is the conflation, and it is the next thing to split.** "Not an evaluation" cannot choose
-    between a composition and an instantiation, which is why an argument-less Function at a
-    ``FunctionCompositionRes<T>`` site whose ``T`` admits a Function type matches *both* branches and no
-    keyword can separate them -- see `TODO_FUNCTION_INTERPRETATION_MARKER.md` §1 and
-    `TestNarrowVersusCompositionIsStillAmbiguous`. Splitting it into ``COMPOSITION`` and ``INSTANTIATION``
-    needs the `fComp:` / `fInst:` markers to exist first, because only they can say which was meant; §5 of
-    that plan says how each present-day producer of this value has to be re-decided.
+    At a site whose type is a `FunctionComposition` and whose key carries no marker the composition is the **default**.
+    (see the class docstring on why that is not the same as a
+    constraint -- and a `Narrow` to a `FunctionComposition` subtype is equally legal, so the evaluation is
+    all this site can exclude.
+
+    *(measured)* Its whole effect is that exclusion, and it is load-bearing. Against a green tree:
+
+    ===================================================== ==========
+    change                                                failures
+    ===================================================== ==========
+    stop producing it (this branch yields `UNSPECIFIED`)   124
+    produce it, but let carrying it constrain nothing      124
+    yield `COMPOSITION` here instead                       135
+    ===================================================== ==========
+
+    The first two fail the *same* tests, which is what says producing and honoring it are one mechanism:
+    suppress the `FEval` reading, so that `{F: args}` is read as the composition instead of hard-failing
+    on ``res(F) <= tau`` before `Inst` is ever tried. The third is those 124 **plus 11**, and the 11 are
+    the `Narrow` that `COMPOSITION` would forbid -- ten in `test_function_composition_args_schema.py` and
+    `TestTheTypeDrivenDefaultIsNotTheCompositionMarker::test_a_narrow_is_still_admissible_at_a_composition_site`.
+    Strengthening the default would also resolve the ``FunctionCompositionRes<T>`` collision by fiat,
+    making silence *mean* "composition".
+
+    It was also written as ``"isFunctionEvaluation": false`` until that keyword was removed; §9 of
+    `TODO_FUNCTION_INTERPRETATION_MARKER.md` says what each of its uses became.
     """
 
     COMPOSITION = "composition"
@@ -91,15 +126,15 @@ class FunctionInterpretation(Enum):
     This object is the _Function_ **value** -- a `Narrow` to `K`.
 
     Written as ``fInst:``. Only a `Narrow` may produce it. This is the reading that never has a default:
-    at every site one of the other two is what an unmarked key means, which is why
-    ``isFunctionEvaluation: false`` could never select it on its own.
+    at every site one of the other two is what an unmarked key means, which is why a directive saying
+    only "not an evaluation" could never select it on its own.
     """
 
     EVALUATION = "evaluation"
     """
     This object *is* a Function evaluation, and could not be one at the site itself.
 
-    Written as ``"isFunctionEvaluation": true`` where ``res(K)`` is not a subtype of the site's type --
+    Written as ``fEval:`` where ``res(K)`` is not a subtype of the site's type --
     always so at a `FunctionComposition` site, because no Function returns a `FunctionComposition`. The
     reading has to be consumed by a custom-type leaf of the site's instantiation schema whose own type
     ``res(K)`` does satisfy, and every other reading of the object is off the table: a leaf that cannot
@@ -115,9 +150,9 @@ FUNCTION_INTERPRETATION_MARKERS: dict[str, "FunctionInterpretation"] = {
 """
 The marker a key may carry to say which of its three readings it has.
 
-One entry per reading, and the only place the three words are written down. `RULED_OUT` is deliberately
-not among them: it is what ``isFunctionEvaluation: false`` still means -- "not an evaluation", without
-saying which of the other two -- and a marker never needs to be that vague.
+One entry per reading, and the only place the three words are written down. `NOT_AN_EVALUATION` is
+deliberately not among them: it says only "not an evaluation", without saying which of the other two or 
+even none of the two, and a marker never needs to be that vague.
 """
 
 
@@ -131,12 +166,6 @@ def split_function_interpretation_marker(key: str) -> tuple["FunctionInterpretat
     application may carry a *string literal* template argument, which is arbitrary text and may contain
     colons -- including these very words. ``Tagged<"fEval:x">`` is a valid application today, and
     splitting anywhere but the first colon, or refusing keys with more than one, would break it.
-
-    There is no competing reading of a leading ``word:``. A type application's name is alphanumeric plus
-    ``_``, so it cannot contain a colon; ``s:`` marks a `String` *value* and never reaches a type position;
-    and the qualified-variable form ``Add:T`` is not a valid type application. These three are therefore
-    **markers, not reserved concept names** -- nothing ever resolves ``fEval`` as a type, so a concept of
-    that name would not collide.
     """
     prefix, separator, remainder = key.partition(":")
     if not separator:

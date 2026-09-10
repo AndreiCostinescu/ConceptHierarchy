@@ -13,33 +13,44 @@
 # limitations under the License.
 
 """
-The specification of ``"isFunctionEvaluation"``: every placement, at every kind of site.
+How a _Function_-keyed object is read: every marker, at every kind of site.
 
-This is a *specification* suite, written before the implementation it describes
-(``documentation/TODO_FUNCTION_EVALUATION_VS_COMPOSITION.md``). Tests that fail today name the cells of
-the classification table the parser does not implement yet; nothing here is aspirational beyond that
-document.
+A single-key object whose key names a _Function_ has three possible readings -- a call of it, a
+composition of it, or the _Function_ value itself -- and one of them is the default, chosen by the site's
+type. The prefixes `fEval:` / `fComp:` / `fInst:` on that key name a reading explicitly. This suite is the
+specification of the whole decision (`[CH].md` 10.2 is the normative statement,
+`documentation/TODO_FUNCTION_INTERPRETATION_MARKER.md` the plan it was built from).
 
 Three things are asserted for every case, because any one of them alone can pass for the wrong reason:
 
 * **the `ExpressionValue` subclass** -- `FunctionEvaluation` versus `InstExpression`/`NarrowExpression` is
-  the *only* record of which reading was taken. Nothing is rewritten at parse time (a ``true`` at a
+  the *only* record of which reading was taken. Nothing is rewritten at parse time (`fEval:` at a
   `FunctionComposition` site is not turned into a ``Return`` composition here; that lowering happens
   elsewhere), so the class is the answer;
 * **the message**, so that a rejection rejects for the stated reason and not by accident;
-* **the location**, so that the error is attached to the JSON that is actually wrong -- the
-  ``isFunctionEvaluation`` key itself for a misuse, the argument object for a stray key inside one.
+* **the location**, so that the error is attached to the JSON that is actually wrong.
 
-The table being pinned (``[CH].md`` 10.2), where K is the single content key's type application:
+The table being pinned (`[CH].md` 10.2), where K is the single content key's type application:
 
-| tau                            | absent | true  | false                        |
-|--------------------------------|--------|-------|------------------------------|
-| tau not <= FunctionComposition | FEval  | FEval | not FEval; Narrow, then Inst |
-| tau <= FunctionComposition     | Inst   | FEval | Inst                         |
+| tau                            | no marker | fEval: | fComp:                 | fInst:            |
+|--------------------------------|-----------|--------|------------------------|-------------------|
+| tau not <= FunctionComposition | FEval     | FEval  | only a composing Inst  | only the Narrow   |
+| tau <= FunctionComposition     | Inst      | FEval  | Inst (the default)     | Inst, via a leaf  |
 
-and the recognition rule: the key is a directive **only** on an object of exactly two keys whose other key
-names a type application; that type must be a Function, or the use is an error. Anywhere else it is
-ordinary data -- an argument name, or a key of some ValueDomain's instantiation.
+A marker **requires** its reading rather than permitting it: the value is refused unless that reading is
+what stands at its own location, which a schema matching without reading it would otherwise discard.
+
+A fourth reading has no marker and cannot have one -- the object is *ordinary data* for the site's
+instantiation schema, whose property name it must keep, and a marker would change that name. It is written
+as an explicit `Narrow`, ``{tau: w}``; see `TestTheTypeDrivenDefaultIsNotTheCompositionMarker`.
+
+**On ``"isFunctionEvaluation"``.** A sibling keyword of that name used to carry this decision, two-valued
+and unable to separate the composition from the instantiation, and it was removed once the markers landed
+(`TODO_FUNCTION_INTERPRETATION_MARKER.md` 9). The name is now an identifier like any other, and the two
+classes that still write it -- `TestTheKeywordIsOrdinaryData` and `TestTheKeywordReachesTheSchemaUntouched`
+-- exist to keep it that way: an argument or a property may be called this, and reading it as anything
+else would silently delete a value the author wrote. `TestTheKeywordIsNoLongerADirective` pins the removal
+itself.
 """
 
 from __future__ import annotations
@@ -55,9 +66,17 @@ from concept_hierarchy.data.expressions.subexpressions import (
     FunctionEvaluation,
     InstExpression,
     NarrowExpression,
+    PossibleFunctionEvaluationExpression,
+    PossibleNarrowExpression,
+    VerifiedTemplateDependentExpression,
 )
 from concept_hierarchy.errors import ConceptHierarchyError
-from tests.integration.test_expression_parsing import build_hierarchy, check_hierarchy
+from tests.integration.test_expression_parsing import (
+    build_hierarchy,
+    check_hierarchy,
+    function_default_expressions,
+    refuses_commitment,
+)
 from tests.integration.test_function_default_arguments import GROUND, function
 from tests.integration.test_schema_substitution import obj, vd
 
@@ -150,10 +169,28 @@ SWALLOW = vd(
 """
 A ValueDomain whose instantiation happens to accept an object keyed ``Leaf``.
 
-The trap for a misused keyword: ``{"Leaf": {}, "isFunctionEvaluation": true}`` is a misuse -- `Leaf` names
-a type that is not a Function -- but set the misuse aside and `Inst` matches this schema and accepts the
-value, keyword and all. Every other site in this module rejects that object for an unrelated reason, so
-this is the only fixture that can tell a real check from an accident.
+The trap for a misused marker: ``{"fEval:Leaf": {}}`` is a misuse -- `Leaf` names a type that is not a
+Function -- but set the misuse aside and `Inst` matches this schema and accepts the value. Every other
+site in this module rejects that object for an unrelated reason, so this is the only fixture that can tell
+a real check from an accident.
+"""
+
+OPAQUE_COMPOSITION = vd("OpaqueComposition", True, parents=("FunctionComposition",))
+"""
+A `FunctionComposition` whose instantiation accepts everything.
+
+The only way, once the keyword is gone, to reach an accept-everything schema under `NOT_AN_EVALUATION`:
+the interpretation comes from the *type* -- a site whose type is a `FunctionComposition` and whose key
+carries no marker -- rather than from anything written at the site. It is what keeps the "no reading is
+insisted on" arm of the consumption check under test.
+"""
+
+ANYTHING = vd("Anything", True)
+"""
+A ValueDomain whose instantiation accepts everything -- which is also what a ValueDomain that declares no
+``instantiation`` at all gets (`[CH].md` 8.6). A boolean schema has no property names to resolve and no
+leaf to reach, so it matches *any* JSON without ever reading it as anything; it is the one site where a
+commitment can be silently dropped no matter which reading was asked for.
 """
 
 PERMISSIVE = vd(
@@ -239,6 +276,8 @@ HOLDER = vd(
             "cf": {"type": "CustomFunction"},
             "swallow": {"type": "Swallow"},
             "permissive": {"type": "Permissive"},
+            "anything": {"type": "Anything"},
+            "opaqueComp": {"type": "OpaqueComposition"},
             "structural": {"type": "Structural"},
             "nested": {"type": "Holder"},
         },
@@ -266,6 +305,8 @@ CONCEPTS = {
     **TAGGED,
     **STRUCTURAL,
     **SWALLOW,
+    **ANYTHING,
+    **OPAQUE_COMPOSITION,
     **PERMISSIVE,
     **PAIRED,
     **LABELLED,
@@ -304,7 +345,7 @@ def oneof_branch(expression: Expression) -> str | None:
     The type of the ``oneOf`` branch the value actually matched, or ``None`` if the node has no ``oneOf``.
 
     At a ``FunctionCompositionRes<T>`` site both readings are an `InstExpression` at the top -- the whole
-    point is that a composition is recognised by its schema -- so the class no longer separates them. Which
+    point is that a composition is recognized by its schema -- so the class no longer separates them. Which
     branch of ``oneOf: ["T", "FunctionComposition"]`` was retained does, and it is the exact question the
     keyword answers.
     """
@@ -412,71 +453,50 @@ def assert_reported(error: ConceptHierarchyError, *, message: str, location: str
 # ==================================================================================================
 
 
-class TestRecognition:
+class TestTheKeywordIsOrdinaryData:
     """
-    The key is a directive **only** on a two-key object whose other key names a type application.
+    ``isFunctionEvaluation`` is an identifier like any other, and these are the placements that say so.
 
-    Everywhere else it is data. This is not a nicety: an argument may be named ``isFunctionEvaluation``,
-    and so may a property in a ValueDomain's instantiation, and stripping it there would silently delete a
-    value. ``examples/animal_kingdom.json`` contains exactly such a placement, one level too deep inside
-    ``FunctionSequence``'s argument object.
+    They were the *exceptions* while the key was also a classifier directive -- everything that was not a
+    two-key object beside a type application -- and they are what is left once it is not. An argument may
+    be named this, and so may a property of a ValueDomain's instantiation; reading either as a directive
+    would silently delete a value the author wrote. ``examples/animal_kingdom.json`` contained exactly
+    such a placement, one level too deep inside ``FunctionSequence``'s argument object.
     """
 
-    def test_two_keys_with_a_function_key_is_a_directive(self):
-        context = check(at(fn={"Nullary": {}, "isFunctionEvaluation": False}))
-        assert field_kind(context, "fn") is NarrowExpression
-
-    def test_two_keys_with_a_non_function_type_key_is_an_error(self):
-        error = rejection(at(num={"Leaf": {}, "isFunctionEvaluation": True}))
-        assert_reported(error, message="isFunctionEvaluation", location='"isFunctionEvaluation" (key)')
-
-    def test_the_error_names_the_offending_type(self):
-        error = rejection(at(num={"Leaf": {}, "isFunctionEvaluation": True}))
-        assert_reported(error, message="Leaf", location='"isFunctionEvaluation" (key)')
-
-    def test_two_keys_whose_other_key_is_not_a_type_is_ordinary_data(self):
-        """``{"arg1": 1, "isFunctionEvaluation": true}`` is an argument list with a bad key, not a directive."""
+    def test_beside_a_key_that_is_not_a_type_it_is_an_argument_name(self):
+        """``{"arg1": 1, "isFunctionEvaluation": true}`` is an argument list with a key `Add` lacks."""
         error = rejection(at(num={"Add": {"arg1": 1, "isFunctionEvaluation": True}}))
         assert_reported(error, message='does not have the argument "isFunctionEvaluation"', location='"num"')
 
-    def test_the_sole_key_is_ordinary_data(self):
-        """A ValueDomain may declare a property with that name; one key is never a directive."""
+    def test_as_the_sole_key_it_is_a_property_name(self):
+        """`Flagged` declares a property with that name, and is entitled to."""
         context = check(at(flagged={"isFunctionEvaluation": 3}))
         assert field_kind(context, "flagged") is InstExpression
 
-    def test_three_keys_are_ordinary_data(self):
+    def test_a_value_domain_may_declare_a_property_of_that_name(self):
+        """The same point from the schema's side, and the reason the identifier is not reserved."""
+        assert field(check(at(flagged={"isFunctionEvaluation": 3})), "flagged").is_valid
+
+    def test_among_three_keys_it_is_an_argument_name(self):
         context = check(at(num={"Weird": {"isFunctionEvaluation": 3}}))
         assert field_kind(context, "num") is FunctionEvaluation
 
-    def test_an_argument_may_be_named_is_function_evaluation(self):
+    def test_a_function_may_declare_an_argument_of_that_name(self):
         context = check(at(num={"Weird": {"isFunctionEvaluation": 3}}))
         evaluation = field(context, "num").value
         assert isinstance(evaluation, FunctionEvaluation)
         assert sorted(evaluation.arguments) == ["isFunctionEvaluation"]
 
-    def test_a_directive_and_an_argument_of_that_name_coexist(self):
+    def test_a_marker_and_an_argument_of_that_name_coexist(self):
         """
-        The outer key is the directive, the inner key is the argument. Both readings are correct at once,
-        and neither may consume the other's key.
+        The marker is on the key and the argument is inside the value, so the two cannot collide -- which
+        is the structural reason a marker needs no recognition rule, where the keyword needed one.
         """
-        context = check(at(num={"Weird": {"isFunctionEvaluation": 3}, "isFunctionEvaluation": True}))
+        context = check(at(num={"fEval:Weird": {"isFunctionEvaluation": 3}}))
         evaluation = field(context, "num").value
         assert isinstance(evaluation, FunctionEvaluation)
         assert sorted(evaluation.arguments) == ["isFunctionEvaluation"]
-
-    def test_a_directive_is_stripped_before_the_instantiation_schema_sees_it(self):
-        """
-        No ValueDomain declares the key, so an `Inst` that still carried it would be rejected by
-        `Boxy`'s ``additionalProperties``. Reaching `Boxy` at all is the ``false`` cell's whole job.
-        """
-        context = check(at(boxy={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
-        assert field_kind(context, "boxy") is InstExpression
-
-    def test_the_input_json_is_not_modified(self):
-        """The key is popped while the value is classified; it must be put back."""
-        value = {"Nullary": {}, "isFunctionEvaluation": False}
-        check(at(fn=value))
-        assert value == {"Nullary": {}, "isFunctionEvaluation": False}
 
 
 # ==================================================================================================
@@ -504,53 +524,56 @@ class TestOrdinarySiteWithoutTheKeyword:
         assert_reported(error, message="not a subtype", location='"fn"')
 
 
-class TestOrdinarySiteWithTrue:
-    """``true`` restates the default here. It is accepted, and it changes nothing."""
+class TestOrdinarySiteWithTheEvaluationMarker:
+    """`fEval:` restates the default here. It is accepted, and it changes nothing."""
 
-    def test_true_is_accepted_and_redundant(self):
-        context = check(at(num={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+    def test_the_marker_is_accepted_and_redundant(self):
+        context = check(at(num={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert field_kind(context, "num") is FunctionEvaluation
 
-    def test_true_produces_the_same_expression_as_omitting_it(self):
-        with_flag = field(check(at(num={"Nullary": {}, "isFunctionEvaluation": True})), "num")
+    def test_the_marker_produces_the_same_expression_as_omitting_it(self):
+        marked = field(check(at(num={"fEval:Nullary": {}})), "num")
         without = field(check(at(num={"Nullary": {}})), "num")
-        assert type(with_flag.value) is type(without.value)
-        assert with_flag.value.value_type.full_name == without.value.value_type.full_name
+        assert type(marked.value) is type(without.value)
+        assert marked.value.value_type.full_name == without.value.value_type.full_name
 
-    def test_true_does_not_rescue_a_result_that_is_not_a_subtype(self):
-        error = rejection(at(num={"Stringy": {}, "isFunctionEvaluation": True}))
+    def test_the_marker_does_not_rescue_a_result_that_is_not_a_subtype(self):
+        """It names the reading; it does not waive the reading's own condition."""
+        error = rejection(at(num={"fEval:Stringy": {}}))
         assert_reported(error, message="not a subtype", location='"num"')
 
 
 class TestOrdinarySiteWithFalse:
     """
-    The first load-bearing cell. ``false`` takes the evaluation reading off the table -- and the cascade
-    then continues to `Narrow` **and then `Inst`**, which is what makes ``Dog.f2`` legal.
+    The first load-bearing cell, and the one that split in two: `fInst:` asks for the `Narrow`, `fComp:`
+    for the enclosing `Inst`. `isFunctionEvaluation: false` said only "not the evaluation" and let the
+    cascade try both in turn, which is why `Dog.f2` and an argument-less Function's value were the same
+    spelling; now they are not.
     """
 
-    def test_false_narrows_an_argument_less_function(self):
-        context = check(at(fn={"Nullary": {}, "isFunctionEvaluation": False}))
+    def test_the_instantiation_marker_narrows_an_argument_less_function(self):
+        context = check(at(fn={"fInst:Nullary": {}}))
         expression = field(context, "fn")
         assert isinstance(expression.value, NarrowExpression)
         assert expression.value.value_type.full_name == "Nullary"
 
-    def test_false_reaches_the_enclosing_instantiation_schema(self):
+    def test_the_composition_marker_reaches_the_enclosing_instantiation_schema(self):
         """`Add` is not a subtype of `Boxy`, so `Narrow` fails and only `Inst` can accept this."""
-        context = check(at(boxy={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
+        context = check(at(boxy={"fComp:Add": {"arg1": 1, "arg2": 2}}))
         assert field_kind(context, "boxy") is InstExpression
 
-    def test_the_same_value_without_false_is_rejected_at_that_site(self):
+    def test_the_same_value_unmarked_is_rejected_at_that_site(self):
         """The contrast that shows the cell is load-bearing rather than decorative."""
         error = rejection(at(boxy={"Add": {"arg1": 1, "arg2": 2}}))
         assert_reported(error, message="not a subtype", location='"boxy"')
 
-    def test_false_with_arguments_at_a_function_site_is_rejected(self):
+    def test_the_instantiation_marker_with_arguments_is_rejected(self):
         """A Function's instantiation is the empty object; arguments have nowhere to go."""
-        error = rejection(at(fn={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
+        error = rejection(at(fn={"fInst:Add": {"arg1": 1, "arg2": 2}}))
         assert_reported(error, message="Add", location='"fn"')
 
-    def test_false_reports_the_abandoned_alternatives_when_nothing_matches(self):
-        error = rejection(at(num={"Nullary": {}, "isFunctionEvaluation": False}))
+    def test_the_marker_reports_the_abandoned_alternatives_when_nothing_matches(self):
+        error = rejection(at(num={"fInst:Nullary": {}}))
         messages = " ".join(message for _, message in error_sites(error))
         assert "Narrow" in messages or "not a subtype" in messages
 
@@ -566,12 +589,12 @@ class TestFunctionCompositionSite:
         assert field_kind(context, "comp") is InstExpression
 
     def test_false_is_the_composition(self):
-        context = check(at(comp={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
+        context = check(at(comp={"fComp:Add": {"arg1": 1, "arg2": 2}}))
         assert field_kind(context, "comp") is InstExpression
 
     def test_absent_and_false_agree(self):
         absent = field(check(at(comp={"Add": {"arg1": 1, "arg2": 2}})), "comp")
-        false = field(check(at(comp={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False})), "comp")
+        false = field(check(at(comp={"fComp:Add": {"arg1": 1, "arg2": 2}})), "comp")
         assert type(absent.value) is type(false.value)
 
     def test_a_function_that_returns_nothing_may_be_composed(self):
@@ -589,12 +612,12 @@ class TestFunctionCompositionSite:
         Still the schema author's call: adding a branch that accepts an evaluation is what makes the
         keyword usable here, exactly as it does for `CustomFunction`.
         """
-        error = rejection(at(comp={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        error = rejection(at(comp={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert_reported(error, message="without reading it as one", location='"comp"')
 
     def test_true_on_a_function_that_returns_nothing_is_rejected_here_too(self):
         """The reason is the absent branch, not the absent result type."""
-        error = rejection(at(comp={"Void": {"arg1": 1}, "isFunctionEvaluation": True}))
+        error = rejection(at(comp={"fEval:Void": {"arg1": 1}}))
         assert_reported(error, message="without reading it as one", location='"comp"')
 
     def test_a_bad_argument_of_a_composition_is_reported_at_that_argument(self):
@@ -627,26 +650,26 @@ class TestFunctionCompositionResSite:
         assert oneof_branch(field(context, "res")) == "FunctionComposition"
 
     def test_false_takes_the_function_composition_branch(self):
-        context = check(at(res={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
+        context = check(at(res={"fComp:Add": {"arg1": 1, "arg2": 2}}))
         assert oneof_branch(field(context, "res")) == "FunctionComposition"
 
     def test_true_takes_the_t_branch(self):
         """The whole design in one assertion: the same object, the other branch, because of the keyword."""
-        context = check(at(res={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        context = check(at(res={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert oneof_branch(field(context, "res")) == "Integer"
 
     def test_true_checks_the_result_against_the_template_argument(self):
         """``res(Stringy) = String`` is not the `Integer` that ``FunctionCompositionRes<Integer>`` promises."""
-        error = rejection(at(res={"Stringy": {}, "isFunctionEvaluation": True}))
+        error = rejection(at(res={"fEval:Stringy": {}}))
         assert_reported(error, message="not a subtype", location='"res"')
 
     def test_true_accepts_a_result_of_the_promised_type(self):
-        context = check(at(resStr={"Stringy": {}, "isFunctionEvaluation": True}))
+        context = check(at(resStr={"fEval:Stringy": {}}))
         assert oneof_branch(field(context, "resStr")) == "String"
 
     def test_true_on_a_function_that_returns_nothing_is_rejected(self):
         """Unlike a plain `FunctionComposition` site, this one promises a value."""
-        error = rejection(at(res={"Void": {"arg1": 1}, "isFunctionEvaluation": True}))
+        error = rejection(at(res={"fEval:Void": {"arg1": 1}}))
         assert_reported(error, message="Void", location='"res"')
 
     def test_a_non_object_value_still_reaches_the_t_branch(self):
@@ -678,7 +701,7 @@ class TestFunctionCompositionResSite:
         The regression this whole design exists to prevent. If the decision is not carried into the
         schema, both branches match and the value parser says so.
         """
-        for value in ({"Add": {"arg1": 1, "arg2": 2}}, {"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}):
+        for value in ({"Add": {"arg1": 1, "arg2": 2}}, {"fEval:Add": {"arg1": 1, "arg2": 2}}):
             try:
                 context = check(at(res=value))
             except ConceptHierarchyError as error:
@@ -748,30 +771,37 @@ class TestTheDecisionDoesNotLeakDownwards:
         assert field(context, "nested").is_valid
 
 
-class TestTheKeywordAtDepth:
-    """The keyword works the same however deep the site is; several tests pin the location of failures."""
+class TestAMarkerAtDepth:
+    """A marker works the same however deep the site is; several tests pin the location of failures."""
 
-    def test_false_at_depth_two(self):
-        context = check(at(nested={"Holder": {"fn": {"Nullary": {}, "isFunctionEvaluation": False}}}))
+    def test_the_instantiation_marker_at_depth_two(self):
+        context = check(at(nested={"Holder": {"fn": {"fInst:Nullary": {}}}}))
         assert field(context, "nested").is_valid
 
-    def test_true_at_depth_two(self):
+    def test_the_evaluation_marker_at_depth_two(self):
         """`Permissive` is the site that can take it; the point here is that depth changes nothing."""
-        context = check(
-            at(nested={"Holder": {"permissive": {"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}}})
-        )
+        context = check(at(nested={"Holder": {"permissive": {"fEval:Add": {"arg1": 1, "arg2": 2}}}}))
         assert field(context, "nested").is_valid
 
-    def test_the_keyword_inside_a_composition_argument(self):
-        context = check(at(comp={"Add": {"arg1": {"Nullary": {}, "isFunctionEvaluation": True}, "arg2": 2}}))
+    def test_a_marker_inside_a_composition_argument(self):
+        context = check(at(comp={"Add": {"arg1": {"fEval:Nullary": {}}, "arg2": 2}}))
         assert field(context, "comp").is_valid
 
-    def test_a_misused_keyword_at_depth_is_located_at_the_key(self):
-        error = rejection(at(nested={"Holder": {"num": {"Leaf": {}, "isFunctionEvaluation": True}}}))
-        assert_reported(error, message="isFunctionEvaluation", location='"isFunctionEvaluation" (key)')
+    def test_a_misused_marker_at_depth_is_located_at_the_site(self):
+        """
+        The location differs from the keyword's, and has to: the keyword was a key of its own and the
+        failure could be pinned there, whereas a marker is part of the content key, so the object as a
+        whole is what is wrong.
+        """
+        error = rejection(at(nested={"Holder": {"num": {"fEval:Leaf": {}}}}))
+        assert_reported(error, message="only qualifies a key that names a Function", location='"num"')
 
     def test_a_stray_keyword_inside_an_argument_object_at_depth(self):
-        """``animal_kingdom.json``'s placement, exactly: one level too deep, inside the argument list."""
+        """
+        ``animal_kingdom.json``'s old placement, exactly: one level too deep, inside the argument list.
+        Nothing about this depends on the keyword being a directive -- it is an argument name that `Add`
+        does not have -- so it stays as written once the keyword is gone.
+        """
         error = rejection(at(comp={"Add": {"arg1": 1, "arg2": 2, "isFunctionEvaluation": True}}))
         assert_reported(error, message='does not have the argument "isFunctionEvaluation"', location='"comp": "Add"')
 
@@ -800,14 +830,14 @@ class TestTheExpressionValueIsTheAnswer:
         """
         for value in (
             {"Add": {"arg1": 1, "arg2": 2}},
-            {"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False},
+            {"fComp:Add": {"arg1": 1, "arg2": 2}},
         ):
             context = check(at(comp=value))
             assert isinstance(field(context, "comp").value, InstExpression), value
 
     def test_the_evaluation_selected_by_true_is_reachable_inside(self):
         """It is one level down, at the ``"T"`` leaf the keyword selected."""
-        context = check(at(res={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        context = check(at(res={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         expression = field(context, "res")
         assert oneof_branch(expression) == "Integer"
         evaluations = [k for k in expression_kinds(expression) if k is FunctionEvaluation]
@@ -815,12 +845,12 @@ class TestTheExpressionValueIsTheAnswer:
 
     def test_the_expression_type_is_the_site_type_not_the_result_type(self):
         """Even for the ``true`` cell: the expression sits at the site, whatever the evaluation returns."""
-        context = check(at(res={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        context = check(at(res={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert field(context, "res").required_expression_type.full_name == "FunctionCompositionRes<Integer>"
 
     def test_the_two_readings_of_one_shape_differ_only_by_the_keyword(self):
         composition = field(check(at(res={"Add": {"arg1": 1, "arg2": 2}})), "res")
-        evaluation = field(check(at(res={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True})), "res")
+        evaluation = field(check(at(res={"fEval:Add": {"arg1": 1, "arg2": 2}})), "res")
         assert type(composition.value) is type(evaluation.value) is InstExpression, "both are instantiations"
         assert oneof_branch(composition) == "FunctionComposition"
         assert oneof_branch(evaluation) == "Integer"
@@ -829,31 +859,6 @@ class TestTheExpressionValueIsTheAnswer:
 # ==================================================================================================
 # 7. The schemas stay clean
 # ==================================================================================================
-
-
-class TestNoSchemaMentionsTheKeyword:
-    """
-    Point six of the design: the keyword is a directive to the classifier and never part of a value, so no
-    ValueDomain declares it and no schema branches on it. These tests fail the moment somebody reaches for
-    a ``"const": false`` to break the ``oneOf`` tie.
-    """
-
-    def test_function_composition_declares_no_such_property(self):
-        context = check(at(comp={"Add": {"arg1": 1, "arg2": 2}}))
-        for _constraint, schema in context.model.value_domains["FunctionComposition"].instantiation:
-            for node in schema.walk():
-                assert "isFunctionEvaluation" not in (node.properties or {})
-
-    def test_function_composition_res_declares_no_such_property(self):
-        context = check(at(res=3))
-        for _constraint, schema in context.model.value_domains["FunctionCompositionRes"].instantiation:
-            for node in schema.walk():
-                assert "isFunctionEvaluation" not in (node.properties or {})
-
-    def test_a_value_domain_may_still_declare_a_property_of_that_name(self):
-        """The ban is on the *prelude* needing it, not on the identifier."""
-        context = check(at(flagged={"isFunctionEvaluation": 3}))
-        assert field(context, "flagged").is_valid
 
 
 # ==================================================================================================
@@ -872,8 +877,8 @@ class TestTheCarriedVerdictIsNotTheWrittenKeyword:
     neither shows up on the cells of the classification table:
 
     * ``ensure_unmodified_json_value`` restores a *popped* keyword by writing it back. Told the keyword was
-      present when it never was, it **adds** ``"isFunctionEvaluation": false`` to the caller's JSON;
-    * ``_parse_expression_of_json_object`` raises ``Invalid use of the "isFunctionEvaluation" keyword``
+      present when it never was, it **adds** a key to the caller's JSON;
+    * ``_parse_expression_of_json_object`` raises a misuse error
       when the flag is present and the key is not a Function. Told the same lie, it reports a keyword
       misuse against a value containing no keyword -- and it *raises*, inside a ``oneOf`` trial branch,
       where `child_silent` catches nothing but `StopValidation`.
@@ -920,12 +925,12 @@ class TestTheCarriedVerdictIsNotTheWrittenKeyword:
 
     def test_a_written_keyword_is_restored_at_a_composition_site(self):
         """The other direction: what *was* written must come back, popped or not."""
-        instances = at(comp={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True})
+        instances = at(comp={"fEval:Add": {"arg1": 1, "arg2": 2}})
         before = copy.deepcopy(instances)
         assert self.unchanged(instances) == before
 
     def test_a_written_keyword_is_restored_when_the_value_is_rejected(self):
-        instances = at(num={"Leaf": {}, "isFunctionEvaluation": True})
+        instances = at(num={"fEval:Leaf": {}})
         before = copy.deepcopy(instances)
         assert self.unchanged(instances) == before
 
@@ -972,20 +977,18 @@ class TestTheCarriedVerdictIsNotTheWrittenKeyword:
 # ==================================================================================================
 
 
-class TestTheKeywordIsGivenBackWhenItWasNeverADirective:
+class TestTheKeywordReachesTheSchemaUntouched:
     """
-    The keyword is popped *before* the key beside it can be resolved -- content keys have to be counted to
-    know there is a single one at all -- so the pop is a guess, and it is wrong whenever the key turns out
-    to name no type.
+    A value carrying the key arrives at the instantiation schema exactly as written.
 
-    Nothing about the object's shape distinguishes the two cases in advance:
-    ``{"Add": {...}, "isFunctionEvaluation": true}`` is a directive on a Function evaluation, and
-    ``{"lhs": 1, "isFunctionEvaluation": true}`` is a two-property value of some ValueDomain. Both are
-    "one content key plus the keyword". Only resolving the key tells them apart, and by then the pop has
-    happened -- so it has to be undone.
+    While the key was also a directive this was delicate: it had to be popped *before* the key beside it
+    could be resolved -- content keys have to be counted to know there is a single one -- so the pop was
+    a guess, wrong whenever the key turned out to name no type, and it had to be undone. Nothing in the
+    shape told the cases apart: ``{"Add": {...}, "isFunctionEvaluation": true}`` and
+    ``{"lhs": 1, "isFunctionEvaluation": true}`` were both "one content key plus the keyword".
 
-    Getting this wrong is silent: the value reaches `Inst` one key short, and the schema rejects it for a
-    missing property the author did write.
+    Getting it wrong was silent -- the value reached `Inst` one key short and the schema rejected it for
+    a missing property the author did write -- so these stay as a guard, now against a much shorter path.
     """
 
     def test_a_boolean_keyword_beside_a_non_type_key_reaches_the_schema(self):
@@ -993,23 +996,22 @@ class TestTheKeywordIsGivenBackWhenItWasNeverADirective:
         assert field(context, "paired").is_valid
 
     def test_both_boolean_values_reach_the_schema(self):
-        """``false`` is the value that would otherwise look most like a directive."""
+        """``false`` is the value that used to look most like a directive."""
         context = check(at(paired={"lhs": 1, "isFunctionEvaluation": False}))
         assert field(context, "paired").is_valid
 
     def test_the_schema_really_does_require_the_keyword(self):
-        """Without this, the test above would pass even if the key were dropped."""
+        """Without this, the two above would pass even if the key were dropped."""
         error = rejection(at(paired={"lhs": 1}))
         assert_reported(error, message="isFunctionEvaluation", location='"paired"')
 
-    def test_a_non_boolean_keyword_is_never_a_directive(self):
-        """A string value leaves the object with two content keys, so it is never even a candidate."""
+    def test_a_non_boolean_value_reaches_the_schema_too(self):
         context = check(at(labelled={"lhs": 1, "isFunctionEvaluation": "a string value"}))
         assert field(context, "labelled").is_valid
 
-    def test_a_non_boolean_keyword_beside_a_function_key_is_data_too(self):
+    def test_beside_a_function_key_a_non_boolean_value_is_data(self):
         """
-        ``{"Add": {...}, "isFunctionEvaluation": "yes"}`` has two content keys, so no `FEval` and no
+        ``{"Add": {...}, "isFunctionEvaluation": "yes"}`` is two content keys, so no `FEval` and no
         `Narrow` is attempted -- the value goes straight to `Inst`, and at an `Integer` site it fails as
         the object it is, not as a misused keyword.
         """
@@ -1018,22 +1020,17 @@ class TestTheKeywordIsGivenBackWhenItWasNeverADirective:
         assert "Invalid use of the" not in messages, f"read as a directive: {messages[:300]}"
         assert "not of type 'integer'" in messages, messages[:300]
 
-    def test_the_input_is_not_modified_when_the_keyword_is_given_back(self):
+    def test_the_input_is_not_modified(self):
         instances = at(paired={"lhs": 1, "isFunctionEvaluation": True})
         before = copy.deepcopy(instances)
         check(instances)
         assert instances == before
 
-    def test_the_input_is_not_modified_for_a_non_boolean_keyword(self):
+    def test_the_input_is_not_modified_for_a_non_boolean_value(self):
         instances = at(labelled={"lhs": 1, "isFunctionEvaluation": "a string value"})
         before = copy.deepcopy(instances)
         check(instances)
         assert instances == before
-
-    def test_a_directive_beside_a_type_key_is_still_consumed(self):
-        """The other side of the same decision: beside a type, the keyword must *not* come back."""
-        context = check(at(boxy={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
-        assert type(field(context, "boxy").value) is InstExpression
 
 
 # ==================================================================================================
@@ -1052,7 +1049,7 @@ class TestTheSchemaDecidesWhetherTrueIsAdmissible:
     differ in exactly one branch and give opposite answers to the same value.
     """
 
-    VALUE = {"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}
+    VALUE = {"fEval:Add": {"arg1": 1, "arg2": 2}}
     """``res(Add) = Integer``, which is not a subtype of `CustomFunction`."""
 
     @staticmethod
@@ -1078,7 +1075,7 @@ class TestTheSchemaDecidesWhetherTrueIsAdmissible:
         with pytest.raises(ConceptHierarchyError) as excinfo:
             check_hierarchy(self.with_custom_function(CUSTOM_FUNCTION_INSTANTIATION, True))
         messages = " ".join(message for _, message in error_sites(excinfo.value))
-        assert "committed to being a Function evaluation" in messages, messages[:400]
+        assert refuses_commitment(messages, "Function evaluation"), messages[:400]
 
     def test_adding_a_value_domain_branch_admits_it(self):
         """
@@ -1109,7 +1106,7 @@ class TestTheSchemaDecidesWhetherTrueIsAdmissible:
                 "data": {"instantiation": {"oneOf": ["ValueDomain", CUSTOM_FUNCTION_INSTANTIATION]}},
             },
         }
-        instances = at(cf={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False})
+        instances = at(cf={"fComp:Add": {"arg1": 1, "arg2": 2}})
         context = check_hierarchy(build_hierarchy(concepts, instances=instances))
         expression = field(context, "cf")
         assert expression.is_valid
@@ -1143,34 +1140,34 @@ class TestOnlyASiteTypeFailureIsSetAsideForTheSchema:
 
     def test_a_result_that_does_not_fit_the_site_is_set_aside(self):
         """`Add` returns an `Integer`, which is not a `Permissive` -- but it is a `ValueDomain`."""
-        context = check(at(permissive={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        context = check(at(permissive={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert oneof_branch(field(context, "permissive")) == "ValueDomain"
 
     def test_a_result_of_another_type_is_also_set_aside(self):
-        context = check(at(permissive={"Stringy": {}, "isFunctionEvaluation": True}))
+        context = check(at(permissive={"fEval:Stringy": {}}))
         assert oneof_branch(field(context, "permissive")) == "ValueDomain"
 
     # -- never set aside: the evaluation is malformed, so no leaf could take it ---------------------
 
     def test_an_argument_object_that_is_not_an_object_is_not_set_aside(self):
-        error = rejection(at(permissive={"Add": 5, "isFunctionEvaluation": True}))
+        error = rejection(at(permissive={"fEval:Add": 5}))
         assert_reported(error, message="expected a JSON object", location='"permissive"')
 
     def test_an_unknown_argument_is_not_set_aside(self):
-        error = rejection(at(permissive={"Add": {"nope": 1}, "isFunctionEvaluation": True}))
+        error = rejection(at(permissive={"fEval:Add": {"nope": 1}}))
         assert_reported(error, message='does not have the argument "nope"', location='"permissive"')
 
     def test_a_missing_required_argument_is_not_set_aside(self):
-        error = rejection(at(permissive={"Add": {"arg1": 1}, "isFunctionEvaluation": True}))
+        error = rejection(at(permissive={"fEval:Add": {"arg1": 1}}))
         assert_reported(error, message="missing from the Function evaluation interface", location='"permissive"')
 
     def test_an_abstract_key_is_not_set_aside(self):
         """`FunctionReturning` is abstract, so it cannot be evaluated whatever the site would accept."""
-        error = rejection(at(permissive={"FunctionReturning<Integer>": {}, "isFunctionEvaluation": True}))
+        error = rejection(at(permissive={"fEval:FunctionReturning<Integer>": {}}))
         assert_reported(error, message="abstract type", location='"permissive"')
 
     def test_a_bad_argument_value_is_not_set_aside(self):
-        error = rejection(at(permissive={"Add": {"arg1": "s:x", "arg2": 2}, "isFunctionEvaluation": True}))
+        error = rejection(at(permissive={"fEval:Add": {"arg1": "s:x", "arg2": 2}}))
         assert_reported(error, message="arg1", location='"permissive"')
 
     def test_the_arguments_of_a_committed_evaluation_are_ordinary_sites(self):
@@ -1179,12 +1176,12 @@ class TestOnlyASiteTypeFailureIsSetAsideForTheSchema:
         that location and nothing below it. `Add`'s arguments are plain literals here: if the commitment
         leaked into them, only a Function evaluation would be admissible there and ``1`` would be rejected.
         """
-        context = check(at(permissive={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        context = check(at(permissive={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert oneof_branch(field(context, "permissive")) == "ValueDomain"
 
     def test_a_nested_evaluation_inside_a_committed_one_is_still_ordinary(self):
         """The same, one level deeper and with an argument that *is* an evaluation."""
-        context = check(at(permissive={"Add": {"arg1": {"Nullary": {}}, "arg2": 2}, "isFunctionEvaluation": True}))
+        context = check(at(permissive={"fEval:Add": {"arg1": {"Nullary": {}}, "arg2": 2}}))
         expression = field(context, "permissive")
         assert oneof_branch(expression) == "ValueDomain"
         assert expression_kinds(expression).count(FunctionEvaluation) >= 2, expression_kinds(expression)
@@ -1199,49 +1196,39 @@ class TestOnlyASiteTypeFailureIsSetAsideForTheSchema:
         assert field(context, "permissive").is_valid
 
 
-class TestAMisusedKeywordIsNeverSetAside:
+class TestAMisusedMarkerIsNeverSetAside:
     """
-    The regression this class exists for. The misuse is about the *keyword*, not about the site's type, so
-    it must survive into the rejection. It used to be set aside with the rest, and `Inst` then accepted
-    ``{"Leaf": {}, "isFunctionEvaluation": true}`` at a `Swallow` site -- schema matched, misuse gone.
+    The regression this class exists for. A misuse is about the *marker*, not about the site's type, so
+    it must survive into the rejection. The failure it guards against is a real one that was fixed here:
+    the misuse was set aside with the rest, and `Inst` then accepted the object at a `Swallow` site --
+    schema matched, misuse gone.
 
-    `Swallow` is the only site here whose schema accepts that object, which is what makes these the tests
-    that would have caught it; everywhere else the value is rejected either way.
+    `Swallow` is the only site in this module whose schema accepts ``{"Leaf": {}}``, which is what makes
+    these the tests that would have caught it; everywhere else the value is rejected either way.
     """
 
     def test_a_misuse_is_rejected_even_where_the_schema_would_accept_the_object(self):
-        error = rejection(at(swallow={"Leaf": {}, "isFunctionEvaluation": True}))
-        assert_reported(
-            error,
-            message="only qualifies an object keyed by a Function",
-            location='"isFunctionEvaluation" (key)',
-        )
+        error = rejection(at(swallow={"fEval:Leaf": {}}))
+        assert_reported(error, message="only qualifies a key that names a Function", location='"swallow"')
 
-    def test_the_same_holds_for_false(self):
-        """The misuse is the keyword's presence beside a non-Function key, not the value it carries."""
-        error = rejection(at(swallow={"Leaf": {}, "isFunctionEvaluation": False}))
-        assert_reported(
-            error,
-            message="only qualifies an object keyed by a Function",
-            location='"isFunctionEvaluation" (key)',
-        )
+    def test_the_same_holds_for_every_marker(self):
+        """The misuse is a marker on a non-Function key, whichever reading the marker names."""
+        for marker in ("fComp", "fInst"):
+            error = rejection(at(swallow={f"{marker}:Leaf": {}}))
+            assert_reported(error, message="only qualifies a key that names a Function", location='"swallow"')
 
-    def test_without_the_keyword_that_very_value_is_accepted(self):
+    def test_without_the_marker_that_very_value_is_accepted(self):
         """
-        The control that proves the two above test the keyword and not the fixture: the same object
-        without the keyword is a perfectly good `Swallow`.
+        The control that proves the two above test the marker and not the fixture: the same object
+        unmarked is a perfectly good `Swallow`.
         """
         context = check(at(swallow={"Leaf": {}}))
         assert field(context, "swallow").is_valid
 
     def test_a_misuse_at_a_permissive_site_is_rejected_too(self):
-        """`Permissive`'s ``"ValueDomain"`` leaf accepts almost any result, but not a misused keyword."""
-        error = rejection(at(permissive={"Leaf": {}, "isFunctionEvaluation": True}))
-        assert_reported(
-            error,
-            message="only qualifies an object keyed by a Function",
-            location='"isFunctionEvaluation" (key)',
-        )
+        """`Permissive`'s ``"ValueDomain"`` leaf accepts almost any result, but not a misused marker."""
+        error = rejection(at(permissive={"fEval:Leaf": {}}))
+        assert_reported(error, message="only qualifies a key that names a Function", location='"permissive"')
 
 
 # ==================================================================================================
@@ -1251,26 +1238,31 @@ class TestAMisusedKeywordIsNeverSetAside:
 
 class TestTheCommitmentMustBeHonoredNotMerelyMatched:
     """
-    ``"isFunctionEvaluation": true`` is honored at a **custom-type leaf**, and a schema can match the
-    value without ever reaching one -- a structural schema that happens to fit, or a boolean one. Such a
-    match would accept the value with the keyword silently ignored.
+    `fEval:` is honored at a **custom-type leaf**, and a schema can match the value without ever reaching
+        one -- a structural schema that happens to fit, or a boolean one. Such a match would accept the value
+        with the marker silently ignored.
 
-    Two readings of "was it honored" are wrong, and both are pinned below:
+        Two readings of "was it honored" are wrong, and both are pinned below:
 
-    * *does a Function evaluation appear anywhere below?* -- a **composition** holds one too
-      (``"properties": "args"`` stores it), so this answers yes for the reading the keyword ruled out;
-    * *does one appear at any depth?* -- an **argument** of the value may be an evaluation, so this
-      answers yes for a value that was not read as one at all.
+        * *does a Function evaluation appear anywhere below?* -- a **composition** holds one too
+          (``"properties": "args"`` stores it), so this answers yes for the reading the keyword ruled out;
+        * *does one appear at any depth?* -- an **argument** of the value may be an evaluation, so this
+          answers yes for a value that was not read as one at all.
 
-    What must hold is that the node standing at the value's **own location** is the evaluation. Depth is
-    not a factor: ``$ref`` and the composite keywords keep the location, only a property or item descent
-    changes it, so the consumer is always exactly there however many schema nodes were crossed.
+        What must hold is that the node standing at the value's **own location** is the evaluation. Depth is
+        not a factor: ``$ref`` and the composite keywords keep the location, only a property or item descent
+        changes it, so the consumer is always exactly there however many schema nodes were crossed.
     """
 
     def test_a_structural_match_does_not_honor_it(self):
-        """`Structural` matches ``{"Add": {...}}`` as an object; no custom-type leaf is reached."""
-        error = rejection(at(structural={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
-        assert_reported(error, message="without reading it as one", location='"structural"')
+        """
+        `Structural` matches an object; no custom-type leaf is reached. The marker has to be written on
+        the *nested* value, because `Structural` requires the key spelled exactly ``"Add"`` and a marker
+        on that key would no longer be that property -- which is the same fact that gives the explicit
+        `Narrow` its job (`[CH].md` 10.2).
+        """
+        error = rejection(at(structural={"Add": {"fEval:Nullary": {}}}))
+        assert_reported(error, message="not a subtype", location='"structural"')
 
     def test_the_same_value_is_accepted_when_it_claims_not_to_be_an_evaluation(self):
         """
@@ -1278,12 +1270,12 @@ class TestTheCommitmentMustBeHonoredNotMerelyMatched:
         what it takes to reach `Structural`'s schema at all -- with the keyword absent the default
         evaluation reading commits and hard-fails on ``res(Add)`` before `Inst` is tried.
         """
-        context = check(at(structural={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": False}))
+        context = check(at(structural={"Structural": {"Add": {"arg1": 1, "arg2": 2}}}))
         assert field(context, "structural").is_valid
 
     def test_a_leaf_at_the_value_s_own_location_does_honor_it(self):
         """`Permissive`'s root-level ``"ValueDomain"`` branch is such a leaf, and the value is accepted."""
-        context = check(at(permissive={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        context = check(at(permissive={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert oneof_branch(field(context, "permissive")) == "ValueDomain"
 
     def test_a_composition_holding_an_evaluation_does_not_count_as_honoring_it(self):
@@ -1294,7 +1286,7 @@ class TestTheCommitmentMustBeHonoredNotMerelyMatched:
         """
         composition = field(check(at(comp={"Add": {"arg1": 1, "arg2": 2}})), "comp")
         assert FunctionEvaluation in expression_kinds(composition), "the composition does hold one"
-        error = rejection(at(comp={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}))
+        error = rejection(at(comp={"fEval:Add": {"arg1": 1, "arg2": 2}}))
         assert_reported(error, message="without reading it as one", location='"comp"')
 
     def test_an_evaluation_among_the_arguments_does_not_count_either(self):
@@ -1302,8 +1294,8 @@ class TestTheCommitmentMustBeHonoredNotMerelyMatched:
         The second wrong reading. ``arg1`` is itself an evaluation, so a depth-unbounded search would find
         one -- but the outer value is not read as an evaluation by `Structural`, and must be rejected.
         """
-        error = rejection(at(structural={"Add": {"arg1": {"Nullary": {}}, "arg2": 2}, "isFunctionEvaluation": True}))
-        assert_reported(error, message="without reading it as one", location='"structural"')
+        error = rejection(at(anything={"fEval:Add": {"arg1": {"Nullary": {}}, "arg2": 2}}))
+        assert_reported(error, message="without reading it as one", location='"anything"')
 
     def test_a_trial_branch_that_lost_does_not_count(self):
         """
@@ -1320,11 +1312,11 @@ class TestTheCommitmentMustBeHonoredNotMerelyMatched:
                             "data": {"instantiation": CUSTOM_FUNCTION_INSTANTIATION},
                         },
                     },
-                    instances=at(cf={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}),
+                    instances=at(cf={"fEval:Add": {"arg1": 1, "arg2": 2}}),
                 )
             )
         messages = " ".join(message for _, message in error_sites(excinfo.value))
-        assert "committed to being a Function evaluation" in messages, messages[:400]
+        assert refuses_commitment(messages, "Function evaluation"), messages[:400]
 
 
 # ==================================================================================================
@@ -1334,7 +1326,7 @@ class TestTheCommitmentMustBeHonoredNotMerelyMatched:
 
 class TestNarrowVersusCompositionIsStillAmbiguous:
     """
-    ``isFunctionEvaluation`` settles *evaluation versus not*. It has nothing to say about the other two
+    A directive that settles only *evaluation versus not* has nothing to say about the other two
     readings, and at a ``FunctionCompositionRes<T>`` whose ``T`` admits a Function type they collide:
 
     * the ``"T"`` branch matches as a **Narrow** -- ``Nullary`` is a subtype of `ValueDomain` / `Function`,
@@ -1345,7 +1337,9 @@ class TestNarrowVersusCompositionIsStillAmbiguous:
     with arguments has a non-empty object, which its own instantiation refuses.
 
     These are the tests behind the "a new keyword is needed" conclusion, and the ``false`` row is the one
-    worth keeping: the hint the parser prints at exactly this point recommends a keyword that cannot help.
+    worth keeping: it is the reading the keyword *can* select, and it selects neither of the two that
+    collided. The hint the parser prints at exactly this point now names the three markers instead, which
+    is advice that can be acted on -- `TestTheMarkersResolveTheNarrowVersusCompositionCollision` acts on it.
     """
 
     ARGUMENTLESS = {"Nullary": {}}
@@ -1361,30 +1355,56 @@ class TestNarrowVersusCompositionIsStillAmbiguous:
     def test_the_parser_prints_its_hint_here(self):
         """The hint in `_parse_one_of` is live, not dead code -- this is the value that reaches it."""
         error = rejection(at(resAnyFunction=dict(self.ARGUMENTLESS)))
-        assert "isFunctionEvaluation" in " ".join(m for _, m in error_sites(error))
+        messages = " ".join(m for _, m in error_sites(error))
+        assert "you may want to say which reading is meant" in messages, messages[:300]
 
-    def test_false_does_not_help_which_is_what_the_hint_recommends(self):
+    def test_the_hint_names_all_three_markers(self):
+        """Which one is *acceptable* depends on the branch types, so the hint offers all three."""
+        error = rejection(at(resAnyFunction=dict(self.ARGUMENTLESS)))
+        messages = " ".join(m for _, m in error_sites(error))
+        for marker in ('"fEval:Nullary"', '"fComp:Nullary"', '"fInst:Nullary"'):
+            assert marker in messages, f"{marker} missing from {messages[:400]}"
+
+    def test_the_hint_no_longer_recommends_the_keyword(self):
+        """It used to name ``isFunctionEvaluation``, which provably cannot separate these two branches."""
+        error = rejection(at(resAnyFunction=dict(self.ARGUMENTLESS)))
+        hints = [m for _, m in error_sites(error) if "you may want to say" in m]
+        assert hints and not any("isFunctionEvaluation" in m for m in hints), hints[:1]
+
+    def test_a_key_that_already_carries_a_marker_is_not_offered_one(self):
         """
-        The heart of it. ``false`` removes the *evaluation* reading, and neither of the two that collided
-        is an evaluation -- so both still match and the same hint is printed again.
+        A marked key that still matches two branches is ambiguous for some *other* reason, and repeating
+        the advice would misdirect. ``Void`` declares no ``res``, so ``fEval:`` cannot be honored here.
+        """
+        error = rejection(at(resAnyFunction={"fEval:Void": {"arg1": 1}}))
+        messages = " ".join(m for _, m in error_sites(error))
+        assert "you may want to say which reading is meant" not in messages, messages[:300]
+
+    def test_neither_branch_is_an_evaluation_so_ruling_it_out_settles_nothing(self):
+        """
+        The heart of it, and the reason the markers exist. Both colliding readings are *not* evaluations,
+        so excluding the evaluation excludes neither -- which is exactly what the site's own type already
+        does here, with nothing written. Whatever says "not an evaluation" and no more cannot separate
+        them; only naming one of the two can.
         """
         for key in ("resAnyFunction", "resAnyValue"):
-            error = rejection(at(**{key: {**self.ARGUMENTLESS, "isFunctionEvaluation": False}}))
+            error = rejection(at(**{key: dict(self.ARGUMENTLESS)}))
             messages = " ".join(m for _, m in error_sites(error))
             assert "matches 2 schemas" in messages, f"{key}: {messages[:300]}"
 
-    def test_true_does_not_select_either_of_them_but_a_third_reading(self):
+    def test_the_evaluation_marker_selects_neither_of_them_but_a_third_reading(self):
         """
-        ``true`` resolves the ``oneOf``, but by switching to the *evaluation* -- a reading neither branch
+        `fEval:` resolves the ``oneOf``, but by switching to the *evaluation* -- a reading neither branch
         offered. It therefore succeeds or fails on ``res(K)``, not on the collision: `Nullary` returns an
-        `Integer`, which is a `ValueDomain` but not a `Function`.
+        `Integer`, which is a `ValueDomain` but not a `Function`. Only `fComp:` and `fInst:` name one of
+        the two that actually collided.
         """
-        context = check(at(resAnyValue={**self.ARGUMENTLESS, "isFunctionEvaluation": True}))
+        context = check(at(resAnyValue={"fEval:Nullary": {}}))
         assert oneof_branch(field(context, "resAnyValue")) == "ValueDomain"
 
-        error = rejection(at(resAnyFunction={**self.ARGUMENTLESS, "isFunctionEvaluation": True}))
+        error = rejection(at(resAnyFunction={"fEval:Nullary": {}}))
         messages = " ".join(m for _, m in error_sites(error))
-        assert "does not match any schema" in messages, messages[:300]
+        assert refuses_commitment(messages, "Function evaluation"), messages[:300]
 
     def test_a_function_with_arguments_does_not_collide(self):
         """
@@ -1460,34 +1480,442 @@ def check_default(default: object) -> ConceptHierarchyContext:
 
 class TestTheKindOfTypeTheKeyMayName:
     """
-    The keyword qualifies a key that names a **Function**, and a key can name a type in three ways: a
-    ground application (`Add<Integer>`), a *template-dependent* one (`AddT<T>` -- an application with a
-    template variable among its arguments), or a bare **template variable** (`T`).
+    A key can name a type in three ways, and the parser can decide a different amount about each.
 
-    The middle one must work: the concept is known to be a Function even though its argument is not
-    settled. The last one cannot: nothing about ``T`` says it is a Function, so there is no interpretation
-    to assert. These matter for any successor spelling of the keyword, which has to draw the same line.
+    * a **ground** application (`Add<Integer>`) -- everything is decidable;
+    * a **template-dependent** application (`AddT<T>`) -- the concept is known to be a Function even though
+      its argument is not settled, so the evaluation is parsed as usual;
+    * a **bare template variable** (`T`) -- nothing is known. Not which Function this is, not its
+      interface, not whether its ``res`` fits the site, and not even whether a Function may stand here at
+      all. Exactly one thing is decidable, and it is decided: a Function evaluation's value is an *object*
+      of arguments, whatever the Function turns out to be.
+
+    The third case used to crash: `_check_if_subtype(T, Function)` answers **MAYBE**, and
+    `SubtypeCheckResult.__bool__` treats only a definite NO as falsy, so control reached
+    ``get_template_context("T")`` -- which asserts, because ``T`` names no ValueDomain. It is now recorded
+    as *possible* and left to the grounded reparse, where ``T`` is substituted and the key names a real
+    type.
     """
 
     def test_a_template_dependent_key_is_accepted(self):
         assert check_default({"AddT<T>": {"arg1": 1, "arg2": 2}}) is not None
 
     def test_a_template_dependent_key_is_accepted_with_the_keyword(self):
-        assert check_default({"AddT<T>": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True}) is not None
+        assert check_default({"fEval:AddT<T>": {"arg1": 1, "arg2": 2}}) is not None
 
-    @pytest.mark.xfail(raises=AssertionError, strict=True, reason="a template-variable key hits a bare assert")
-    def test_a_bare_template_variable_key_is_diagnosed(self):
-        """
-        ``T`` is not known to be a Function, so this should be reported -- ideally naming the key. Instead
-        `parse_function_evaluation_expression` proceeds: `_check_if_subtype(T, Function)` answers **MAYBE**,
-        which is truthy, so it reaches ``get_template_context("T")`` and asserts there. The author gets a
-        traceback with no location.
-        """
-        with pytest.raises(ConceptHierarchyError):
-            check_default({"T": {"arg1": 1}})
+    def test_a_bare_template_variable_key_is_accepted(self):
+        """No concept to look up, so nothing is decided -- but nothing crashes either."""
+        assert check_default({"T": {"arg1": 1}}) is not None
 
-    @pytest.mark.xfail(raises=AssertionError, strict=True, reason="a template-variable key hits a bare assert")
+    def test_it_is_left_undecided_rather_than_resolved(self):
+        """
+        Every reading the site still admits is retained. That is what `VerifiedTemplateDependentExpression`
+        is for, and what the grounded reparse consumes.
+        """
+        default = _wrapper_default(check_default({"T": {"arg1": 1}}))
+        assert isinstance(default.value, VerifiedTemplateDependentExpression), type(default.value).__name__
+        kinds = [type(x) for x in default.value.possible_expressions]
+        assert PossibleFunctionEvaluationExpression in kinds, [k.__name__ for k in kinds]
+
+    def test_every_reading_the_value_could_still_have_is_kept(self):
+        """
+        Three, and exactly three. `Narrow` is among them: ``T`` names no concept, so there is no schema to
+        check the value against -- but "unverifiable" is not "impossible", and dropping it would lose a
+        reading the grounded reparse may well choose.
+
+        The two that are *absent* are as informative: `Var` cannot apply because the value is an object and
+        not a string, and no _ValueDomain_ may register ``"object"`` as a `defaultSerialization` (§8.7).
+        """
+        default = _wrapper_default(check_default({"T": {"arg1": 1}}))
+        kinds = [type(x).__name__ for x in default.value.possible_expressions]
+        assert kinds == [
+            "PossibleFunctionEvaluationExpression",
+            "PossibleNarrowExpression",
+            "PossibleInstExpression",
+        ], kinds
+
+    def test_the_possible_narrow_carries_the_template_variable_as_its_type(self):
+        default = _wrapper_default(check_default({"T": {"arg1": 1}}))
+        narrow = next(x for x in default.value.possible_expressions if isinstance(x, PossibleNarrowExpression))
+        assert narrow.value_type is not None and narrow.value_type.full_name.endswith("T")
+
+    def test_it_is_template_dependent_and_not_fully_parsed(self):
+        """The two properties that make the grounding pass come back to it."""
+        default = _wrapper_default(check_default({"T": {"arg1": 1}}))
+        assert default.is_value_template_dependent
+        assert not default.is_fully_parsed
+
+    def test_an_empty_argument_object_is_still_an_object(self):
+        assert check_default({"T": {}}) is not None
+
     def test_the_keyword_does_not_change_that(self):
-        """The crash is in resolving the key, so it happens with or without a directive on it."""
+        assert check_default({"fEval:T": {"arg1": 1}}) is not None
+
+    def test_a_non_object_value_is_not_accepted_as_an_evaluation(self):
+        """
+        The one check that survives: an evaluation's value is an object of arguments. ``5`` is not, and no
+        substitution of ``T`` could make it one, so this is decidable now rather than later.
+        """
         with pytest.raises(ConceptHierarchyError):
-            check_default({"T": {"arg1": 1}, "isFunctionEvaluation": True})
+            check_default({"T": 5})
+
+    def test_a_non_object_value_says_so(self):
+        try:
+            check_default({"T": 5})
+        except ConceptHierarchyError as error:
+            assert "expected a JSON object" in " ".join(m for _, m in error_sites(error))
+        else:
+            pytest.fail("expected a rejection")
+
+
+def _wrapper_default(context: ConceptHierarchyContext) -> Expression:
+    return function_default_expressions(context, "Wrapper")["a"]
+
+
+# ==================================================================================================
+# 16. An interpretation written on a template-variable key survives substitution
+# ==================================================================================================
+
+
+def caller_with_default(default: object, argument_type: str = "Function") -> dict:
+    """
+    ``Caller<F: Function>``, whose ``a`` argument defaults to ``default``.
+
+    ``F`` is a template variable constrained to `Function`, so ``{"F": {...}}`` is a key naming a Function
+    that is not known until the application is ground.
+    """
+    return {
+        "Caller": {
+            "directParents": ["FunctionReturning"],
+            "data": {
+                "templateContext": {
+                    "order": ["F"],
+                    "F": "Function",
+                    "substitution": {"FunctionReturning:T": "Integer"},
+                },
+                "interface": {
+                    "a": [argument_type],
+                    "res": "Integer",
+                    "_defaultArgumentValues": {"a": default},
+                },
+            },
+        }
+    }
+
+
+def ground_caller(default: object, argument_type: str = "Function") -> ConceptHierarchyContext:
+    """Apply ``Caller<Nullary>`` while omitting ``a``, which is what grounds the default."""
+    concepts = {**CONCEPTS, **caller_with_default(default, argument_type)}
+    return check_hierarchy(build_hierarchy(concepts, instances={"p": {"Caller<Nullary>": {}}}))
+
+
+class TestAnInterpretationOnATemplateVariableKeySurvivesSubstitution:
+    """
+    Why a directive must be *allowed* on a bare template-variable key rather than rejected there.
+
+    Grounding substitutes the **type** and nothing else: ``{"F": {}}`` with ``F := Nullary`` becomes
+    ``{"Nullary": {}}``, and an argument-less Function object is the one shape whose three readings are
+    all still open. If the directive could not be written on the template-variable key, there would be
+    nowhere to write it -- the author never sees the substituted form.
+
+    And the directive is exactly what does *not* depend on which Function arrives: "this is the Function
+    value, not a call" is a statement about the object, decided where the object is written.
+    """
+
+    def test_the_key_type_is_substituted_on_grounding(self):
+        """``{"F": {}}`` becomes an evaluation of `Nullary`, whose `Integer` result fits an `Integer`."""
+        context = ground_caller({"F": {}}, argument_type="Integer")
+        defaults = context.model.instances["p"].value.value.applied_defaults
+        assert type(defaults["a"].value) is FunctionEvaluation, type(defaults["a"].value).__name__
+
+    def test_without_a_directive_the_grounded_key_is_read_as_an_evaluation(self):
+        """At a `Function`-typed argument that is wrong: `Nullary` returns an `Integer`, not a Function."""
+        with pytest.raises(ConceptHierarchyError) as excinfo:
+            ground_caller({"F": {}})
+        assert "is not a subtype of Function" in str(excinfo.value)
+
+    def test_a_directive_on_the_template_variable_key_decides_the_grounded_reading(self):
+        """The same default, plus the directive: it grounds to the Function *value* and type-checks."""
+        context = ground_caller({"fInst:F": {}})
+        defaults = context.model.instances["p"].value.value.applied_defaults
+        assert type(defaults["a"].value) is NarrowExpression, type(defaults["a"].value).__name__
+
+    def test_the_directive_is_what_makes_the_difference(self):
+        """One value, one substitution, opposite readings -- the directive is the only difference."""
+        with pytest.raises(ConceptHierarchyError):
+            ground_caller({"F": {}})
+        assert ground_caller({"fInst:F": {}}) is not None
+
+
+# ==================================================================================================
+# 17. The markers, and the collision they were introduced to resolve
+# ==================================================================================================
+
+
+class TestTheMarkersResolveTheNarrowVersusCompositionCollision:
+    """
+    ``{"Nullary": {}}`` at a ``FunctionCompositionRes<T>`` whose ``T`` admits a Function type matches both
+    branches, and nothing that says only "not an evaluation" can separate them. Each marker names one
+    reading, so each selects a different branch of the very same ``oneOf``.
+    """
+
+    def test_the_composition_marker_takes_the_composition_branch(self):
+        context = check(at(resAnyFunction={"fComp:Nullary": {}}))
+        assert oneof_branch(field(context, "resAnyFunction")) == "FunctionComposition"
+
+    def test_the_instantiation_marker_takes_the_t_branch(self):
+        """The reading `isFunctionEvaluation` could never select: the Function *value*, via a `Narrow`."""
+        context = check(at(resAnyFunction={"fInst:Nullary": {}}))
+        assert oneof_branch(field(context, "resAnyFunction")) == "Function"
+
+    def test_the_two_markers_disagree_on_the_same_json(self):
+        """One value, one site, two markers, two branches -- which is the whole point."""
+        composition = check(at(resAnyFunction={"fComp:Nullary": {}}))
+        instantiation = check(at(resAnyFunction={"fInst:Nullary": {}}))
+        assert oneof_branch(field(composition, "resAnyFunction")) != oneof_branch(
+            field(instantiation, "resAnyFunction")
+        )
+
+    def test_the_evaluation_marker_takes_the_t_branch_where_the_result_fits(self):
+        context = check(at(resAnyValue={"fEval:Nullary": {}}))
+        assert oneof_branch(field(context, "resAnyValue")) == "ValueDomain"
+
+    def test_the_evaluation_marker_is_refused_where_the_result_does_not_fit(self):
+        """`Nullary` returns an `Integer`, which is not a `Function` -- so there is no leaf to take it."""
+        error = rejection(at(resAnyFunction={"fEval:Nullary": {}}))
+        assert refuses_commitment(" ".join(m for _, m in error_sites(error)), "Function evaluation")
+
+    def test_an_unmarked_key_still_collides(self):
+        """The markers add a way to say which; they do not change what an unmarked key means."""
+        error = rejection(at(resAnyFunction={"Nullary": {}}))
+        assert "matches 2 schemas" in " ".join(m for _, m in error_sites(error))
+
+
+class TestAMarkerAtAnOrdinarySite:
+    def test_the_instantiation_marker_narrows_an_argument_less_function(self):
+        """What ``isFunctionEvaluation: false`` says at a `Function` site, said positively."""
+        context = check(at(fn={"fInst:Nullary": {}}))
+        assert type(field(context, "fn").value) is NarrowExpression
+
+    def test_the_composition_marker_reaches_an_enclosing_composition_branch(self):
+        """``Dog.f2``'s case: `Add` is not a subtype of `Boxy`, so only `Inst` can accept this."""
+        context = check(at(boxy={"fComp:Add": {"arg1": 1, "arg2": 2}}))
+        assert type(field(context, "boxy").value) is InstExpression
+
+    def test_the_evaluation_marker_is_the_default_and_changes_nothing(self):
+        context = check(at(num={"fEval:Add": {"arg1": 1, "arg2": 2}}))
+        assert type(field(context, "num").value) is FunctionEvaluation
+
+    def test_the_instantiation_marker_does_not_evaluate(self):
+        """At an `Integer` site the Function *value* is not an `Integer`, so this must be refused."""
+        error = rejection(at(num={"fInst:Nullary": {}}))
+        assert error_sites(error)
+
+
+class TestAMarkerOnlyQualifiesAFunction:
+    def test_a_marker_on_a_non_function_type_is_rejected(self):
+        error = rejection(at(num={"fEval:Leaf": {}}))
+        assert "only qualifies a key that names a Function" in " ".join(m for _, m in error_sites(error))
+
+    def test_the_message_names_the_marker_that_was_written(self):
+        error = rejection(at(num={"fInst:Leaf": {}}))
+        assert '"fInst:" marker' in " ".join(m for _, m in error_sites(error))
+
+    def test_a_marker_on_a_key_that_names_nothing_is_rejected(self):
+        error = rejection(at(num={"fComp:NoSuchThing": {}}))
+        assert error_sites(error)
+
+    def test_an_unknown_prefix_is_not_a_marker_and_names_nothing(self):
+        """``fOther:`` is not in the vocabulary, so the whole string is the key -- and it is not a type."""
+        error = rejection(at(num={"fOther:Add": {"arg1": 1, "arg2": 2}}))
+        assert "is not a concept or a template variable" in " ".join(m for _, m in error_sites(error))
+
+
+class TestEveryCommitmentMustBeHonoredNotMerelyMatched:
+    """
+        `TestTheCommitmentMustBeHonoredNotMerelyMatched` pins the check for an *evaluation*; a marker can
+        commit a value to either of the other two readings, and each is dropped just as silently.
+
+        `Anything` is the site that makes all three visible. A boolean instantiation schema -- what a
+        ValueDomain that declares no ``instantiation`` gets -- resolves no property names and reaches no leaf,
+        so it matches the raw JSON without reading it as anything at all. A structural schema cannot stand in
+        here: the marker is part of the *content key*, so ``{"fInst:Add": ...}`` no longer has the property
+        such a schema requires and is rejected on property names long before honoring could be at issue.
+
+    `NOT_AN_EVALUATION` is the deliberate exception. It says only "not an evaluation", which both
+        remaining readings satisfy, so there is no single kind to insist on and nothing to check.
+    """
+
+    def test_an_evaluation_commitment_is_not_honored_by_a_boolean_schema(self):
+        error = rejection(at(anything={"fEval:Nullary": {}}))
+        assert_reported(error, message="committed to being a Function evaluation", location='"anything"')
+
+    def test_an_instantiation_commitment_is_not_honored_by_a_boolean_schema(self):
+        """No `Narrow` is built, so the Function *value* the marker asked for is nowhere in the parse."""
+        error = rejection(at(anything={"fInst:Nullary": {}}))
+        assert_reported(error, message="committed to being a Function instantiation", location='"anything"')
+
+    def test_a_composition_commitment_is_not_honored_by_a_boolean_schema(self):
+        error = rejection(at(anything={"fComp:Nullary": {}}))
+        assert_reported(error, message="committed to being a FunctionComposition", location='"anything"')
+
+    def test_the_refusal_says_the_schema_accepted_without_reading(self):
+        """The distinguishing half of the message: the schema *matched*, and that is the complaint."""
+        error = rejection(at(anything={"fInst:Add": {"arg1": 1, "arg2": 2}}))
+        assert_reported(error, message="without reading it as one", location='"anything"')
+
+    def test_the_keyword_is_checked_the_same_way_as_a_marker(self):
+        """``true`` reaches this site's boolean schema too, and is dropped by it just as quietly."""
+        error = rejection(at(anything={"fEval:Nullary": {}}))
+        assert_reported(error, message="committed to being a Function evaluation", location='"anything"')
+
+    def test_ruling_an_evaluation_out_commits_to_no_single_reading_and_is_accepted(self):
+        """
+        The control for the exception. `OpaqueComposition` is a `FunctionComposition`, so the site's own
+        type rules the evaluation out -- and that is all it does: it names no single reading, so there is
+        nothing for the consumption check to insist on, and the accept-everything schema may take the
+        value unread. Every marked value at such a site is refused by the three tests above.
+        """
+        context = check(at(opaqueComp={"Nullary": {}}))
+        assert field(context, "opaqueComp").is_valid
+
+    def test_a_marker_at_that_same_site_is_still_insisted_on(self):
+        """The contrast that shows the acceptance above is about `NOT_AN_EVALUATION`, not about the site."""
+        error = rejection(at(opaqueComp={"fInst:Nullary": {}}))
+        assert_reported(error, message="without reading it as one", location='"opaqueComp"')
+
+    def test_an_uncommitted_value_is_accepted(self):
+        """The control for the check itself: an accept-everything schema does accept everything."""
+        context = check(at(anything={"whatever": 1}))
+        assert field(context, "anything").is_valid
+
+    def test_the_check_runs_at_depth(self):
+        """Nothing about it is particular to a top-level site."""
+        error = rejection(at(nested={"Holder": {"anything": {"fInst:Nullary": {}}}}))
+        assert_reported(error, message="committed to being a Function instantiation", location='"anything"')
+
+    def test_a_composition_at_a_composition_site_is_honored_by_the_match_itself(self):
+        """
+        The one reading a leaf is not needed for: at a `FunctionComposition` site the composition *is* the
+        `Inst` being built, not a node inside it, so there is nothing deeper to look for.
+        """
+        context = check(at(resAnyFunction={"fComp:Nullary": {}}))
+        assert oneof_branch(field(context, "resAnyFunction")) == "FunctionComposition"
+
+
+class TestTheTypeDrivenDefaultIsNotTheCompositionMarker:
+    """
+    ``NOT_AN_EVALUATION`` is produced by a site whose type is a `FunctionComposition` with nothing
+    written on the key. It looks like it could simply be `COMPOSITION` -- the composition *is* the default
+    reading there -- and it cannot be. These are the measurements that say why, each of which flips if the
+    default is changed to `COMPOSITION`.
+
+    The distinction is that `NOT_AN_EVALUATION` constrains what the value is **not**, while a marker constrains
+    what it **is**. "Not an evaluation" leaves three readings open, not two: a `Narrow`, an `Inst` that
+    reads the object as a composition, and an `Inst` that reads it as ordinary data. `COMPOSITION` admits
+    only the second. So the honest reading of the member is *no evaluation*, and it is strictly weaker
+    than `COMPOSITION` and `INSTANTIATION` together.
+    """
+
+    def test_a_narrow_is_still_admissible_at_a_composition_site(self):
+        """
+        `COMPOSITION` forbids the `Narrow` reading outright (``narrow_is_admissible``), but narrowing to
+        `FunctionComposition` at a `FunctionComposition` site is ordinary and legal. This is what breaks
+        first, and most widely, if the default is strengthened.
+        """
+        context = check(at(comp={"FunctionComposition": {"Add": {"arg1": 1, "arg2": 2}}}))
+        assert type(field(context, "comp").value) is NarrowExpression
+
+    def test_an_unmarked_key_at_the_ambiguous_site_stays_ambiguous(self):
+        """
+        The site the markers exist for. Were the default `COMPOSITION`, this would quietly resolve to the
+        `FunctionComposition` branch -- silence would start *meaning* "composition", `fComp:` would become
+        redundant here, and the collision the markers were introduced to expose would stop being reported.
+        """
+        error = rejection(at(resAnyFunction=dict(TestNarrowVersusCompositionIsStillAmbiguous.ARGUMENTLESS)))
+        assert "matches 2 schemas" in " ".join(m for _, m in error_sites(error))
+
+    def test_ruling_the_evaluation_out_admits_a_reading_no_marker_admits(self):
+        """
+        `Structural`'s schema requires the key spelled exactly ``"Add"``, and reads the object as plain
+        data -- neither a composition nor a Function value. Both markers refuse it, and not for want of a
+        reading: a marker becomes part of the key, so the property the schema requires is no longer there.
+        A reading that no marker can name is why `NOT_AN_EVALUATION` is not `COMPOSITION_OR_INSTANTIATION`,
+        and the explicit `Narrow` is how it is written instead (`[CH].md` 10.2).
+        """
+        payload = {"Add": {"arg1": 1, "arg2": 2}}
+        assert field(check(at(structural={"Structural": payload})), "structural").is_valid
+        for marker in ("fComp", "fInst"):
+            error = rejection(at(structural={f"{marker}:Add": payload["Add"]}))
+            assert error_sites(error), marker
+
+    def test_the_same_value_written_as_an_explicit_narrow_needs_no_directive(self):
+        """
+        And the reason the keyword is nonetheless replaceable: naming the site's own type puts the object
+        in the schema's payload, where no classification happens and the key keeps its spelling.
+        """
+        context = check(at(structural={"Structural": {"Add": {"arg1": 1, "arg2": 2}}}))
+        assert type(field(context, "structural").value) is NarrowExpression
+
+
+class TestTheKeywordIsNoLongerADirective:
+    """
+    The removal itself. Every placement below **was** a classifier directive and is now ordinary data,
+    which at these sites means an unexpected property rather than a silent change of reading.
+
+    The distinction worth keeping in view: `TestTheKeywordIsOrdinaryData` covers placements that were
+    *always* data and had to survive the removal untouched; this class covers the ones that changed. If
+    the recognition ever comes back, these fail and those do not.
+    """
+
+    def _unexpected_property(self, instances: dict) -> str:
+        error = rejection(instances)
+        return " ".join(message for _, message in error_sites(error))
+
+    def test_beside_a_function_key_it_is_an_unexpected_property(self):
+        """``false`` at a `Function` site used to select the `Narrow`; the key is now simply not allowed."""
+        messages = self._unexpected_property(at(fn={"Nullary": {}, "isFunctionEvaluation": False}))
+        assert "Additional property is not allowed" in messages, messages[:300]
+
+    def test_the_instantiation_marker_is_how_that_is_written_now(self):
+        """The replacement for the row above, so the two are read together."""
+        assert type(field(check(at(fn={"fInst:Nullary": {}})), "fn").value) is NarrowExpression
+
+    def test_true_no_longer_commits_the_value_to_an_evaluation(self):
+        messages = self._unexpected_property(
+            at(permissive={"Add": {"arg1": 1, "arg2": 2}, "isFunctionEvaluation": True})
+        )
+        assert "Additional property is not allowed" in messages, messages[:300]
+
+    def test_the_evaluation_marker_is_how_that_is_written_now(self):
+        assert (
+            oneof_branch(field(check(at(permissive={"fEval:Add": {"arg1": 1, "arg2": 2}})), "permissive"))
+            == "ValueDomain"
+        )
+
+    def test_a_former_misuse_is_not_diagnosed_as_a_misuse(self):
+        """
+        ``{"Leaf": {}, "isFunctionEvaluation": true}`` was "the keyword only qualifies a Function". There
+        is no such rule left to break: the object is two keys, so no `FEval` and no `Narrow` is attempted
+        at all, and `Swallow`'s schema rejects it for the key it does not declare.
+        """
+        messages = self._unexpected_property(at(swallow={"Leaf": {}, "isFunctionEvaluation": True}))
+        assert "only qualifies" not in messages, messages[:300]
+        assert "Additional property is not allowed" in messages, messages[:300]
+
+    def test_the_marker_carries_that_diagnosis_instead(self):
+        error = rejection(at(swallow={"fEval:Leaf": {}}))
+        assert_reported(error, message="only qualifies a key that names a Function", location='"swallow"')
+
+    def test_no_value_of_the_keyword_reaches_the_classifier(self):
+        """
+        Neither boolean is treated differently from a string, which is the whole of the removal: the key
+        is not read, so its value cannot matter.
+        """
+        outcomes = set()
+        for written in (True, False, "yes"):
+            outcomes.add(
+                "Additional property is not allowed"
+                in self._unexpected_property(at(fn={"Nullary": {}, "isFunctionEvaluation": written}))
+            )
+        assert outcomes == {True}, outcomes

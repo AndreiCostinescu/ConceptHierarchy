@@ -107,7 +107,9 @@ class ValueValidator(ValueInstantiationContext):
             # The whole point of the call: parse and check the argument expressions.
             recursively_parse=True,
             parse_template_expressions_without_type_checks=False,
-            force_function_evaluation_interpretation=None,  # whether the "isFunctionEvaluation" keyword was present
+            # No enclosing site has decided anything about this value:
+            # the interpretation, if any, is the marker on `function_name`, which is handled by the parser.
+            force_function_evaluation_interpretation=None,
             # The caller's half of the protocol. The expression parser's version additionally asserts that
             # the expected type is a `TypeValue`, which is of no use to a caller that has none.
             ensure_expression_invariant=lambda produced, _expected: len(produced) == 1,

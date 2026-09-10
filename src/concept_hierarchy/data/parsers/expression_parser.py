@@ -906,57 +906,31 @@ def _parse_syntax_of_expression(
         #             defined, but signal that there are instantiation schemas that do not match the expected type
         # TODO: validate literal formula; if formula is not validated -> raise CHSemanticError
 
-    # `is_function_evaluation_present` means "the keyword is written in this JSON object", and nothing else.
-    # It governs popping the key, restoring it, and the "Invalid use of the ..." misuse error
-    # `function_interpretation` travels separately, and the two meet only where the interpretation is decided.
-    is_function_evaluation, is_function_evaluation_present, len_content_keys = True, False, None
-    # compute the amount of **content keys** in the JSON object
-    if isinstance(json_value, dict):
-        len_content_keys = len(json_value)
-        is_function_evaluation_present = "isFunctionEvaluation" in json_value and isinstance(
-            json_value["isFunctionEvaluation"], bool
-        )
-        if is_function_evaluation_present:
-            len_content_keys -= 1
-            # remove the `"isFunctionEvaluation"` key from `json_value` ONLY in a Narrow/FEval expression type!
-            is_function_evaluation = json_value["isFunctionEvaluation"]
+    # A `Narrow` and an `FEval` must be single-key JSON objects.
+    len_content_keys = len(json_value) if isinstance(json_value, dict) else None
 
-    def ensure_unmodified_json_value(
-        _value: object, _is_function_evaluation_present: bool, _is_function_evaluation_value: bool
-    ) -> None:
-        if isinstance(_value, dict) and _is_function_evaluation_present and "isFunctionEvaluation" not in _value:
-            _value["isFunctionEvaluation"] = _is_function_evaluation_value
-
-    try:
-        expr_value_res = _parse_syntax_of_expression_with_instantiated_type(
-            json_value,
-            expr_type,
-            validator,
-            location_id,
-            recursively_parse,
-            parse_template_expressions_without_type_checks,
-            is_function_evaluation,
-            is_function_evaluation_present,
-            function_interpretation,
-            len_content_keys,
-            ensure_unmodified_json_value,
-            template_substitution,
-            expansion_depth,
-            value_is_a_substituted_literal,
-        )
-        ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
-        assert isinstance(expr_type, TemplateVariable) or len(expr_value_res) == 1, f"{expr_type} - {expr_value_res!r}"
-        if isinstance(expr_type, TemplateVariable):
-            if len(expr_value_res) == 1:
-                expr_res = expr_value_res[0]
-            else:
-                expr_res = VerifiedTemplateDependentExpression(expr_value_res)
-        else:
+    expr_value_res = _parse_syntax_of_expression_with_instantiated_type(
+        json_value,
+        expr_type,
+        validator,
+        location_id,
+        recursively_parse,
+        parse_template_expressions_without_type_checks,
+        function_interpretation,
+        len_content_keys,
+        template_substitution,
+        expansion_depth,
+        value_is_a_substituted_literal,
+    )
+    assert isinstance(expr_type, TemplateVariable) or len(expr_value_res) == 1, f"{expr_type} - {expr_value_res!r}"
+    if isinstance(expr_type, TemplateVariable):
+        if len(expr_value_res) == 1:
             expr_res = expr_value_res[0]
-        return expr_res
-    except ConceptHierarchyError as e:
-        ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
-        raise e
+        else:
+            expr_res = VerifiedTemplateDependentExpression(expr_value_res)
+    else:
+        expr_res = expr_value_res[0]
+    return expr_res
 
 
 def _can_be_subtype_of_instantiated(
@@ -999,11 +973,8 @@ def _parse_syntax_of_expression_with_instantiated_type(
     location_id: LocationId,
     recursively_parse: bool,
     parse_template_expressions_without_type_checks: bool,
-    is_function_evaluation: bool,
-    is_function_evaluation_present: bool,
     function_interpretation_from_caller: FunctionInterpretation,
     len_content_keys: int,
-    ensure_unmodified_json_value: Callable[[object, bool, bool], None],
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
     value_is_a_substituted_literal: bool = False,
@@ -1022,13 +993,10 @@ def _parse_syntax_of_expression_with_instantiated_type(
         return None
 
     # Check `Narrow` and `FEval` expressions.
-    # The FunctionInterpretation handed down by the caller already applies to *this* value;
-    # use this instead of "isFunctionEvaluation" inside _parse_expression_of_json_object.
+    # The FunctionInterpretation handed down by the caller already applies to *this* value.
     function_interpretation = function_interpretation_from_caller
     if len_content_keys == 1:
         assert isinstance(json_value, dict)
-        if is_function_evaluation_present:
-            json_value.pop("isFunctionEvaluation")
         key, value = get_items_of_single_entry_dict(json_value)
         # Verifying if key is a Concept Hierarchy type (a (non-literal) Template Variable and a Function or ValueDomain
         # type application) is done in _parse_expression_of_json_object -> parse_function_evaluation_expression
@@ -1036,9 +1004,8 @@ def _parse_syntax_of_expression_with_instantiated_type(
         if validator.is_template_variable(key) and validator.is_literal_template_variable(key):
             is_concept_hierarchy_expression = False
 
-        key_names_a_type = False
         if is_concept_hierarchy_expression:
-            sub_expressions, function_interpretation, key_names_a_type = _parse_expression_of_json_object(
+            sub_expressions, function_interpretation = _parse_expression_of_json_object(
                 key,
                 value,
                 expr_type,
@@ -1046,8 +1013,6 @@ def _parse_syntax_of_expression_with_instantiated_type(
                 location_id,
                 recursively_parse,
                 parse_template_expressions_without_type_checks,
-                is_function_evaluation,
-                is_function_evaluation_present,
                 function_interpretation_from_caller,
                 ensure_expression_invariant,
                 attempts,
@@ -1061,11 +1026,6 @@ def _parse_syntax_of_expression_with_instantiated_type(
             expressions_res.extend(sub_expressions)
             if ensure_expression_invariant(expressions_res, expr_type):
                 return expressions_res
-
-        # Whether the pop was right is only known once the key has been resolved.
-        # If the single-content-key is not a Concept Hierarchy type, the isFunctionEvaluation keyword must be put back.
-        if not key_names_a_type:
-            ensure_unmodified_json_value(json_value, is_function_evaluation_present, is_function_evaluation)
 
     # An enclosing site has committed this JSON object to one reading, so the alternatives below may not offer another.
     # `EVALUATION` and `INSTANTIATION` are produced above, in the single-key block, and if they were not produced there
@@ -1486,9 +1446,9 @@ def _reading_that_honors(interpretation: FunctionInterpretation) -> Callable[[Ex
     """
     What an expression must *be* for ``interpretation`` to have been honored, or ``None`` if anything is.
 
-    `RULED_OUT` is the ``None`` case, and deliberately: ``"isFunctionEvaluation": false`` says only "not an
-    evaluation", which two different readings satisfy, so there is no single kind to insist on. A marker is
-    never that vague, which is why every other decided value has an entry here.
+    `NOT_AN_EVALUATION` is the ``None`` case, and deliberately: it says only what the value is *not*, and
+    more than one reading satisfies that, so there is no single kind to insist on. A marker is never that
+    vague, which is why every other decided value has an entry here.
 
     A `NarrowExpression` *is* an `InstExpression`, so `COMPOSITION` excludes it explicitly: a composition
     and an instantiation of the same Function are the two readings this mechanism exists to separate, and a
@@ -2040,9 +2000,8 @@ def parse_function_evaluation_expression(
         and not isinstance(expr_type, TemplateVariable)
         and _check_if_subtype(validator, expr_type, function_composition_type, expr_template_context, f_location_id)
     )
-    # A marker qualifies a key that names a Function and nothing else -- the same rule
-    # `"isFunctionEvaluation"` has, and for the same reason: there is no interpretation to assert about a
-    # type that cannot be called, composed or instantiated as one. A template variable is exempt: nothing
+    # A marker qualifies a key that names a Function and nothing else: there is no interpretation to
+    # assert about a type that cannot be called, composed or instantiated as one. A template variable is exempt: nothing
     # about `T` says it is a Function, and the marker is written there precisely because the author cannot
     # annotate the substituted form (see `TestAnInterpretationOnATemplateVariableKeySurvivesSubstitution`).
     if marker is not None and not isinstance(key_type, TemplateVariable) and not is_function_subtype:
@@ -2056,15 +2015,15 @@ def parse_function_evaluation_expression(
 
     # What this site decides about the object, for the schema below to honor (`[CH].md` 10.2).
     # A marker is explicit and beats every default; the keyword is the older, two-valued way of saying
-    # part of the same thing, and `RULED_OUT` is what it says when it says `false`.
+    # part of the same thing, and `NOT_AN_EVALUATION` is what it says when it says `false`.
     if marker is not None:
         interpretation = marker
     elif force_function_evaluation_interpretation is False:
-        interpretation = FunctionInterpretation.RULED_OUT
+        interpretation = FunctionInterpretation.NOT_AN_EVALUATION
     elif force_function_evaluation_interpretation:
         interpretation = FunctionInterpretation.EVALUATION
     elif possible_function_composition:
-        interpretation = FunctionInterpretation.RULED_OUT
+        interpretation = FunctionInterpretation.NOT_AN_EVALUATION
     else:
         interpretation = FunctionInterpretation.UNSPECIFIED
 
@@ -2343,32 +2302,23 @@ def _parse_expression_of_json_object(
     location_id: LocationId,
     recursively_parse: bool,
     parse_template_expressions_without_type_checks: bool,
-    is_function_evaluation: bool,
-    is_function_evaluation_present: bool,
     function_interpretation_from_caller: FunctionInterpretation,
     ensure_expression_invariant: Callable[[list[ExpressionValue], TypeValue], bool | None],
     attempts: list[ExpressionAttempt],
     template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None = None,
     expansion_depth: int = 0,
-) -> tuple[list[ExpressionValue], FunctionInterpretation, bool]:
-    """
-    Returns ``(expressions, function_interpretation, key_names_a_type)``.
-
-    ``key_names_a_type`` is what tells the caller whether an ``"isFunctionEvaluation"`` it popped was a
-    directive at all: the keyword only ever qualifies a key that names a type application, and beside
-    anything else it is a value the caller has to give back.
-    """
+) -> tuple[list[ExpressionValue], FunctionInterpretation]:
+    """Returns ``(expressions, function_interpretation)``."""
     expr_template_context = validator.get_current_template_context()
-    # The one place the written keyword and the carried interpretation meet.
-    # An interpretation handed down by an enclosing site says exactly what the keyword says
-    # (evaluation ruled out, or required),
-    # so it is expressed as that, and only here, where nothing else reads it.
-    if function_interpretation_from_caller is FunctionInterpretation.RULED_OUT:
+    # An interpretation handed down by an enclosing site is expressed as the older tri-state the FEval
+    # parser takes, and only here, where nothing else reads it. A marker written on *this* key is read
+    # there rather than passed in, because the key has to be split before it can be resolved as a type.
+    if function_interpretation_from_caller is FunctionInterpretation.NOT_AN_EVALUATION:
         force_function_evaluation_interpretation = False
     elif function_interpretation_from_caller is FunctionInterpretation.EVALUATION:
         force_function_evaluation_interpretation = True
     else:
-        force_function_evaluation_interpretation = is_function_evaluation if is_function_evaluation_present else None
+        force_function_evaluation_interpretation = None
     expressions_res, key_type, is_function_subtype, function_interpretation = parse_function_evaluation_expression(
         key,
         value,
@@ -2384,27 +2334,7 @@ def _parse_expression_of_json_object(
         expansion_depth,
     )
     if key_type is None or ensure_expression_invariant(expressions_res, expr_type):
-        return expressions_res, function_interpretation, key_type is not None
-
-    # The keyword qualifies a *Function*-keyed object and nothing else.
-    # The key resolved to a type that is not a Function, so a keyword written beside it is a misuse.
-    if is_function_evaluation_present and not is_function_subtype:
-        reason = (
-            f'the "isFunctionEvaluation" keyword only qualifies an object keyed by a Function, '
-            f"and {key_type} is not a Function"
-        )
-        misuse = CHSemanticError(reason, location_id=location_id + ["isFunctionEvaluation"], part=PathPart.KEY)
-        attempts.append(
-            ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type, schema_errors=(misuse,))
-        )
-        expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
-        # `UNSPECIFIED`, not the interpretation the keyword asked for. The caller strips an `EVALUATION` failure so
-        # that the site's instantiation schema gets a turn, and that is right for a failure *about the
-        # site's expected type* -- `res(K)` not fitting -- because a custom-type leaf may still fit. This
-        # failure is about the keyword itself and holds whatever the site expects, so stripping it would
-        # let `Inst` swallow the misuse whenever the schema happens to accept the object. A misused
-        # keyword decided nothing, which is exactly what `FREE` says.
-        return expressions_res, FunctionInterpretation.UNSPECIFIED, True
+        return expressions_res, function_interpretation
 
     # `COMPOSITION` says the object is a composition of `K`, and `EVALUATION` that it is a call of it --
     # neither is the Function *value*, which is what a `Narrow` builds. Only `INSTANTIATION` and the two
@@ -2418,7 +2348,7 @@ def _parse_expression_of_json_object(
         if not recursively_parse:
             expressions_res.append(NarrowExpression(None, key_type, key_type != expr_type))
             if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res, function_interpretation, True
+                return expressions_res, function_interpretation
         elif isinstance(key_type, TemplateVariable):
             # `T` names no concept, so there is no instantiation schema to check the value against and no
             # `is_type_abstract` to ask -- the schema is whatever `T` turns out to be. The interpretation is still
@@ -2426,7 +2356,7 @@ def _parse_expression_of_json_object(
             # site every interpretation the value could still have is kept, and the grounded reparse decides.
             expressions_res.append(PossibleNarrowExpression(key_type))
             if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res, function_interpretation, True
+                return expressions_res, function_interpretation
         else:
             # abstract Types do not have instantiation schemas
             narrow_location_id = location_id + [key]
@@ -2444,7 +2374,7 @@ def _parse_expression_of_json_object(
             if narrow_res.parsed is not None and narrow_res.parsed.is_valid():
                 expressions_res.append(NarrowExpression(narrow_res.parsed, key_type, key_type != expr_type))
                 if ensure_expression_invariant(expressions_res, expr_type):
-                    return expressions_res, function_interpretation, True
+                    return expressions_res, function_interpretation
             attempts.append(_instantiation_attempt(ExpressionKind.NARROW, key_type, narrow_res))
     else:
         attempts.append(
@@ -2456,7 +2386,7 @@ def _parse_expression_of_json_object(
         )
 
     # if expr_type is InstantiatedTypes, this expression is neither a `FEval` nor a `Narrow`
-    return expressions_res, function_interpretation, True
+    return expressions_res, function_interpretation
 
 
 class SubtypeVerdict(Enum):
