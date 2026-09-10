@@ -89,6 +89,26 @@ def invalid_expression_error(expr: Expression, location_id) -> CHSemanticError:
     return error
 
 
+def get_variable_context_based_on_static(
+    is_static: bool,
+    static_variable_context: VariableContext,
+    non_static_variable_context: VariableContext,
+    location_id: LocationId,
+) -> VariableContext:
+    if not is_static:
+        if non_static_variable_context is None:
+            raise CHSemanticError(
+                'Non-static DomainConcept functions need the "instance" variable of type '
+                "Instance<AcceptConcepts..., RejectConcepts...>; but that type is not defined in this hierarchy.",
+                location_id=location_id,
+            )
+        # with property/function names and the instance variable
+        return non_static_variable_context
+    else:
+        # without the instance variable and without (implicit) property/function names as variables!
+        return static_variable_context
+
+
 def check_expressions_in_domain_concept_definition(
     c: DomainConceptDefinition, datum: DomainConceptData, context: ConceptHierarchyContext
 ):
@@ -120,15 +140,32 @@ def check_expressions_in_domain_concept_definition(
     prev_var_context = context.variable_context
     # add (inherited and defined) properties and functions to available variables
     domain_concept_vars: dict[str, TypeValue] = {}
+    static_domain_concept_vars: dict[str, TypeValue] = {}
+    static_properties_of_this_concept: set[str] = set()
     for prop_name, prop_def_data in datum.available_property_data.items():
-        domain_concept_vars[prop_name] = context.model.domain_concepts[
-            prop_def_data[PropertyDefinitionKeywords.VALUE_DOMAIN]
-        ].property_types[prop_name]
+        defining_domain_concept = context.model.domain_concepts[prop_def_data[PropertyDefinitionKeywords.VALUE_DOMAIN]]
+        domain_concept_vars[prop_name] = defining_domain_concept.property_types[prop_name]
+        if defining_domain_concept is datum:
+            if c.properties[prop_name].get(PropertyDefinitionKeywords.STATIC, False):
+                static_properties_of_this_concept.add(prop_name)
+                static_domain_concept_vars[prop_name] = datum.property_types[prop_name]
+        elif prop_name in defining_domain_concept.static_properties:
+            static_domain_concept_vars[prop_name] = defining_domain_concept.property_types[prop_name]
+    datum.static_properties = frozenset(static_properties_of_this_concept)
+    static_functions_of_this_concept: set[str] = set()
     for func_name, func_def_data in datum.available_function_data.items():
-        domain_concept_vars[func_name] = context.model.domain_concepts[
-            func_def_data[FunctionDefinitionKeywords.VALUE_DOMAIN]
-        ].function_types[func_name]
+        defining_domain_concept = context.model.domain_concepts[func_def_data[FunctionDefinitionKeywords.VALUE_DOMAIN]]
+        domain_concept_vars[func_name] = defining_domain_concept.function_types[func_name]
+        if defining_domain_concept is datum:
+            if c.functions[func_name].get(FunctionDefinitionKeywords.STATIC, False):
+                static_functions_of_this_concept.add(func_name)
+                static_domain_concept_vars[func_name] = datum.function_types[func_name]
+        elif func_name in defining_domain_concept.static_functions:
+            static_domain_concept_vars[func_name] = defining_domain_concept.function_types[func_name]
+    datum.static_functions = frozenset(static_functions_of_this_concept)
+
     base_variable_context = prev_var_context.add_variables(domain_concept_vars)
+    static_variable_context = prev_var_context.add_variables(static_domain_concept_vars)
 
     variable_context_with_instance, instance_type_name = None, f"Instance<{c.name}>"
     if context.ch.is_concept("Instance"):
@@ -150,9 +187,10 @@ def check_expressions_in_domain_concept_definition(
 
     context.variable_context = base_variable_context
 
-    functions: dict[str, Expression] = {}
+    function_defaults: dict[str, Expression] = {}
     for func_name, func_def in c.functions.items():
         f_def_location_id = c.location_of("functions", func_name)
+        is_func_static = func_name in static_functions_of_this_concept
         if custom_function_type is None:
             raise CHSemanticError(
                 "DomainConcept functions are written as CustomFunction expressions, but the CustomFunction concept was "
@@ -161,30 +199,24 @@ def check_expressions_in_domain_concept_definition(
             )
         if FunctionDefinitionKeywords.DEFAULT not in func_def:
             continue
-        if not func_def[FunctionDefinitionKeywords.STATIC]:
-            if variable_context_with_instance is None:
-                raise CHSemanticError(
-                    'Non-static DomainConcept functions need the "instance" variable of type '
-                    "Instance<AcceptConcepts, RejectConcepts>; but that type is not defined in this hierarchy.",
-                    location_id=f_def_location_id,
-                )
-            # with property/function names and the instance variable
-            context.variable_context = variable_context_with_instance
-        else:
-            # without the instance variable and without (implicit) property/function names as variables!
-            context.variable_context = prev_var_context
+        f_default_location_id = f_def_location_id
+        if func_name not in c.is_shorthand_function_definition:
+            f_default_location_id += [FunctionDefinitionKeywords.DEFAULT]
+        context.variable_context = get_variable_context_based_on_static(
+            is_func_static, static_variable_context, variable_context_with_instance, f_default_location_id
+        )
         expr_res = parse_expression(
             func_def[FunctionDefinitionKeywords.DEFAULT],
             custom_function_type,
             FunctionArgumentProvenance.ANY,
             FunctionArgumentAccessor.GET,
             context.expression_parser_validator,
-            f_def_location_id,
+            f_default_location_id,
         )
         if not expr_res.is_valid:
-            raise invalid_expression_error(expr_res, f_def_location_id)
-        functions[func_name] = expr_res
-    datum.functions = frozendict(functions)
+            raise invalid_expression_error(expr_res, f_default_location_id)
+        function_defaults[func_name] = expr_res
+    datum.function_expressions = frozendict(function_defaults)
 
     # the variable context is checked inside the "management"-parsing loop
     if variable_context_with_instance is not None:
