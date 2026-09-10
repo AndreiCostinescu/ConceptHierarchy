@@ -422,7 +422,7 @@ class ExpressionValidator(ExpressionParserValidator):
                 return definition.evaluation_argument_default_values[f_arg_name]
             model = self.context.model.functions.get(name)
             if model is not None:
-                to_visit.extend(parent for parent in model.parents if parent in self.context.ch.functions)
+                to_visit.extend(parent for parent in model.direct_parents if parent in self.context.ch.functions)
         return MISSING
 
     def get_parsed_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
