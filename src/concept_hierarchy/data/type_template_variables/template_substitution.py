@@ -31,6 +31,8 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
     ConceptHierarchyType,
+    ConceptHierarchyVariadicGroup,
+    ExpandedVariadicTemplateVariable,
     Instantiated,
     InstantiatedType,
     InstantiatedVariadicGroup,
@@ -178,7 +180,11 @@ def substitute_non_template_variable(
             item, mapping, template_context_of_value, sub_template_context, validator, sub_location_id
         )
         has_template_dependent_items |= isinstance(new_item, TemplateDependent)
-        new_items.append(new_item)
+        if isinstance(item, ExpandedVariadicTemplateVariable):
+            assert isinstance(new_item, ConceptHierarchyVariadicGroup)
+            new_items.extend(new_item.variadic_group)
+        else:
+            new_items.append(new_item)
         sub_template_contexts.append(sub_template_context)
     template_context_of_mapped_variables.merge_constraints_and(sub_template_contexts, location_id)
     if has_template_dependent_items:
