@@ -66,6 +66,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     InstantiatedType,
     NonVariadicTemplateVariable,
     TypeValue,
+    VariadicTemplateVariable,
 )
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
@@ -426,6 +427,19 @@ def _finish_custom_type_node(
         )
     except ConceptHierarchyError as e:
         state.record(e)
+
+    # A variadic parameter names a *group* of arguments, not a type, so it cannot stand where one type is expected.
+    # Only its expansion, `T...`, means anything in a schema -- and that is refused elsewhere unless an expandable
+    # container encloses it.
+    if isinstance(node.custom_type, VariadicTemplateVariable) and not node.custom_type.is_variadic_expanded:
+        state.record(
+            CHSemanticError(
+                f'"{type_name}" is a variadic template variable and names a group of arguments rather than '
+                f'a type; write "{type_name}..." to expand it into the enclosing "anyOf", "oneOf", '
+                f'"allOf", "items" tuple, or "props"/"funcs" list',
+                location_id=type_location_id,
+            )
+        )
 
     provenance = ValueDomainArgumentProvenance(work.get("provenance", ValueDomainArgumentProvenance.ANY.value))
     if "provenance" in work and work["provenance"] not in state.context.argument_provenance_types:
