@@ -40,6 +40,7 @@ from concept_hierarchy.definitions.concept_definition_domain_concept import (
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.errors import CHSemanticError, LocationId, PathPart
+from concept_hierarchy.utils import freeze_value
 
 
 def ill_formed_parts(expr: Expression) -> tuple[IllFormedExpression, ...]:
@@ -187,7 +188,7 @@ def check_expressions_in_domain_concept_definition(
 
     context.variable_context = base_variable_context
 
-    function_defaults: dict[str, Expression] = {}
+    function_defaults: dict[str, dict[str, Expression]] = {}
     for func_name, func_def in c.functions.items():
         f_def_location_id = c.location_of("functions", func_name)
         is_func_static = func_name in static_functions_of_this_concept
@@ -215,8 +216,10 @@ def check_expressions_in_domain_concept_definition(
         )
         if not expr_res.is_valid:
             raise invalid_expression_error(expr_res, f_default_location_id)
-        function_defaults[func_name] = expr_res
-    datum.function_expressions = frozendict(function_defaults)
+        if func_name not in function_defaults:
+            function_defaults[func_name] = {}
+        function_defaults[func_name]["forSub"] = expr_res
+    datum.function_expressions = freeze_value(function_defaults)
 
     # the variable context is checked inside the "management"-parsing loop
     if variable_context_with_instance is not None:

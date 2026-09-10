@@ -35,6 +35,10 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
     TypeValue,
 )
 from concept_hierarchy.data.utils import UNINITIALIZED
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    FunctionDefinitionKeywords,
+    PropertyDefinitionKeywords,
+)
 from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 
 from .utils import lazy_properties
@@ -64,7 +68,14 @@ class DomainConceptData(ConceptData):
     # all the data is (available) for this concept; this class does not store any data for subconcepts
     property_types: frozendict[str, InstantiatedType]
     property_constraints: frozendict[str, Expression]
+    static_properties: frozenset[str]
     function_types: frozendict[str, InstantiatedType]
+    static_functions: frozenset[str]
+    function_expressions: frozendict[str, frozendict[str, Expression]]
+    """
+    Format: { func_name: { forThis/forSub: Expression } }. 
+    Only contains a Function's default value as expression data.
+    """
 
     management: frozendict[str, Expression]
     """The registered management functions of this concept alone."""
@@ -84,6 +95,38 @@ class DomainConceptData(ConceptData):
         super().__init__(name, parents, all_parents)
         self._all_available_property_types = None
         self._all_available_function_types = None
+
+    @property
+    def all_available_property_types(self) -> frozendict[str, InstantiatedType]:
+        if self._all_available_property_types is None:
+            assert self.available_property_data is not UNINITIALIZED
+            types_of_data: dict[str, InstantiatedType] = {}
+            for prop_name, prop_data in self.available_property_data.items():
+                domain_concept_defining_type = prop_data[PropertyDefinitionKeywords.VALUE_DOMAIN]
+                if domain_concept_defining_type == self.name:
+                    types_of_data[prop_name] = self.property_types[prop_name]
+                else:
+                    parent = self.all_parents[domain_concept_defining_type]
+                    assert isinstance(parent, DomainConceptData)
+                    types_of_data[prop_name] = parent.property_types[prop_name]
+            self._all_available_property_types = frozendict(types_of_data)
+        return self._all_available_property_types
+
+    @property
+    def all_available_function_types(self) -> frozendict[str, InstantiatedType]:
+        if self._all_available_function_types is None:
+            assert self.available_function_data is not UNINITIALIZED
+            types_of_data: dict[str, InstantiatedType] = {}
+            for func_name, func_data in self.available_function_data.items():
+                domain_concept_defining_type = func_data[FunctionDefinitionKeywords.VALUE_DOMAIN]
+                if domain_concept_defining_type == self.name:
+                    types_of_data[func_name] = self.function_types[func_name]
+                else:
+                    parent = self.all_parents[domain_concept_defining_type]
+                    assert isinstance(parent, DomainConceptData)
+                    types_of_data[func_name] = parent.function_types[func_name]
+            self._all_available_function_types = frozendict(types_of_data)
+        return self._all_available_function_types
 
 
 @lazy_properties
