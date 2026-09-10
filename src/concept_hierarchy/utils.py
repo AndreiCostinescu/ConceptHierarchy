@@ -20,6 +20,8 @@ from datetime import date
 from pathlib import Path
 from typing import Generic, TypeVar
 
+from frozendict import frozendict
+
 tab = "    "
 
 
@@ -275,3 +277,13 @@ def topological_sort(parents: dict[str, tuple[str, ...]]) -> tuple[list[str], li
             f"Non-hierarchy structure detected! The following items form one or more cycles: {nodes_in_cycles!r}"
         )
     return result, roots
+
+
+def freeze_value(value: object) -> object:
+    if isinstance(value, set):
+        return frozenset(freeze_value(x) for x in value)
+    if isinstance(value, list):
+        return tuple(freeze_value(x) for x in value)
+    if isinstance(value, dict):
+        return frozendict({freeze_value(k): freeze_value(v) for k, v in value.items()})
+    return value
