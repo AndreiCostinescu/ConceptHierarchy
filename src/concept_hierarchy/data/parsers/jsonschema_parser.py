@@ -61,7 +61,12 @@ from concept_hierarchy.data.jsonschema.parsed_schema import (
     find_reference_cycle,
 )
 from concept_hierarchy.data.parsers.string_parser import StringParser
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ExpandedVariadicTemplateVariable,
+    InstantiatedType,
+    NonVariadicTemplateVariable,
+    TypeValue,
+)
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import (
@@ -171,6 +176,10 @@ class CHSchemaValidator(ABC):
 
     @abstractmethod
     def is_concept(self, concept_name: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_domain_concept(self, concept_name: str) -> bool:
         pass
 
     @abstractmethod
@@ -475,25 +484,38 @@ def _parse_custom_concept_data_constraint(
     else:
         has_concept_restriction = custom_concept_data_parser.try_consume("(")
     concept_restriction = []
+    index = 0
     if has_concept_restriction:
         # process list of uppercase names separated by ', '
-        concept_name = custom_concept_data_parser.parse_upper_case_name()
-        if not validator.is_concept(concept_name):
-            # FIXME: possibly extend to allow an expanded variadic template argument here
-            raise CHSemanticError(
-                f"{concept_name} is not a valid concept in this Concept Hierarchy!",
-                location_id=location_id,
-            )
-        concept_restriction.append(concept_name)
-        while custom_concept_data_parser.try_consume(", "):
+        constraint_location_id = location_id + [constraint[:5]]
+
+        def parse_name(_index):
             concept_name = custom_concept_data_parser.parse_upper_case_name()
-            if not validator.is_concept(concept_name):
-                # FIXME: possibly extend to allow an expanded variadic template argument here
+            if custom_concept_data_parser.try_consume("..."):
+                concept_name += "..."
+            # create a new value to not overwrite previously used location_id (in error messages)
+            current_location_id = constraint_location_id + [_index]
+            # the statement below will throw an error if concept_name is not a concept/type/template variable
+            concept_type = validator.parse_custom_type(concept_name, current_location_id, False, True)
+            if not (
+                (validator.is_concept(concept_name) and validator.is_domain_concept(concept_name))
+                or isinstance(concept_type, (NonVariadicTemplateVariable, ExpandedVariadicTemplateVariable))
+            ):
                 raise CHSemanticError(
-                    f"{concept_name} is not a valid concept in this Concept Hierarchy!",
-                    location_id=location_id,
+                    f"{concept_name} is not a valid DomainConcept in this Concept Hierarchy, nor a non-variadic "
+                    f"template variable, nor an expanded variadic template variable!\n"
+                    f"Those are the only acceptable values at this location; got {concept_type.__class__}",
+                    location_id=current_location_id,
                 )
-            concept_restriction.append(concept_name)
+            assert isinstance(
+                concept_type, (ExpandedVariadicTemplateVariable, InstantiatedType, NonVariadicTemplateVariable)
+            )
+            concept_restriction.append(concept_type)
+
+        parse_name(index)
+        while custom_concept_data_parser.try_consume(", "):
+            index += 1
+            parse_name(index)
         custom_concept_data_parser.consume(")")
     return CustomConceptDataConstraint(
         for_properties_of_functions, include_parent_data, concept_restriction, value_schema, require_all_keys
@@ -599,7 +621,7 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
                             child_with_x(props[1], "properties", 1),
                             require_all_keys,
                             state.context,
-                            location_id,
+                            location_id + ["properties"],
                         )
                     )
                 except ConceptHierarchyError as e:
@@ -613,7 +635,7 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
                             child_with_x(custom_constraint_entry[1], "properties", custom_entry_index, 1),
                             require_all_keys,
                             state.context,
-                            location_id,
+                            location_id + ["properties"],
                         )
                         for existing_custom_constraint in node.custom_concept_data_constraints:
                             if (

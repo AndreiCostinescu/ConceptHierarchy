@@ -68,6 +68,9 @@ class SchemaValidator(CHSchemaValidator):
     def is_concept(self, concept_name: str) -> bool:
         return self.context.ch.is_concept(concept_name)
 
+    def is_domain_concept(self, concept_name: str) -> bool:
+        return self.context.ch.is_domain_concept(concept_name)
+
     def is_template_variable(self, template_variable_name: str) -> bool:
         return template_variable_name in self.context.template_context.variables
 

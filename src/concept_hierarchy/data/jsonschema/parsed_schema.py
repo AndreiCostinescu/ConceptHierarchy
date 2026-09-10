@@ -70,7 +70,7 @@ class CustomConceptDataConstraint:
         self,
         for_properties_or_functions: ForPropertyOrFunction,
         include_parent_data: bool,
-        concept_restriction: list[str],
+        concept_restriction: list[TypeValue],
         value: CHSchemaNode,
         require_all_keys: bool,
     ):
