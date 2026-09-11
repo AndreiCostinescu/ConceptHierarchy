@@ -515,12 +515,79 @@ def substitute_schema(
     if not template_substitution:
         return instantiation_schema
 
+    replacements: dict[int, CHSchemaNode] = {}
+    # Which nodes `replacements` is allowed to be keyed by. Everything `rewire_resolved_refs` looks up is
+    # a `ref_resolved`, and those always point into the *declaration* -- a replica is a shallow copy, so it
+    # carries the declaration's pointer over unchanged. Recording a replica under its own `id` would
+    # therefore add an entry nothing can ever read, keyed by an address that stops being unique the moment
+    # that intermediate copy is collected.
+    declared_ids = {id(node) for node in instantiation_schema.walk()}
+
+    def _substitute_selector_types(node: CHSchemaNode) -> CHSchemaNode:
+        """Expand every `props(...)`/`funcs(...)` argument list of ``node`` (7.6). ``node`` is a copy."""
+        for constraint in node.custom_concept_data_constraints:
+            constraint.concept_restriction = _expand_selector_types(
+                constraint.concept_restriction, template_substitution
+            )
+        return node
+
+    def _group_to_expand(node: CHSchemaNode) -> tuple[str, tuple[TypeValue, ...]] | None:
+        """
+        The group ``node``'s unit expands and the arguments to expand it into, or ``None`` if neither.
+
+        ``None`` means both "no variadic in this unit" and "the group is not ground yet".
+        The second is not the same as an empty group and must not be collapsed into one: at a template-dependent site
+        the arguments are simply unknown, and turning that into zero elements would reject every value
+        (`documentation/TODO_VARIADIC_SCHEMA_EXPANSION.md` 5).
+        """
+        # 2.3 guarantees one group per unit, checked when the schema was parsed, so the first is the one.
+        not_expanded_variadic_template_parameter = next(iter(node.variadic_template_parameters_of_this_unit()), None)
+        if not_expanded_variadic_template_parameter is None:
+            return None
+        arguments = _ground_variadic_arguments(template_substitution.get(not_expanded_variadic_template_parameter))
+        return None if arguments is None else (not_expanded_variadic_template_parameter, arguments)
+
+    def _replicate(
+        element: CHSchemaNode, variadic_template_parameter_name: str, arguments: tuple[TypeValue, ...]
+    ) -> list[CHSchemaNode]:
+        """One copy of ``element`` per argument, with every `T...` of its unit bound to that argument."""
+        depth = len(element.location_id)
+        copies: list[CHSchemaNode] = []
+        for index, argument in enumerate(arguments):
+            # 4.1: inserted where the declared element sat, so a failure inside a copy still points at
+            # the one subtree it was written as. Every descendant is rewritten too -- default sites are
+            # registered by location, so copies sharing one would overwrite each other.
+            discriminator = f"{variadic_template_parameter_name}...:{index}:{argument.full_name}"
+
+            def rebuild(node: CHSchemaNode, binding: bool) -> CHSchemaNode:
+                res = copy(node)
+                res.location_id = LocationId(
+                    list(element.location_id) + [discriminator] + list(node.location_id)[depth:]
+                )
+                if binding:
+                    if node.expands_variadic and node.custom_type.clean_name == variadic_template_parameter_name:
+                        res.custom_type = argument
+                        res.expands_variadic = False
+                    _bind_selector_group(res, variadic_template_parameter_name, argument)
+                # 2.3: an element of a *nested* container roots a unit of its own, so its `T...` -- even of
+                # this very group -- is not ours to bind. It expands on its own, once per argument, inside
+                # this copy; binding it here would silently turn those N into the one argument of this copy.
+                # Its location is still rewritten, or the copies would share a default site.
+                return res.apply_expanding(lambda child, is_element: [rebuild(child, binding and not is_element)])
+
+            copies.append(rebuild(element, True))
+        return copies
+
     def _parse_and_substitute(node: CHSchemaNode) -> CHSchemaNode:
         if node.is_boolean_schema:
             return node
         if not node.is_custom_type:
-            # `apply` returns a copy with copied containers, so writing the keywords into it is safe.
-            return _substitute_literal_keywords(node.apply(_parse_and_substitute), template_substitution)
+            # `apply_expanding` returns a copy with copied containers, so writing the keywords in is safe.
+            return _collapse_empty_containers(
+                _substitute_literal_keywords(
+                    _substitute_selector_types(node.apply_expanding(_expand_and_substitute)), template_substitution
+                )
+            )
         assert node.custom_type is not None
         # No literal keywords here: `jsonschema_parser` builds a custom-type node in
         # `_finish_custom_type_node`, which never reaches the keyword loop in `_finish_builtin_node`, so
@@ -541,12 +608,150 @@ def substitute_schema(
         assert res.custom_type is not None
         return res
 
-    substituted = instantiation_schema.apply(_parse_and_substitute)
-    rewire_resolved_refs(instantiation_schema, substituted)
+    def _expand_and_substitute(node: CHSchemaNode, is_container_element: bool) -> list[CHSchemaNode]:
+        expanding = _group_to_expand(node) if is_container_element else None
+        if expanding is None:
+            rebuilt = _parse_and_substitute(node)
+            if id(node) in declared_ids:
+                replacements[id(node)] = rebuilt
+            return [rebuilt]
+        # The copies are bound first and substituted after, so that a `T...` becomes its argument rather
+        # than being handed to the type substitutor, which has no binding for a group.
+        return [_parse_and_substitute(replica) for replica in _replicate(node, *expanding)]
+
+    substituted = _parse_and_substitute(instantiation_schema)
+    # The root is reached by no walk over the *children*, so `_expand_and_substitute` never sees it -- and
+    # `"$ref": "#"` is a supported pointer, whose target is exactly that node.
+    replacements[id(instantiation_schema)] = substituted
+    rewire_resolved_refs(instantiation_schema, substituted, replacements)
     return substituted
 
 
-def rewire_resolved_refs(declared: CHSchemaNode, rebuilt: CHSchemaNode) -> None:
+def _collapse_empty_containers(node: CHSchemaNode) -> CHSchemaNode:
+    """
+    Replace a container the expansion emptied with its keyword's identity. ``node`` is already a copy.
+
+    Which identity is a property of the **keyword**, never of the ValueDomain using it, so nothing here
+    consults a type. Only the disjunctions need doing:
+
+    * ``anyOf`` / ``oneOf`` are disjunctions, whose identity is **false**. An empty list is worse than
+      wrong here, it is *silent*: `_parse_any_of` is guarded by ``if node.any_of``, so no branches means
+      no check at all and the node accepts everything -- the exact opposite of what `Variant<>` means. The
+      node as a whole becomes the boolean schema `false`, because its other constraints are conjoined
+      with that;
+    * ``allOf`` is a conjunction, whose identity is **true**, and an empty ``all_of`` already imposes
+      nothing. Correct as it stands;
+    * an ``items`` tuple left empty is likewise already right: draft-07 applies ``additionalItems`` from
+      the end of the tuple, so an empty one with ``additionalItems: false`` admits no elements at all,
+      which is the empty tuple. Rewriting it to ``maxItems: 0`` would have to reach `shallow_canonical`,
+      which is built when the schema is *declared* -- and writing the keyword after that changes nothing
+      *(measured: it made `Tuple<>` accept `[1]`)*.
+
+    An empty array reaching a draft-07 meta-schema check would still be invalid, but none does: that check
+    runs once per declaration (`jsonschema_parser._check_meta_schema`), and a declared empty container is
+    refused there. A list that is empty *here* was emptied by an expansion, which is not re-validated.
+    """
+    if node.is_boolean_schema:
+        return node
+    # The *canonical* form, never `raw`: `raw` is the value as written, typed `object` -- a bool, a string,
+    # a list or a dict -- so a membership test against it is as likely to be a substring test as a key
+    # lookup. What is being asked is whether the keyword was declared, and `canonical` is where that is.
+    declared = node.canonical if isinstance(node.canonical, dict) else {}
+    if (node.any_of == [] and "anyOf" in declared) or (node.one_of == [] and "oneOf" in declared):
+        collapsed = copy(node)
+        collapsed.canonical = False
+        collapsed.safe_canonical = False
+        collapsed.shallow_canonical = False
+        return collapsed
+    return node
+
+
+def _ground_variadic_arguments(group: ConceptHierarchyTemplateArgument | None) -> tuple[TypeValue, ...] | None:
+    """
+    The arguments ``group`` expands into, or ``None`` while that is not yet decided.
+
+    ``None`` is returned for all three of "the variable is not bound here", "it is not bound to a group at
+    all", and "the group is bound but some argument is still a variable" -- because §5 wants the same
+    thing done in each: leave the site as written. An empty tuple is the fourth case and means something
+    else entirely, so the caller must test ``is None`` rather than truthiness.
+    """
+    if not isinstance(group, ConceptHierarchyVariadicGroup):
+        return None
+    if any(argument.depends_on_templates for argument in group.variadic_group):
+        return None
+    return tuple(group.variadic_group)
+
+
+def _bind_selector_group(node: CHSchemaNode, variadic_template_parameter: str, argument: TypeValue) -> None:
+    """
+    Replace ``variadic_template_parameter``'s ``T...`` with ``argument`` in every selector list ``node`` carries.
+
+    The counterpart of binding a `T...` subschema, and for the same reason: a selector written inside a
+    unit that replicates belongs to that unit, so 2.3 zips it -- copy *i* selects argument *i*.
+    Splicing the whole group into each copy instead would give N copies of N concepts and lose the distinction the
+    author wrote.
+
+    The constraint is copied before it is written to: ``node`` is a shallow copy, so its list of
+    constraints is fresh but the constraints in it are still the declaration's.
+    """
+    for index, constraint in enumerate(node.custom_concept_data_constraints):
+        restrictions = constraint.concept_restriction
+        if restrictions is None or not any(_is_target_parameter(x, variadic_template_parameter) for x in restrictions):
+            continue
+        bound = copy(constraint)
+        bound.concept_restriction = [
+            argument if _is_target_parameter(x, variadic_template_parameter) else x for x in restrictions
+        ]
+        node.custom_concept_data_constraints[index] = bound
+
+
+def _is_target_parameter(restriction: TypeValue, target_variadic_template_parameter: str) -> bool:
+    return (
+        isinstance(restriction, ExpandedVariadicTemplateVariable)
+        and restriction.clean_name == target_variadic_template_parameter
+    )
+
+
+def _expand_selector_types(
+    types: list[TypeValue] | None, template_substitution: dict[str, ConceptHierarchyTemplateArgument]
+) -> list[TypeValue] | None:
+    """
+    Substitute a `props(...)` / `funcs(...)` argument list: splice each ``T...``, bind each plain variable.
+
+    Simpler than a schema container: the elements are bare types, so each is its own replication unit and
+    there is no subtree to copy. Two groups in one list therefore need no rule -- they concatenate, just
+    as two elements of an `items` tuple do. A group that is not ground is left as it was written, for the
+    reason in section 5 of TODO_VARIADIC_SCHEMA_EXPANSION.md.
+
+    A **non-variadic** variable is substituted here too, and has to be: until it is, the list still holds a
+    variable, `collect_data` is handed something that is not an `InstantiatedType`, and the selector
+    quietly selects nothing. That fails *closed* and looks exactly like a concept with no properties.
+
+    ``None`` is the unrestricted form -- a bare `props`, with no argument list at all -- and is returned
+    unchanged. It is not an empty list: ``None`` selects every domain concept, ``[]`` selects none.
+    """
+    if types is None:
+        return None
+    expanded: list[TypeValue] = []
+    for declared in types:
+        if isinstance(declared, ExpandedVariadicTemplateVariable):
+            arguments = _ground_variadic_arguments(template_substitution.get(declared.clean_name))
+            if arguments is None:
+                expanded.append(declared)
+            else:
+                expanded.extend(arguments)
+        elif isinstance(declared, NonVariadicTemplateVariable):
+            bound = template_substitution.get(declared.clean_name)
+            is_ground_type = isinstance(bound, TYPE_VALUE_IS_INSTANCE_CHECK) and not bound.depends_on_templates
+            expanded.append(bound if is_ground_type else declared)
+        else:
+            expanded.append(declared)
+    return expanded
+
+
+def rewire_resolved_refs(
+    declared: CHSchemaNode, rebuilt: CHSchemaNode, replacements: dict[int, CHSchemaNode] | None = None
+) -> None:
     """
     Point every ``$ref`` of ``rebuilt`` at *its* copy of the target, not at the declaration's.
 
@@ -567,10 +772,16 @@ def rewire_resolved_refs(declared: CHSchemaNode, rebuilt: CHSchemaNode) -> None:
     replacement. A target that is not in the mapping is left alone: that is a reference into *another*
     concept's schema, which this pass has no business rewriting.
     """
-    replacements = {id(old): new for old, new in zip(declared.walk(), rebuilt.walk())}
-    for old, new in zip(declared.walk(), rebuilt.walk()):
-        if old.ref_resolved is not None:
-            new.ref_resolved = replacements.get(id(old.ref_resolved), old.ref_resolved)
+    if replacements is None:
+        replacements = {id(old): new for old, new in zip(declared.walk(), rebuilt.walk())}
+    # Read from the *rebuilt* node rather than pairing the two walks positionally. A shallow copy carries
+    # the declaration's `ref_resolved` over unchanged, so this reaches the same pointer -- and it keeps
+    # working once a transform changes a list's length, which a positional pairing cannot (stage B
+    # replicates a container element, so the two walks stop lining up). The mapping is then the caller's
+    # to supply, because only the transform knows which copy came from which declared node.
+    for new in rebuilt.walk():
+        if new.ref_resolved is not None:
+            new.ref_resolved = replacements.get(id(new.ref_resolved), new.ref_resolved)
 
 
 def _copy_schema(node: CHSchemaNode) -> CHSchemaNode:

@@ -38,7 +38,11 @@ from typing import Callable, Iterator
 
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
-from concept_hierarchy.data.types.concept_hierarchy_types import TemplateDependent, TypeValue
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ExpandedVariadicTemplateVariable,
+    TemplateDependent,
+    TypeValue,
+)
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import LocationId, PathSegment
 
@@ -136,6 +140,17 @@ def json_type_family_of(value: object) -> str | None:
     return None
 
 
+EXPANDABLE_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "items"})
+"""
+The keywords whose *list* form is an expandable container -- one a ``T...`` may be replicated into.
+
+``items`` is in the set but only counts when it holds a list: ``"items": <schema>`` constrains every
+element with one schema and has no positions to splice into. The fifth container of
+`documentation/TODO_VARIADIC_SCHEMA_EXPANSION.md` 2.1, a ``props``/``funcs`` argument list, is not a
+keyword and so is not here; `CHSchemaNode.variadic_selectors_of_this_unit` is what reaches it.
+"""
+
+
 NON_VALUE_CONSUMING_KEYWORDS = frozenset({"allOf", "anyOf", "oneOf", "not", "if", "then", "else", "dependencies"})
 """
 The keywords whose subschemas are applied to the **same** value the parent was applied to.
@@ -228,6 +243,15 @@ class CHSchemaNode:
     # --- custom types -------------------------------------------------
     is_custom_type: bool = False
     custom_type: TypeValue | None = None
+    expands_variadic: bool = False
+    """
+    This custom-type node is a ``T...`` placeholder rather than a type of its own.
+
+    Stage B replicates the *element* of the enclosing expandable container that holds it -- once per argument of the 
+    group -- so the node is not replaced in place and nothing here records the unit: 
+    it is found by walking down from the container, which is the walk that has to copy it anyway. 
+    See `documentation/TODO_VARIADIC_SCHEMA_EXPANSION.md` 2.7.
+    """
     provenance: ExpressionProvenance | None = None  # "Addr" | "Any", only set if is_custom_type
     has_default: bool = False
     """
@@ -504,6 +528,124 @@ class CHSchemaNode:
         for index, custom_concept_data_constraint in enumerate(self.custom_concept_data_constraints):
             yield ("properties", index), custom_concept_data_constraint.value
 
+    def is_expandable_container_child(self, relative_path: tuple[PathSegment, ...]) -> bool:
+        """Whether the child at ``relative_path`` is an *element* of an expandable container of this node."""
+        if not relative_path:
+            return False
+        keyword = relative_path[0]
+        if keyword == "items":
+            return isinstance(self.items, list)
+        return keyword in EXPANDABLE_KEYWORDS
+
+    def nodes_of_this_unit(self) -> Iterator[CHSchemaNode]:
+        """
+        Every node of the replication unit rooted at this one, this node included.
+
+        A unit is one element of an expandable container, and stops where the next container begins:
+        a ``T...`` below a nested ``anyOf`` belongs to *that* container, not to this one, which is why
+        `documentation/TODO_VARIADIC_SCHEMA_EXPANSION.md` 2.3 counts ``"items": [{"anyOf": ["T1...", "T2..."]}]``
+        as two units rather than one.
+        ``$defs`` is skipped because its subtree is shared, not replicated (i.e. why it closes the context when parsing)
+        """
+        yield self
+        for relative_path, child in self.iter_children():
+            if relative_path[0] == "definitions" or self.is_expandable_container_child(relative_path):
+                continue
+            yield from child.nodes_of_this_unit()
+
+    def variadic_templates_of_this_unit(self) -> Iterator[CHSchemaNode]:
+        """The ``T...`` *schema nodes* of the replication unit rooted at this node."""
+        return (node for node in self.nodes_of_this_unit() if node.expands_variadic)
+
+    def variadic_selectors_of_this_unit(self) -> Iterator[tuple[CustomConceptDataConstraint, int]]:
+        """
+        The ``T...`` written in a `props`/`funcs` argument list of this unit, as ``(constraint, index)``.
+
+        A selector argument is not a `CHSchemaNode`, so no walk over the children ever reaches it -- but it
+        names a group exactly as a subschema does, and every rule about groups is about *the unit*, not
+        about the kind of thing that names one. Yielding the position rather than the type is what lets a
+        caller rewrite it in place, which is what binding one to a replica's argument needs.
+        """
+        for node in self.nodes_of_this_unit():
+            for constraint in node.custom_concept_data_constraints:
+                for index, restriction in enumerate(constraint.concept_restriction or ()):
+                    if isinstance(restriction, ExpandedVariadicTemplateVariable):
+                        yield constraint, index
+
+    def variadic_template_parameters_of_this_unit(self) -> list[str]:
+        """
+        Every variadic template parameter in this unit, in the order first written and without repeats.
+        """
+        names = dict.fromkeys(node.custom_type.clean_name for node in self.variadic_templates_of_this_unit())
+        names.update(
+            dict.fromkeys(
+                constraint.concept_restriction[index].clean_name
+                for constraint, index in self.variadic_selectors_of_this_unit()
+            )
+        )
+        return list(names)
+
+    def apply_expanding(self, f: Callable[[CHSchemaNode, bool], list[CHSchemaNode]]) -> CHSchemaNode:
+        """
+        ``f`` is called as ``f(child, is_container_element)``.
+        The flag matters twice over: only a list-valued container can absorb more than one node,
+        and only an element of one roots a replication unit -- a ``T...`` under, say, ``contains`` belongs to whichever
+        unit encloses *this* node, so treating that child as a unit of its own would replicate the wrong subtree.
+
+        Everywhere but a container, a result of any length but 1 is a programming error.
+        `apply` cannot express replication at all, because it maps every child position one-to-one.
+        """
+
+        def one(_child: CHSchemaNode) -> CHSchemaNode:
+            _produced = f(_child, False)
+            assert len(_produced) == 1, f"{len(_produced)} nodes produced at a position that holds only one."
+            return _produced[0]
+
+        if self.is_boolean_schema:
+            return self
+
+        res = copy(self)  # copies the containers, not their contents
+
+        for key, child in res.properties.items():
+            res.properties[key] = one(child)
+        for key, child in res.pattern_properties.items():
+            res.pattern_properties[key] = one(child)
+        if isinstance(res.additional_properties, CHSchemaNode):
+            res.additional_properties = one(res.additional_properties)
+        if res.property_names is not None:
+            res.property_names = one(res.property_names)
+
+        if isinstance(res.items, list):
+            res.items = [produced for child in res.items for produced in f(child, True)]
+        elif isinstance(res.items, CHSchemaNode):
+            res.items = one(res.items)
+        if isinstance(res.additional_items, CHSchemaNode):
+            res.additional_items = one(res.additional_items)
+        if res.contains is not None:
+            res.contains = one(res.contains)
+
+        res.all_of = [produced for child in res.all_of for produced in f(child, True)]
+        res.any_of = [produced for child in res.any_of for produced in f(child, True)]
+        res.one_of = [produced for child in res.one_of for produced in f(child, True)]
+        if res.not_ is not None:
+            res.not_ = one(res.not_)
+        if res.if_ is not None:
+            res.if_ = one(res.if_)
+        if res.then_ is not None:
+            res.then_ = one(res.then_)
+        if res.else_ is not None:
+            res.else_ = one(res.else_)
+
+        for key, child in res.definitions.items():
+            res.definitions[key] = one(child)
+        for key, child in res.dependent_schemas.items():
+            res.dependent_schemas[key] = one(child)
+
+        for index, constraint in enumerate(res.custom_concept_data_constraints):
+            res.custom_concept_data_constraints[index] = copy(constraint)
+            res.custom_concept_data_constraints[index].value = one(constraint.value)
+        return res
+
     def walk(self) -> Iterator[CHSchemaNode]:
         """
         Depth-first iterator over this node and all of its descendants (custom-type and boolean-schema leaves included).
@@ -513,51 +655,7 @@ class CHSchemaNode:
             yield from child.walk()
 
     def apply(self, f: Callable[[CHSchemaNode], CHSchemaNode]) -> CHSchemaNode:
-        if self.is_boolean_schema:
-            return self
-
-        res = copy(self)  # this copies the containers as well; but not their contents!
-
-        for key, child in res.properties.items():
-            res.properties[key] = f(child)
-        for key, child in res.pattern_properties.items():
-            res.pattern_properties[key] = f(child)
-        if isinstance(res.additional_properties, CHSchemaNode):
-            res.additional_properties = f(res.additional_properties)
-        if res.property_names is not None:
-            res.property_names = f(res.property_names)
-
-        if isinstance(res.items, list):
-            for i, child in enumerate(res.items):
-                res.items[i] = f(child)
-        elif isinstance(res.items, CHSchemaNode):
-            res.items = f(res.items)
-        if isinstance(res.additional_items, CHSchemaNode):
-            res.additional_items = f(res.additional_items)
-        if res.contains is not None:
-            res.contains = f(res.contains)
-
-        for res_list in (res.all_of, res.any_of, res.one_of):
-            for i, child in enumerate(res_list):
-                res_list[i] = f(child)
-        if res.not_ is not None:
-            res.not_ = f(res.not_)
-        if res.if_ is not None:
-            res.if_ = f(res.if_)
-        if res.then_ is not None:
-            res.then_ = f(res.then_)
-        if res.else_ is not None:
-            res.else_ = f(res.else_)
-
-        for key, child in res.definitions.items():
-            res.definitions[key] = f(child)
-        for key, child in res.dependent_schemas.items():
-            res.dependent_schemas[key] = f(child)
-
-        for index, custom_concept_data_constraint in enumerate(res.custom_concept_data_constraints):
-            res.custom_concept_data_constraints[index] = copy(custom_concept_data_constraint)
-            res.custom_concept_data_constraints[index].value = f(custom_concept_data_constraint.value)
-        return res
+        return self.apply_expanding(lambda _child, _is_container_element: [f(_child)])
 
     def short_repr(self) -> str:
         if self.is_boolean_schema:
