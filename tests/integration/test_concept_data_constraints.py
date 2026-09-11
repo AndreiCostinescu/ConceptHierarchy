@@ -66,7 +66,7 @@ DOG = {"Dog": {"directParents": ["Pet"], "data": {"properties": {"breed": {"valu
 
 CAT = {"Cat": {"directParents": ["Pet"], "data": {"properties": {"lives": {"valueDomain": "Integer"}}}}}
 
-EMPTY = {"Empty": {"directParents": ["Concept"], "data": {}}}
+EMPTY = {"Empty": {"directParents": ["Concept"], "data": {"properties": {}}}}
 
 OWNER = {
     "Owner": {
