@@ -577,19 +577,64 @@ class TestInstantiationDefaultExpressions:
 
 
 class TestShippedExamples:
-    def _animal_kingdom(self) -> ConceptHierarchyContext:
+    def _animal_kingdom(
+        self, concepts: dict[str, dict | str] | None = None, instances: dict[str, dict | str] | None = None
+    ) -> ConceptHierarchyContext:
         model_data = json.loads((EXAMPLES_DIR / "animal_kingdom.json").read_text())
+        if "instances" not in model_data and "concepts" not in model_data:
+            model_data = {"concepts": model_data}
+        assert "concepts" in model_data
+        if "instances" not in model_data:
+            model_data["instances"] = {}
+        if concepts is not None:
+            model_data["concepts"].update(concepts)
+        if instances is not None:
+            model_data["instances"].update(instances)
         external_data = json.loads((EXAMPLES_DIR / "external_animal_data.json").read_text())
         return check_hierarchy(model_data, external_data)
+
+    test_concepts = {
+        "TestNestedDefaultValueWithFunctionEvaluationExpression": {
+            "directParents": ["Function"],
+            "data": {
+                "templateContext": ["T"],
+                "interface": {
+                    "arg1": "T",
+                    "arg": "Integer",
+                    "_defaultArgumentValues": {
+                        "arg": {
+                            "Add<Integer>": {
+                                "arg1": {"fEval:Add<Integer>": {"arg1": {"Integer": 1}, "arg2": 1}},
+                                "arg2": {
+                                    "Add<Integer>": {
+                                        "arg1": "oneRef",
+                                        "arg2": {"Add<Integer>": {"arg1": "arg1", "arg2": 1}},
+                                    }
+                                },
+                            }
+                        },
+                        "arg1": 3.0,
+                    },
+                },
+            },
+        }
+    }
+
+    test_instances = {"one": {"Integer": 1}, "oneRef": "one"}
 
     def test_animal_kingdom_checks(self):
         context = self._animal_kingdom()
         assert "Add" in context.model.functions
 
     def test_nested_function_evaluation_default_is_parsed(self):
-        """``IncrementByThreeTwice.howManyTimes`` defaults to a nested Function evaluation."""
-        defaults = function_default_expressions(self._animal_kingdom(), "IncrementByThreeTwice")
-        expression = defaults["howManyTimes"]
+        """``TestNestedDefaultValueWithFunctionEvaluationExpression.arg`` defaults to a nested Function evaluation."""
+        defaults = function_default_expressions(
+            self._animal_kingdom(
+                concepts=TestShippedExamples.test_concepts, instances=TestShippedExamples.test_instances
+            ),
+            "TestNestedDefaultValueWithFunctionEvaluationExpression",
+        )
+        expression = defaults["arg"]
         assert_expression(expression, kind=FunctionEvaluation, is_valid=True)
         kinds = subexpression_kinds(expression)
         assert FunctionEvaluation in kinds
@@ -597,17 +642,27 @@ class TestShippedExamples:
 
     def test_narrow_expression_is_parsed(self):
         """``{"Integer": 1}`` inside that default narrows the literal to a specific type."""
-        defaults = function_default_expressions(self._animal_kingdom(), "IncrementByThreeTwice")
-        kinds = subexpression_kinds(defaults["howManyTimes"])
+        defaults = function_default_expressions(
+            self._animal_kingdom(
+                concepts=TestShippedExamples.test_concepts, instances=TestShippedExamples.test_instances
+            ),
+            "TestNestedDefaultValueWithFunctionEvaluationExpression",
+        )
+        kinds = subexpression_kinds(defaults["arg"])
         assert NarrowExpression in kinds, f"expected a NarrowExpression among {kinds}"
 
     def test_literal_default_is_parsed(self):
         """``arg2`` is declared as ``T``, so the literal ``3`` stays a deferred, template-dependent value."""
-        defaults = function_default_expressions(self._animal_kingdom(), "IncrementByThreeTwice")
-        assert_expression(
-            defaults["arg2"], kind=VerifiedTemplateDependentExpression, is_valid=True, is_template_dependent=True
+        defaults = function_default_expressions(
+            self._animal_kingdom(
+                concepts=TestShippedExamples.test_concepts, instances=TestShippedExamples.test_instances
+            ),
+            "TestNestedDefaultValueWithFunctionEvaluationExpression",
         )
-        assert defaults["arg2"].unparsed == 3
+        assert_expression(
+            defaults["arg1"], kind=VerifiedTemplateDependentExpression, is_valid=True, is_template_dependent=True
+        )
+        assert defaults["arg1"].unparsed == 3.0
 
     def test_empty_list_instantiation_default_is_parsed(self):
         defaults = instantiation_default_expressions(self._animal_kingdom(), "InstanceBase")

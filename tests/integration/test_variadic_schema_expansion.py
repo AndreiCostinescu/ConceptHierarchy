@@ -200,7 +200,13 @@ def resolved_schema(concepts: dict, site_type: str, value: object = None) -> CHS
 
     The check is allowed to fail: a schema is resolved before a value is matched against it, so a refused
     value still leaves its expansion behind, and a test about the shape need not find a value that passes.
+
+    ``site_type`` is matched on its **clean name** rather than in full, because the memo is keyed by the
+    canonical form and an application need not be written in it -- ``Inner<Integer>`` is remembered as
+    ``Inner<[Integer]>``. One application per hierarchy is what makes that unambiguous, and the assertion
+    below is what keeps it so.
     """
+    clean_name = site_type.split("<", 1)[0]
     model = ConceptHierarchyDefinition.create_from_data(
         build_hierarchy({**concepts, **box(site_type)}, instances={"p": {"Box": {"v": value}}})
     )
@@ -211,7 +217,7 @@ def resolved_schema(concepts: dict, site_type: str, value: object = None) -> CHS
     validator = checker.context.expression_parser_validator if checker.context is not None else None
     assert validator is not None, f"{site_type} never got as far as resolving a schema; the declaration is rejected"
     schemas = validator.resolved_instantiation_schemas
-    matching = [node for (full_name, _index), node in schemas.items() if full_name == site_type]
+    matching = [node for (full_name, _index), node in schemas.items() if full_name.split("<", 1)[0] == clean_name]
     assert len(matching) == 1, f"{site_type} resolved {len(matching)} times; have {sorted(k for k, _ in schemas)}"
     return matching[0]
 
@@ -1173,3 +1179,192 @@ class TestTheRootOfTheSchemaIsSubstitutedToo:
     def test_the_argument_is_what_decides(self):
         accepts(self.ROOT, "V<String>", "s:x")
         assert refuses(self.ROOT, "V<String>", 1)
+
+
+# ==================================================================================================
+# 13. Naming a whole group as a template argument
+# ==================================================================================================
+
+
+class TestAGroupCanBeForwardedByName:
+    """
+    ``Inner<T>``, where `Inner`'s parameter **and** ``T`` are both variadic, means *forward the whole
+    group*: it is the same application ``Inner<[T...]>`` spells out. A bare variadic template variable
+    already denotes a group, so "one member of a group" is not a reading it has -- forwarding is the only
+    one that type-checks, and it is what an author writing the shorthand means.
+
+    Inside an **explicit** group the operator stays required: ``Inner<[T]>`` writes brackets, so it is
+    building a group, and putting a group where a member belongs means nothing. That asymmetry is the
+    point -- no brackets forwards, brackets construct.
+
+    `examples/animal_kingdom.json` is the case this comes from: `Instance` hands its own
+    ``AcceptConcepts`` group to `InstanceData`.
+    """
+
+    INNER = {
+        "Inner": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": {"order": ["E..."], "E": "ValueDomain"},
+                "instantiation": {"anyOf": ["E..."]},
+            },
+        }
+    }
+    """A `Variant` by another name. No `variadicGroupIdentifiers`: with one group there is nothing to
+    disambiguate, and the bare argument form must not depend on declaring one."""
+
+    @staticmethod
+    def outer(argument: str) -> dict:
+        """`Outer` passes its own group on to `Inner`, written as ``argument``."""
+        return {
+            **TestAGroupCanBeForwardedByName.INNER,
+            "Outer": {
+                "directParents": ["ValueDomain"],
+                "data": {
+                    "templateContext": {"order": ["T..."], "T": "ValueDomain"},
+                    "instantiation": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["v"],
+                        "properties": {"v": {"type": f"Inner<{argument}>"}},
+                    },
+                },
+            },
+        }
+
+    @pytest.mark.parametrize("argument", ["T", "[T...]"])
+    def test_both_spellings_declare(self, argument):
+        declare(self.outer(argument))
+
+    @pytest.mark.parametrize("argument", ["T", "[T...]"])
+    def test_the_forwarded_group_reaches_the_inner_expansion(self, argument):
+        """Both arguments of the outer group are branches of the inner `anyOf`, whichever way it is written."""
+        accepts(self.outer(argument), "Outer<[Integer, String]>", {"v": 1})
+        accepts(self.outer(argument), "Outer<[Integer, String]>", {"v": "s:x"})
+
+    @pytest.mark.parametrize("argument", ["T", "[T...]"])
+    def test_the_forwarded_group_still_constrains(self, argument):
+        """The half that fails if forwarding degraded into "accept anything"."""
+        assert refuses(self.outer(argument), "Outer<[Integer, String]>", {"v": True})
+
+    @pytest.mark.parametrize("argument", ["T", "[T...]"])
+    def test_an_empty_forwarded_group_collapses(self, argument):
+        """Forwarding an empty group is forwarding, not failing to forward: `Inner<>` rejects everything."""
+        assert refuses(self.outer(argument), "Outer<[]>", {"v": 1})
+
+    def test_an_unexpanded_variable_inside_an_explicit_group_is_still_refused(self):
+        """Brackets construct a group, and a group is not a member of one. The operator says which is meant."""
+        messages = declaration_rejected(self.outer("[T]"))
+        assert "without the expansion operator" in messages, messages
+
+    def test_a_non_variadic_variable_is_not_forwarded(self):
+        """The control: only a *variadic* variable denotes a group, so only it can be handed over as one."""
+        concepts = {
+            **self.INNER,
+            "Outer": {
+                "directParents": ["ValueDomain"],
+                "data": {
+                    "templateContext": {"order": ["S"], "S": "ValueDomain"},
+                    "instantiation": {"type": "object", "properties": {"v": {"type": "Inner<S>"}}},
+                },
+            },
+        }
+        accepts(concepts, "Outer<Integer>", {"v": 1})
+        assert refuses(concepts, "Outer<Integer>", {"v": "s:x"})
+
+
+# ==================================================================================================
+# 14. `variadicGroupIdentifiers` is a disambiguator, not a prerequisite
+# ==================================================================================================
+
+
+class TestTheShorthandNeedsNoDeclaredIdentifiers:
+    """
+    Declaring `variadicGroupIdentifiers` is what lets an author write the **bare** argument form when
+    several groups could claim an argument. It is not a prerequisite for having a variadic parameter, and
+    nothing should need it to work: with exactly one variadic group there is nothing to disambiguate, so
+    ``Inner<Integer>`` means ``Inner<[Integer]>`` whether or not an identifier was ever written.
+
+    Two groups and no identifiers is the case that genuinely has no answer -- which group does a bare
+    argument join? -- and stays refused. That is the disambiguation the declaration buys, and the only
+    thing it buys.
+    """
+
+    @staticmethod
+    def inner(order: list[str], identifiers: dict | None = None, instantiation: object = None) -> dict:
+        context: dict = {"order": order}
+        for name in order:
+            context[name.removesuffix("...")] = "ValueDomain"
+        if identifiers is not None:
+            context["variadicGroupIdentifiers"] = identifiers
+        return {
+            "Inner": {
+                "directParents": ["ValueDomain"],
+                "data": {
+                    "templateContext": context,
+                    "instantiation": instantiation or {"anyOf": [n.removesuffix("...") + "..." for n in order]},
+                },
+            }
+        }
+
+    ONE = ["E..."]
+    """One variadic parameter and nothing else: the shorthand is unambiguous by construction."""
+
+    @pytest.mark.parametrize("identifiers", [None, {"E": ""}], ids=["undeclared", "declared"])
+    @pytest.mark.parametrize(
+        "application,value",
+        [
+            ("Inner<Integer>", 1),
+            ("Inner<[Integer]>", 1),
+            ("Inner<Integer, String>", "s:x"),
+            ("Inner<[Integer, String]>", "s:x"),
+        ],
+    )
+    def test_one_group_takes_either_form(self, identifiers, application, value):
+        """Declaring the identifier may not be what decides whether a well-formed application parses."""
+        accepts(self.inner(self.ONE, identifiers), application, value)
+
+    @pytest.mark.parametrize("identifiers", [None, {"E": ""}], ids=["undeclared", "declared"])
+    @pytest.mark.parametrize("application", ["Inner<Integer>", "Inner<[Integer]>"])
+    def test_and_still_constrains_either_way(self, identifiers, application):
+        assert refuses(self.inner(self.ONE, identifiers), application, "s:x")
+
+    @pytest.mark.parametrize("identifiers", [None, {"E": ""}], ids=["undeclared", "declared"])
+    def test_the_bare_form_means_the_bracketed_one(self, identifiers):
+        """Not merely "both parse": they have to expand to the same branches, in the same order."""
+        bare = resolved_schema(self.inner(self.ONE, identifiers), "Inner<Integer, String>", 1)
+        bracketed = resolved_schema(self.inner(self.ONE, identifiers), "Inner<[Integer, String]>", 1)
+        assert custom_type_names(bare.any_of) == custom_type_names(bracketed.any_of) == ["Integer", "String"]
+
+    MIXED = ["S", "E..."]
+    """A plain parameter before a variadic one: the bare arguments have to fill `S` first, then the group."""
+
+    def test_a_plain_parameter_beside_a_variadic_one_needs_no_identifiers(self):
+        concepts = self.inner(self.MIXED, instantiation={"anyOf": ["S", "E..."]})
+        accepts(concepts, "Inner<Integer>", 1)
+        assert refuses(concepts, "Inner<Integer>", "s:x")
+
+    def test_the_group_beside_a_plain_parameter_still_takes_arguments(self):
+        concepts = self.inner(self.MIXED, instantiation={"anyOf": ["S", "E..."]})
+        accepts(concepts, "Inner<Integer, [String]>", "s:x")
+
+    TWO = ["A...", "B..."]
+    """Two groups: a bare argument could join either, which is what the identifiers exist to settle."""
+
+    def test_two_groups_without_identifiers_still_take_the_bracketed_form(self):
+        concepts = self.inner(self.TWO)
+        accepts(concepts, "Inner<[Integer], [String]>", 1)
+        assert refuses(concepts, "Inner<[Integer], [String]>", True)
+
+    def test_a_bare_argument_across_two_groups_is_refused(self):
+        """The one case a declaration is actually needed for, and the only one that may be refused."""
+        assert declaration_rejected({**self.inner(self.TWO), **box("Inner<Integer, String>")})
+
+    def test_the_refusal_names_both_ways_out(self):
+        """
+        It is the only thing that check still fires for, so it may as well say what to do: write the
+        groups out, which needs no declaration, or declare the empty identifier for one of them.
+        """
+        messages = declaration_rejected({**self.inner(self.TWO), **box("Inner<Integer, String>")})
+        assert "which group it belongs to" in messages, messages
+        assert "variadicGroupIdentifiers" in messages, messages

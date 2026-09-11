@@ -69,6 +69,14 @@ EXTERNAL = json.loads((EXAMPLES_DIR / "external_animal_data.json").read_text())
 # Spliced vocabulary
 # --------------------------------------------------------------------------------------------------
 
+BOOLEAN = {
+    "Boolean": {
+        "directParents": ["ValueDomain"],
+        "data": {"defaultSerialization": "boolean", "instantiation": "boolean"},
+    }
+}
+"""Boolean ValueDomain with defaultSerialization as boolean."""
+
 ITERATE_LIST = {
     "IterateList": {
         "directParents": ["Function"],
@@ -114,7 +122,30 @@ KENNEL = {
 MAKE_STRING = {"MakeString": {"directParents": ["Function"], "data": {"interface": {"res": "String"}}}}
 """A Function that actually returns a `String` -- `Return<T>` declares no ``res`` and cannot stand in."""
 
-VOCABULARY = {**ITERATE_LIST, **ITERATE_NAMED, **TAKES_STRING, **KENNEL, **MAKE_STRING}
+EVALUATE_FUNCTION = {
+    "EvaluateFunctionRes": {
+        "directParents": ["Function"],
+        "data": {
+            "templateContext": ["T"],
+            "interface": {"f": "CustomFunction", "args": "Map<String, ValueDomain>", "res": "T"},
+        },
+    }
+}
+
+FUNCTION_SEQUENCE = {
+    "FunctionSequence": {"directParents": ["Function"], "data": {"interface": {"fs": "List<FunctionComposition>"}}}
+}
+
+VOCABULARY = {
+    **BOOLEAN,
+    **ITERATE_LIST,
+    **ITERATE_NAMED,
+    **TAKES_STRING,
+    **KENNEL,
+    **MAKE_STRING,
+    **EVALUATE_FUNCTION,
+    **FUNCTION_SEQUENCE,
+}
 
 INSTANCES = {
     "animalInst": {
@@ -130,6 +161,9 @@ INSTANCES = {
     "kennelInst": {
         "Instance<Kennel>": {"instanceName": "kennelInst", "concepts": ["s:Kennel"], "properties": {"capacity": 4}}
     },
+    "one": {"Integer": 1.0},
+    "oneStr": {"String": "s:one"},
+    "oneRef": "one",
 }
 
 
