@@ -934,6 +934,14 @@ def _parse_array(
     items_parsed: list[ParsedValue | None] = [None] * len(value)
 
     if isinstance(node.items, list):
+        if node.require_all_items and len(value) < len(node.items):
+            rec(
+                CHSemanticError(
+                    f"expected {len(node.items)} items, got {len(value)}: "
+                    f'"requireAllItems" requires every position of the tuple to be present',
+                    location_id=location_id,
+                )
+            )
         # Tuple validation.
         for i, item in enumerate(value):
             if i < len(node.items):

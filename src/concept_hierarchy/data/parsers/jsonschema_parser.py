@@ -167,6 +167,7 @@ class CHSchemaValidator(ABC):
             location_id: Location of the ``"type"`` keyword in the *original* (shorthand) schema,
                 for use in the returned error's ``path``.
             allow_x_as_template_variable: whether to accept x as a template variable or not
+            in_variadic_context: whether this value can accept expanded variadic template argument values
 
         Returns:
             ``None`` if ``type_name`` is invalid, otherwise a :class:`CHSemanticError` explaining why it isn't.
@@ -742,6 +743,29 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
             node.items = [child(sub, "items", i) for i, sub in enumerate(items)]
         else:
             node.items = child(items, "items")
+
+    if "requireAllItems" in work:
+        require_all_items = work.pop("requireAllItems")
+        if not isinstance(require_all_items, bool):
+            state.record(
+                CHSyntaxError(
+                    f'"requireAllItems" must be a boolean, got {require_all_items!r}',
+                    location_id=location_id + ["requireAllItems"],
+                )
+            )
+        elif not isinstance(node.items, list):
+            # It says something only about a *positional* list. With no tuple to be exhaustive about,
+            # there is nothing for it to mean, and a keyword that means nothing must not be accepted silently.
+            state.record(
+                CHSemanticError(
+                    '"requireAllItems" requires every position of an "items" tuple to be present, so it '
+                    'is only meaningful where "items" is an array of schemas; there is none here',
+                    location_id=location_id + ["requireAllItems"],
+                    part=PathPart.KEY,
+                )
+            )
+        else:
+            node.require_all_items = require_all_items
 
     if "additionalItems" in work:
         ai = work.pop("additionalItems")

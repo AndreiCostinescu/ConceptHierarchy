@@ -251,6 +251,16 @@ class CHSchemaNode:
     # --- array structure ----------------------------------------------
     items: CHSchemaNode | list[CHSchemaNode] | None = None
     additional_items: CHSchemaNode | bool | None = None
+    require_all_items: bool = False
+    """
+    Whether every position of the ``items`` tuple must be **present** in the value.
+
+    draft-07 constrains position *i* only when element *i* is there, so ``items: [A, B]`` accepts ``[a]``.
+    This is the missing lower bound, and it is complementary to `additional_items` rather than overlapping it:
+    one says "no more than these" (additional_items), the other "no fewer" (require_all_items).
+    Together they mean an exact length, which is what a tuple whose positions come from a variadic expansion needs.
+    There, the length is the arity of the group, and the author cannot write it as a ``minItems`` at the declaration.
+    """
     contains: CHSchemaNode | None = None
 
     # --- values that could be literal template variables --------------
