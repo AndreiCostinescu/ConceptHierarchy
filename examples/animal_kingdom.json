@@ -34,15 +34,15 @@
                 "functions": {
                     "f1": { },
                     "f2": {
-                        "Add<Number>": {
+                        "fComp:Add<Number>": {
                             "arg1": 2,
                             "arg2": 2
                         }
                     },
                     "f3": {
                         "interface": {
-                            "arg": "Number",
-                            "res": "Number"
+                            "arg": "s:Number",
+                            "res": "s:Number"
                         },
                         "procedure": {
                             "Return<Number>": {
@@ -60,8 +60,8 @@
                         "static": true,
                         "default": {
                             "interface": {
-                                "arg": "Number",
-                                "res": "Number"
+                                "arg": "s:Number",
+                                "res": "s:Number"
                             },
                             "procedure": {
                                 "Return<Number>": {
@@ -237,9 +237,10 @@
                             "type": "List<ConceptValue>",
                             "default": []
                         },
-                        "properties": "ConceptParameters",
+                        "properties": "InstanceDataBase",
                         "instanceName": "string"
-                    }
+                    },
+                    "additionalProperties": false
                 }
             }
         },
@@ -250,10 +251,19 @@
                     "order": ["AcceptConcepts...", "RejectConcepts..."],
                     "AcceptConcepts": "And(Concept, Not(ValueDomain))",
                     "RejectConcepts": "And(Concept, Not(ValueDomain))",
-                    "variadicGroupIdentifiers": {
-                        "AcceptConcepts": "",
-                        "RejectConcepts": "!"
-                    }
+                    "variadicGroupIdentifiers": { "AcceptConcepts": "", "RejectConcepts": "!" }
+                },
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "concepts": {
+                            "type": "List<ConceptValue>",
+                            "default": []
+                        },
+                        "instanceName": "string",
+                        "properties": "InstanceData<AcceptConcepts>"
+                    },
+                    "additionalProperties": false
                 }
             }
         },
@@ -276,12 +286,25 @@
                 }
             }
         },
-        "ConceptParameters": {
+        "InstanceDataBase": {
             "directParents": ["ValueDomain"],
             "data": {
                 "instantiation": {
                     "type": "object",
-                    "properties": [["props", "x", true], ["funcs", "x", true]]
+                    "properties": [["props", "x"], ["funcs", "x"]]
+                }
+            }
+        },
+        "InstanceData": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": {
+                    "order": ["AcceptConcepts..."],
+                    "AcceptConcepts": "Not(ValueDomain)"
+                },
+                "instantiation": {
+                    "type": "object",
+                    "properties": [["props+(AcceptConcepts...)", "x", true], ["funcs", "x", true]]
                 }
             }
         },
@@ -367,25 +390,36 @@
                 }
             }
         },
+        "Optional": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": ["T"],
+                "instantiation": {"oneOf": ["null", "T"]}
+            }
+        },
         "CustomFunction": {
             "directParents": ["ValueDomain"],
             "data": {
                 "instantiation": {
-                    "type": "object",
-                    "properties": {
-                        "interface": {
+                    "oneOf": [
+                        "FunctionComposition", {
                             "type": "object",
                             "properties": {
-                                "res": { "$ref": "#/$defs/argumentTypeDefinition" }
+                                "interface": {
+                                    "type": "object",
+                                    "properties": {
+                                        "res": { "$ref": "#/$defs/argumentTypeDefinition" }
+                                    },
+                                    "patternProperties": {
+                                        "^[a-z][A-Za-z0-9_]*$": { "$ref": "#/$defs/argumentTypeDefinition" }
+                                    }
+                                },
+                                "procedure": "FunctionComposition"
                             },
-                            "patternProperties": {
-                                "^[a-z][A-Za-z0-9_]*$": { "$ref": "#/$defs/argumentTypeDefinition" }
-                            }
-                        },
-                        "procedure": "FunctionComposition"
-                    },
-                    "required": ["procedure"],
-                    "additionalProperties": false,
+                            "required": ["procedure"],
+                            "additionalProperties": false
+                        }
+                    ],
                     "$defs": {
                         "argumentTypeDefinition": {
                             "oneOf": [
@@ -404,12 +438,25 @@
         },
         "FunctionComposition": {
             "directParents": ["ValueDomain"],
-            "data": { }
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "additionalProperties": { "type": "object", "properties": "args" },
+                    "minProperties": 1, "maxProperties": 1,
+                    "propertyNames": {
+                        "type": "string", "pattern": "^(fComp:|fEval:|fInst:)?[A-Z][a-zA-Z_0-9]*", "format": "Type", "constraint": "Function"
+                    }
+                }
+            }
         },
         "Function": {
             "directParents": ["ValueDomain"],
             "data": { },
             "abstract": true
+        },
+        "Return": {
+            "directParents": ["Function"],
+            "data": { "templateContext": ["T"], "interface": { "what": "T" } }
         },
         "FunctionReturning": {
             "directParents": ["Function"],
@@ -423,7 +470,7 @@
             "data": {
                 "templateContext": {
                     "order": ["T"],
-                    "T": "Not(Or(Duration, Number))",
+                    "T": "Numeric",
                     "substitution": {
                         "FunctionReturning:T": "T"
                     }
@@ -460,10 +507,14 @@
             "data": {
                 "templateContext": ["T"],
                 "interface": {
-                    "varName": "String"
+                    "variableName": "String",
+                    "init": "Optional<T>",
+                    "_defaultArgumentValues": {
+                        "init": null
+                    }
                 },
                 "addNewVariablesInExistingScope": {
-                    "varName": ["T", true]
+                    "variableName": ["T", true]
                 }
             }
         },
@@ -476,9 +527,13 @@
         "MyAnimal": {
             "InstanceBase": {
                 "instanceName": "MyAnimal",
-                "concepts": ["Animal"],
+                "concepts": ["s:Animal"],
                 "properties": {
-                    "age": 2
+                    "age": 2,
+                    "f2": {
+                        "interface": { "arg1": "s:Number" },
+                        "procedure": { "Add<Number>": { "arg1": "arg1", "arg2": 1 } }
+                    }
                 }
             }
         }
