@@ -38,7 +38,7 @@ from typing import Callable, Iterator
 
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.types.concept_hierarchy_types import TemplateDependent, TypeValue
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import LocationId, PathSegment
 
@@ -80,10 +80,20 @@ class CustomConceptDataConstraint:
         self.value = value
         self.require_all_keys = require_all_keys
 
+    def __repr__(self):
+        kind = "funcs" if self.for_properties_or_functions is ForPropertyOrFunction.FUNCTION else "props"
+        constraint = (
+            "(" + ", ".join(x.full_name for x in self.concept_restriction) + ")"
+            if self.concept_restriction is not None
+            else ""
+        )
+        return f"[{kind}{'+' if self.include_parent_data else ''}{constraint}, {self.value}, {self.require_all_keys}]"
+
     @property
     def is_template_dependent(self):
-        # FIXME: also check the list of concept restrictions for (expanded variadic) template arguments
-        return self.value.is_template_dependent
+        return self.value.is_template_dependent or any(
+            isinstance(x, TemplateDependent) for x in self.concept_restriction
+        )
 
 
 LITERAL_KEYWORD_FIELDS: dict[str, tuple[str, str]] = {
