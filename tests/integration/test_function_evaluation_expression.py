@@ -273,7 +273,7 @@ class TestArgumentsAreParsedAndChecked:
 
     def test_an_argument_the_function_does_not_have_is_rejected(self, context):
         parsed = parse_evaluation(context, "Add", {"arg1": 1, "arg2": 2, "nope": 3})
-        assert 'does not have the argument "nope"' in parsed.ill_formed.reason
+        assert 'does not define the argument "nope"' in parsed.ill_formed.reason
         assert parsed.attempts[-1].kind is ExpressionKind.FUNCTION_EVALUATION
 
     def test_a_missing_required_argument_is_rejected(self, context):
@@ -431,7 +431,7 @@ PREVIOUSLY_RAISED = [
     (
         "an argument the Function does not have",
         {"Add": {"arg1": 1, "arg2": 2, "zz": 3}},
-        'does not have the argument "zz"',
+        'does not define the argument "zz"',
     ),
     ("a missing required argument", {"Add": {"arg1": 1}}, "are missing from the Function evaluation interface"),
     ("cyclic dependencies between the remaining defaults", {"Cyclic": {}}, "is not acyclic"),
@@ -590,5 +590,5 @@ class TestTheParseIsNotStoppedByTheFirstFailure:
         with pytest.raises(ConceptHierarchyError) as excinfo:
             check_hierarchy(hierarchy)
         text = str(excinfo.value)
-        assert 'does not have the argument "zz"' in text, "the first failure"
-        assert 'does not have the argument "qq"' in text, "the second, which a raise would have pre-empted"
+        assert 'does not define the argument "zz"' in text, "the first failure"
+        assert 'does not define the argument "qq"' in text, "the second, which a raise would have pre-empted"

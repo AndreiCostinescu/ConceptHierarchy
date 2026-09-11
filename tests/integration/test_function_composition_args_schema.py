@@ -220,7 +220,7 @@ class TestInvalidEvaluationsAreRecordedNotRaised:
 
     def test_an_argument_the_function_does_not_have(self):
         text = rejection({"p": {"FunctionComposition": {"Add": {"arg1": 1, "arg2": 2, "zzz": 3}}}})
-        assert 'does not have the argument "zzz"' in text
+        assert 'does not define the argument "zzz"' in text
         assert "Additional property is not allowed" not in text, (
             "the evaluation parser names the Function and the argument; the schema keyword names neither"
         )

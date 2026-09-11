@@ -2290,7 +2290,7 @@ def parse_function_evaluation_expression(
         sub_scope_vars = validator.get_function_variables_to_add_per_argument(f_concept_name)
         for f_arg_name, f_arg_expr_val in value.items():
             if not validator.is_function_argument(f_concept_name, f_arg_name):
-                reason = f'Function {key} does not have the argument "{f_arg_name}"; only {sorted(all_arguments)}'
+                reason = f'Function {key} does not define the argument "{f_arg_name}"; only {sorted(all_arguments)}'
                 attempts.append(ExpressionAttempt(ExpressionKind.FUNCTION_EVALUATION, reason, tried_type=key_type))
                 expressions_res.append(IllFormedExpression(reason, tuple(attempts)))
                 return expressions_res, key_type, True, FunctionInterpretation.UNSPECIFIED

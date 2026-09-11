@@ -131,7 +131,7 @@ class TestTheSameValuesAreCheckedAtATypedSite:
 
     def test_an_argument_the_function_does_not_have_is_diagnosed(self):
         error = rejection({"probe": {"Holder": {"num": {"Add<Integer>": {"nope": 1}}}}})
-        assert 'does not have the argument "nope"' in _messages(error), _messages(error)[:300]
+        assert 'does not define the argument "nope"' in _messages(error), _messages(error)[:300]
 
     def test_a_function_that_does_not_exist_is_diagnosed(self):
         error = rejection({"probe": {"Holder": {"num": {"NoSuchFunction<Q>": {"arg1": 1}}}}})

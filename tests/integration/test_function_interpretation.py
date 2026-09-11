@@ -465,7 +465,7 @@ class TestTheKeywordIsOrdinaryData:
     def test_beside_a_key_that_is_not_a_type_it_is_an_argument_name(self):
         """``{"arg1": 1, "isFunctionEvaluation": true}`` is an argument list with a key `Add` lacks."""
         error = rejection(at(num={"Add": {"arg1": 1, "isFunctionEvaluation": True}}))
-        assert_reported(error, message='does not have the argument "isFunctionEvaluation"', location='"num"')
+        assert_reported(error, message='does not define the argument "isFunctionEvaluation"', location='"num"')
 
     def test_as_the_sole_key_it_is_a_property_name(self):
         """`Flagged` declares a property with that name, and is entitled to."""
@@ -624,7 +624,7 @@ class TestFunctionCompositionSite:
 
     def test_an_unknown_argument_of_a_composition_is_reported(self):
         error = rejection(at(comp={"Add": {"arg1": 1, "nope": 2}}))
-        assert_reported(error, message='does not have the argument "nope"', location='"comp": "Add"')
+        assert_reported(error, message='does not define the argument "nope"', location='"comp": "Add"')
 
     def test_a_key_that_is_not_a_function_is_rejected(self):
         error = rejection(at(comp={"Leaf": {}}))
@@ -801,7 +801,7 @@ class TestAMarkerAtDepth:
         does not have -- so it stays as written once the keyword is gone.
         """
         error = rejection(at(comp={"Add": {"arg1": 1, "arg2": 2, "isFunctionEvaluation": True}}))
-        assert_reported(error, message='does not have the argument "isFunctionEvaluation"', location='"comp": "Add"')
+        assert_reported(error, message='does not define the argument "isFunctionEvaluation"', location='"comp": "Add"')
 
 
 # ==================================================================================================
@@ -1153,7 +1153,7 @@ class TestOnlyASiteTypeFailureIsSetAsideForTheSchema:
 
     def test_an_unknown_argument_is_not_set_aside(self):
         error = rejection(at(permissive={"fEval:Add": {"nope": 1}}))
-        assert_reported(error, message='does not have the argument "nope"', location='"permissive"')
+        assert_reported(error, message='does not define the argument "nope"', location='"permissive"')
 
     def test_a_missing_required_argument_is_not_set_aside(self):
         error = rejection(at(permissive={"fEval:Add": {"arg1": 1}}))
