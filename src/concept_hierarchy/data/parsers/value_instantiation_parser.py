@@ -911,7 +911,6 @@ def _parse_evaluation_arguments_of_function(
     for error in errors:
         rec(error)  # may raise StopValidation in fail-fast mode
     if parsed is not None:
-        # One entry, keyed by the Function name -- see `ParsedStructural.custom_expressions`.
         structural.custom_args_evaluation = (parsed, state.upper_level_object_key)
 
 

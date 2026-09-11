@@ -1455,7 +1455,7 @@ def _consumed_as(parsed: ParsedValue | None, location_id: LocationId, interpreta
 
     Only retained nodes are walked, so a trial branch that read the value the right way and then lost does
     not count. Matching on the location is what makes this exact: a nested evaluation, and the one a
-    composition keeps in ``custom_expressions``, both sit at a deeper location and are not this value.
+    composition keeps in ``custom_args_evaluation``, both sit at a deeper location and are not this value.
     """
     honors = _reading_that_honors(interpretation)
     if honors is None:
