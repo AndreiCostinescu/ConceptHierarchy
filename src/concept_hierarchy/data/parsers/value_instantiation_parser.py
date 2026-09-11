@@ -865,7 +865,7 @@ def _parse_custom_concept_data(
 
     for constraint_index, parse_res in enumerate(satisfied_parsed_values):
         for key, parsed_value in parse_res.items():
-            structural.custom_expressions[key] = [(constraint_index, parsed_value)]
+            structural.custom_concept_data[key] = (parsed_value, constraint_index)
 
 
 def _parse_evaluation_arguments_of_function(
@@ -913,7 +913,7 @@ def _parse_evaluation_arguments_of_function(
         rec(error)  # may raise StopValidation in fail-fast mode
     if parsed is not None:
         # One entry, keyed by the Function name -- see `ParsedStructural.custom_expressions`.
-        structural.custom_expressions[state.upper_level_object_key] = [("args", parsed)]
+        structural.custom_args_evaluation = (parsed, state.upper_level_object_key)
 
 
 # ===========================================================================================================
