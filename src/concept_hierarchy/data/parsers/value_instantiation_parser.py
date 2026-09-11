@@ -775,16 +775,13 @@ def _parse_custom_concept_data(
     rec: Callable[[ConceptHierarchyError], None],
     state: _State,
 ):
-    # What to do with concept data constraints that have unsubstituted template variables in them? match everything!
-    if node.custom_concept_data_constraints is not None and any(
-        isinstance(x, InstantiatedType) for x in node.custom_concept_data_constraints
-    ):
-        # Match every key... defer the true check to the substituted schema.
-        matched_keys.update(concept_data.keys())
-        return
-
     constraints_to_satisfy: list[dict[str, InstantiatedType]] = []
-    for concept_data_constraint in node.custom_concept_data_constraints:
+    for index, concept_data_constraint in enumerate(node.custom_concept_data_constraints):
+        if concept_data_constraint.concept_restriction is not None and any(
+            not isinstance(x, InstantiatedType) for x in concept_data_constraint.concept_restriction
+        ):
+            constraints_to_satisfy.append({})
+            continue
         constraints_to_satisfy.append(
             state.context.collect_data(
                 concept_data_constraint.concept_restriction,
@@ -800,7 +797,8 @@ def _parse_custom_concept_data(
             continue
         key_location_id = location_id + [key]
         constraint_index, value_type, node_value_type = None, None, None
-        # check if the key is contained in one of the constraints
+        # Check if the key is contained in one of the constraints;
+        #  if the constraint is template dependent, it contains no data to satisfy
         for constraint_index, (constraint_to_satisfy, concept_data_constraint) in enumerate(
             zip(constraints_to_satisfy, node.custom_concept_data_constraints)
         ):
@@ -840,7 +838,7 @@ def _parse_custom_concept_data(
         parsed = ParsedCustomValue(
             location_id=key_location_id,
             schema_node=node_value_type,
-            errors=[],
+            errors=errors,
             custom_type=substituted_value,
             provenance=node_value_type.provenance,  # TODO: is this the provenance of the schema or of the expression?
             used_default=False,
@@ -854,7 +852,7 @@ def _parse_custom_concept_data(
         if not concept_data_constraint.require_all_keys:
             continue
         required_keys = set(constraint.keys())
-        if not (required_keys < local_matches):
+        if not (required_keys <= local_matches):
             rec(
                 CHSemanticError(
                     f"The custom concept data constraint {concept_data_constraint}\nwas not satisfied because not all "
