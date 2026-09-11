@@ -87,12 +87,13 @@ class CustomConceptDataConstraint:
             if self.concept_restriction is not None
             else ""
         )
-        return f"[{kind}{'+' if self.include_parent_data else ''}{constraint}, {self.value}, {self.require_all_keys}]"
+        require_str = "true" if self.require_all_keys else "false"
+        return f"[{kind}{'+' if self.include_parent_data else ''}{constraint}, {self.value}, {require_str}]"
 
     @property
     def is_template_dependent(self):
         return self.value.is_template_dependent or any(
-            isinstance(x, TemplateDependent) for x in self.concept_restriction
+            isinstance(x, TemplateDependent) for x in self.concept_restriction or ()
         )
 
 
