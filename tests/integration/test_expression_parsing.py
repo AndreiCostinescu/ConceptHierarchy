@@ -42,6 +42,7 @@ corresponding parsing lands.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -59,7 +60,7 @@ from concept_hierarchy.data.expressions.subexpressions import (
 )
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
 from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
-from concept_hierarchy.errors import CHSemanticError
+from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError
 from concept_hierarchy.validator.checker import ConceptHierarchyChecker
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
@@ -82,6 +83,10 @@ CH_PRELUDE: dict[str, dict] = {
         "directParents": ["ValueDomain"],
         "data": {"defaultSerialization": "string", "instantiation": {"type": "string", "pattern": "^s:"}},
     },
+    "TypeValue": {
+        "directParents": ["String"],
+        "data": {"instantiation": {"type": "string", "pattern": "^s:", "format": "Type"}},
+    },
     "Function": {"directParents": ["ValueDomain"], "data": {}, "abstract": True},
     "FunctionReturning": {"directParents": ["Function"], "data": {"templateContext": ["T"]}, "abstract": True},
     "FunctionComposition": {
@@ -94,6 +99,63 @@ CH_PRELUDE: dict[str, dict] = {
                 "propertyNames": {"type": "string", "format": "Type", "constraint": "Function"},
                 "additionalProperties": {"type": "object", "properties": "args", "additionalProperties": False},
             },
+        },
+    },
+    "CustomFunction": {
+        "directParents": ["ValueDomain"],
+        "data": {
+            "instantiation": {
+                "oneOf": [
+                    "FunctionComposition",
+                    {
+                        "type": "object",
+                        "properties": {
+                            "interface": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "_defaultArgumentValues": {
+                                        "type": "object",
+                                        "patternProperties": {"^[a-z][A-Za-z0-9_]*$": True},
+                                    }
+                                },
+                                "patternProperties": {
+                                    "^[a-z][A-Za-z0-9_]*$": {"$ref": "#/$defs/argumentTypeDefinition"}
+                                },
+                            },
+                            "procedure": "FunctionComposition",
+                        },
+                        "additionalProperties": False,
+                        "required": ["procedure"],
+                    },
+                ],
+                "$defs": {
+                    "argumentTypeDefinition": {
+                        "oneOf": [
+                            "TypeValue",
+                            {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 3,
+                                "items": ["TypeValue", {"$ref": "#/$defs/argAcc"}, {"$ref": "#/$defs/argProv"}],
+                            },
+                        ]
+                    },
+                    "argProv": {"type": "string", "enum": ["Any", "Addr", "ResetAddr"]},
+                    "argAcc": {"type": "string", "enum": ["Get", "Modify", "GetModify"]},
+                },
+            }
+        },
+    },
+    "Instance": {
+        "directParents": ["ValueDomain"],
+        "data": {
+            "templateContext": {
+                "order": ["AcceptConcepts...", "RejectConcepts..."],
+                "AcceptConcepts": "And(Concept, Not(ValueDomain))",
+                "RejectConcepts": "And(Concept, Not(ValueDomain))",
+                "variadicGroupIdentifiers": {"AcceptConcepts": "", "RejectConcepts": "!"},
+            }
         },
     },
 }
@@ -129,6 +191,37 @@ def check_hierarchy(model_data: dict, external_data: object = None) -> ConceptHi
 def check_concepts(concepts: dict[str, dict], **kwargs) -> ConceptHierarchyContext:
     """Shorthand for ``check_hierarchy(build_hierarchy(concepts), ...)``."""
     return check_hierarchy(build_hierarchy(concepts, instances=kwargs.pop("instances", None)), **kwargs)
+
+
+def rejection(concepts: dict[str, dict]) -> ConceptHierarchyError:
+    with pytest.raises(ConceptHierarchyError) as exec_info:
+        check_concepts(concepts)
+    return exec_info.value
+
+
+def refuses_commitment(messages: str, reading: str) -> bool:
+    """
+    Whether ``messages`` refuses a value for not being ``reading``, in either of the two spellings.
+
+    Two different checks produce such a refusal, and they are worded apart on purpose: the classification
+    filter says the value **must be** that reading and this position cannot hold one, while the
+    consumption check says the value **is committed to being** it and the schema matched without ever
+    reading it as one. A test that only cares that the commitment was refused should not have to know
+    which of the two fired, nor break when the wording is polished again.
+    """
+    return re.search(r"(?:must be|is committed to being) a " + re.escape(reading), messages) is not None
+
+
+def error_messages(error: ConceptHierarchyError) -> str:
+    collected: list[str] = []
+
+    def walk(err: ConceptHierarchyError) -> None:
+        collected.append(err.args[0] if err.args else "")
+        for cause in err.causes:
+            walk(cause)
+
+    walk(error)
+    return " | ".join(collected)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -527,6 +620,95 @@ class TestShippedExamples:
         assert types, "expected the example to declare global variables"
         assert all(value_type is not None for value_type in types.values())
 
+    # ----------------------------------------------------------------------------------------------
+    # ``Dog.f2``: a Function-keyed object at a `CustomFunction` site
+    #
+    # The site the `fComp:` marker exists for, and the one place in the shipped data where all four
+    # readings can be told apart. ``data.functions.<name>`` expects a `CustomFunction`, whose
+    # instantiation is ``oneOf: ["FunctionComposition", {interface, procedure}]``; ``Add<Number>``
+    # returns a `Number`, which is neither a `CustomFunction` nor a `FunctionComposition`, so only the
+    # composition reading can stand. Each of the others fails for its own stated reason, which is what
+    # makes this evidence about the markers rather than one accident that happens to fail.
+    # ----------------------------------------------------------------------------------------------
+
+    def _dog_f2_keyed(self, key: str) -> dict:
+        """The shipped example with ``Dog.f2``'s single content key replaced by ``key``."""
+        model_data = json.loads((EXAMPLES_DIR / "animal_kingdom.json").read_text())
+        f2 = model_data["concepts"]["Dog"]["data"]["functions"]["f2"]
+        (only_key,) = list(f2)
+        f2[key] = f2.pop(only_key)
+        return model_data
+
+    def _check_dog_f2(self, key: str) -> ConceptHierarchyContext:
+        external_data = json.loads((EXAMPLES_DIR / "external_animal_data.json").read_text())
+        return check_hierarchy(self._dog_f2_keyed(key), external_data)
+
+    def _dog_f2_rejection(self, key: str) -> str:
+        with pytest.raises(ConceptHierarchyError) as exec_info:
+            self._check_dog_f2(key)
+        return error_messages(exec_info.value)
+
+    def test_dog_f2_is_written_with_the_composition_marker(self):
+        """The shipped spelling, so that the tests below are mutations of what is really in the file."""
+        model_data = json.loads((EXAMPLES_DIR / "animal_kingdom.json").read_text())
+        assert list(model_data["concepts"]["Dog"]["data"]["functions"]["f2"]) == ["fComp:Add<Number>"]
+
+    def test_the_composition_marker_is_accepted_there(self):
+        assert "Add" in self._check_dog_f2("fComp:Add<Number>").model.functions
+
+    def test_the_instantiation_marker_is_refused_there(self):
+        """
+        The migration check for `fInst:`: ``Add<Number>`` is not a subtype of `CustomFunction`, so asking
+        for the Function *value* here cannot be honored. If this ever passes, the marker is being ignored.
+        """
+        messages = self._dog_f2_rejection("fInst:Add<Number>")
+        assert refuses_commitment(messages, "Function instantiation"), messages
+
+    def test_the_evaluation_marker_is_refused_there(self):
+        messages = self._dog_f2_rejection("fEval:Add<Number>")
+        assert refuses_commitment(messages, "Function evaluation"), messages
+
+    def test_the_refusal_names_the_type_expected_at_the_position(self):
+        """
+        Not the type written at the site. ``Dog.f2`` is a `CustomFunction`, but the reading is refused
+        inside the `FunctionComposition` branch of its instantiation, and that branch is what was checked
+        -- so the message says `FunctionComposition`, and says it is "at this position".
+        """
+        messages = self._dog_f2_rejection("fInst:Add<Number>")
+        assert "FunctionComposition is expected at this position" in messages, messages
+
+    def test_the_refusal_states_the_condition_that_failed(self):
+        """ "Does not accept one" said only that something was refused; the rule is what an author acts on."""
+        messages = self._dog_f2_rejection("fInst:Add<Number>")
+        assert "stands here only if that Function is a subtype of FunctionComposition" in messages, messages
+
+    def test_an_evaluation_at_a_composition_is_refused_as_unmeetable_not_merely_unmet(self):
+        """
+        The half of the message that answers "why would a FunctionComposition never accept an evaluation":
+        Section 9.4 forbids a ``"res"`` that is a `FunctionComposition`, so the condition cannot be met by
+        any Function at all -- a different thing from this particular Function failing it.
+        """
+        messages = self._dog_f2_rejection("fEval:Add<Number>")
+        assert "no Function may return a FunctionComposition" in messages, messages
+
+    def test_without_a_marker_the_evaluation_default_hard_fails(self):
+        """Why the site needs a marker at all: `FEval` commits, and ``res(Add<Number>)`` does not fit."""
+        messages = self._dog_f2_rejection("Add<Number>")
+        assert "not a subtype of CustomFunction" in messages, messages
+
+    def test_an_unknown_prefix_is_not_a_marker_there(self):
+        """``fOther:`` is not in the vocabulary, so the whole string stays the key -- and names nothing."""
+        messages = self._dog_f2_rejection("fOther:Add<Number>")
+        assert "is not a concept or a template variable" in messages, messages
+
+    def test_a_marked_key_naming_nothing_is_refused(self):
+        messages = self._dog_f2_rejection("fInst:NoSuchFunction")
+        assert messages
+
+    def test_a_domain_concept_named_as_the_key_is_diagnosed_not_crashed(self):
+        error_msg = self._dog_f2_rejection("Dog")
+        assert "Dog is not a ValueDomain Type. It seems to be a DomainConcept." in error_msg, error_msg
+
 
 # --------------------------------------------------------------------------------------------------
 # Tests: expressions that are not parsed yet
@@ -540,7 +722,6 @@ class TestNotYetParsedExpressions:
     parsing lands, they report XPASS rather than failing the suite, and can then be fleshed out.
     """
 
-    @pytest.mark.xfail(reason="check_expressions_in_domain_concept_definition is a stub", strict=False)
     def test_property_default_value_is_parsed(self):
         context = check_concepts(
             {
@@ -550,10 +731,9 @@ class TestNotYetParsedExpressions:
                 },
             }
         )
-        legs = context.model.domain_concepts["Animal"].properties["legs"]
-        assert isinstance(legs.default, Expression), f"property default is still unparsed: {legs.default!r}"
+        legs_default = context.model.domain_concepts["Animal"].property_expressions["legs"]["forSub"]["default"]
+        assert isinstance(legs_default, Expression), f"property default is still unparsed: {legs_default!r}"
 
-    @pytest.mark.xfail(reason="check_expressions_in_domain_concept_definition is a stub", strict=False)
     def test_property_constraint_is_parsed(self):
         context = check_concepts(
             {
@@ -563,10 +743,18 @@ class TestNotYetParsedExpressions:
                         "properties": {"legs": {"valueDomain": "Integer", "constraint": {"Interval<Integer>": [0, 8]}}}
                     },
                 },
+                "Variation": {"directParents": ["ValueDomain"], "data": {"templateContext": ["T"]}},
+                "Interval": {
+                    "directParents": ["ValueDomain"],
+                    "data": {
+                        "templateContext": {"order": ["T"], "T": "Numeric"},
+                        "instantiation": {"type": "array", "items": "T", "minItems": 2, "maxItems": 2},
+                    },
+                },
             }
         )
-        legs = context.model.domain_concepts["Animal"].properties["legs"]
-        assert isinstance(legs.constraint, Expression), f"property constraint is still unparsed: {legs.constraint!r}"
+        legs_constraint = context.model.domain_concepts["Animal"].property_expressions["legs"]["forSub"]["constraint"]
+        assert isinstance(legs_constraint, Expression), f"property constraint is still unparsed: {legs_constraint!r}"
 
     @pytest.mark.xfail(reason="check_expressions_in_function_definition is a stub", strict=False)
     def test_function_procedure_is_parsed(self):
@@ -577,6 +765,7 @@ class TestNotYetParsedExpressions:
                     "directParents": ["Add"],
                     "data": {
                         "templateContext": {"order": ["T"], "substitution": {"T": "T"}},
+                        "interface": {},
                         "procedure": {"Add<Integer>": {"arg1": "arg1", "arg2": 1}},
                     },
                 },
@@ -584,6 +773,18 @@ class TestNotYetParsedExpressions:
         )
         procedure = context.model.functions["AddOne"].procedure
         assert isinstance(procedure, Expression), f"Function procedure is still unparsed: {procedure!r}"
+
+    def test_a_domain_concept_function_body_is_parsed(self):
+        error = rejection(
+            {
+                "Animal": {
+                    "directParents": ["Concept"],
+                    "data": {"functions": {"f": {"NoSuchFunction": {"nonsense": True}}}},
+                },
+            }
+        )
+        error_msg = error_messages(error)
+        assert '"NoSuchFunction" is not a concept or a template variable of this' in error_msg, error_msg
 
     def test_global_variable_value_is_parsed(self):
         context = check_concepts({}, instances={"one": {"Integer": 1}})

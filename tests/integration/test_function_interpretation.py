@@ -402,14 +402,12 @@ def expression_kinds(expression: Expression) -> list[type]:
         if id(parsed) in seen:
             return
         seen.add(id(parsed))
+        # `walk` is enough: `ParsedStructural.iter_children` yields what a selector and an ``args`` node
+        # store -- `custom_concept_data` and `custom_args_evaluation` -- so they are ordinary descendants
+        # here. Reaching into those fields as well would visit each of them twice.
         for node in parsed.walk():
             if isinstance(node, ParsedCustomValue) and node.expression is not None:
                 walk_expression(node.expression)
-            if isinstance(node, ParsedStructural):
-                for entries in node.custom_expressions.values():
-                    for _discriminator, sub in entries:
-                        if isinstance(sub, ParsedCustomValue) and sub.expression is not None:
-                            walk_expression(sub.expression)
 
     walk_expression(expression)
     return found
@@ -1281,8 +1279,8 @@ class TestTheCommitmentMustBeHonoredNotMerelyMatched:
     def test_a_composition_holding_an_evaluation_does_not_count_as_honoring_it(self):
         """
         The first wrong reading. A composition of `Add` contains a `FunctionEvaluation` in
-        ``custom_expressions``, so "contains one" would accept a `FunctionComposition` site's ``true`` --
-        the reading the keyword explicitly ruled out.
+        ``custom_args_evaluation``, so "contains one" would accept a `FunctionComposition` site's ``true``
+        -- the reading the keyword explicitly ruled out.
         """
         composition = field(check(at(comp={"Add": {"arg1": 1, "arg2": 2}})), "comp")
         assert FunctionEvaluation in expression_kinds(composition), "the composition does hold one"

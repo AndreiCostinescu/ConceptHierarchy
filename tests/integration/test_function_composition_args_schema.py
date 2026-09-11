@@ -106,22 +106,24 @@ def rejection(instances: dict) -> str:
 
 def stored_evaluations(context: ConceptHierarchyContext, global_variable: str) -> dict[str, ParsedValue]:
     """
-    Every ``custom_expressions`` entry the ``args`` node left anywhere under a global's parsed value.
+    Every ``custom_args_evaluation`` an ``args`` node left anywhere under a global's parsed value.
+
+    Keyed by the object key the arguments belonged to, which is the Function name *as written* -- an
+    interpretation marker included, since that is what the author put there.
 
     `ParsedValue.walk` stops at a custom-type leaf, because what hangs off it is an `Expression` and not a
     parsed value -- but that expression's *own* value is another parsed tree, and a nested
-    `FunctionComposition` lives in exactly that position. So the descent has to cross the boundary.
+    `FunctionComposition` lives in exactly that position. So the descent has to cross the boundary. Within
+    one tree no manual descent is needed: `ParsedStructural.iter_children` yields the ``args`` node, so
+    `walk` already reaches it and everything below it.
     """
     found: dict[str, ParsedValue] = {}
 
     def collect(parsed_value: ParsedValue) -> None:
         for node in parsed_value.walk():
-            if isinstance(node, ParsedStructural):
-                for key, entries in node.custom_expressions.items():
-                    assert len(entries) == 1, f"an args entry must be the only one for {key}"
-                    discriminator, parsed = entries[0]
-                    assert discriminator == "args"
-                    found[key] = parsed
+            if isinstance(node, ParsedStructural) and node.custom_args_evaluation is not None:
+                parsed, object_key = node.custom_args_evaluation
+                found[object_key] = parsed
             if isinstance(node, ParsedCustomValue) and node.expression is not None:
                 nested = getattr(node.expression.value, "value", None)
                 if isinstance(nested, ParsedValue):
