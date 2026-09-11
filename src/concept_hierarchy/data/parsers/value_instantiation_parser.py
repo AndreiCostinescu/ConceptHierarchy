@@ -861,6 +861,7 @@ def _parse_custom_concept_data(
                 )
             )
 
+    structural.custom_concept_data = {}
     for constraint_index, parse_res in enumerate(satisfied_parsed_values):
         for key, parsed_value in parse_res.items():
             structural.custom_concept_data[key] = (parsed_value, constraint_index)
