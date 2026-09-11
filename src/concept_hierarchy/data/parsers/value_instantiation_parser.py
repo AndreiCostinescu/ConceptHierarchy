@@ -1109,10 +1109,34 @@ def _parse_one_of(
         structural.one_of_parsed = matching[0]
         return
 
+    # The ambiguity the fComp, fEval, and fInst markers exist for: a one-key object keyed by a Function is ambiguous.
+    # It could mean a Function composition, evaluation, or instantiation; and depending on the schemas and the
+    # expression parser, a schema defined with `oneOf` may match both branches (when the marker is not present).
+    #
+    # The advice is based on the value's **shape**, not the owning ValueDomain. E.g. `FunctionCompositionRes` is merely
+    # the declaration in the schema that has it; any `oneOf` written the same in any ValueDomain has the same issue.
+    # A key that already carries a marker is not offered again to the next branch:
+    # there the branches are ambiguous for some other reason, and naming the markers would misdirect.
+    #
+    # Which of the three is *acceptable* depends on the branch types, so the hint does not predict that;
+    # all three are selectable, which is what makes the hint worth saying at all.
+    addition = ""
+    if isinstance(value, dict) and len(value) == 1:
+        only_key = next(iter(value))
+        assert isinstance(only_key, str)  # this comes from the JSON object, whose keys are always strings
+        split_res = split_function_interpretation_marker(only_key)
+
+        if split_res[0] is None and split_res[1] != "" and split_res[1][0].isupper():
+            addition = (
+                f".\nIf {only_key} names a Function, you may want to say which reading is meant by writing the key as "
+                f'"fEval:{only_key}" (a Function evaluation), "fComp:{only_key}" (a FunctionComposition), or '
+                f'"fInst:{only_key}" (a Function instantiation).'
+            )
+
     message = (
         "Value does not match any schema in 'oneOf'"
         if not matching
-        else f"Value matches {len(matching)} schemas in 'oneOf' (expected exactly 1)"
+        else f"Value matches {len(matching)} schemas in 'oneOf' (expected exactly 1)" + addition
     )
     err = CHSemanticError(message, location_id)
     err.causes.extend(failed_branch_errors)
