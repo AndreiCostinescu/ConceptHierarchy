@@ -834,20 +834,6 @@ def parse_expression(
         expression.value = IllFormedExpression(violation)
     return expression
 
-    # TODO: check the types // semantic of the expression:
-    #  - check expr_ref, expr_mod, is_strict_subtype!
-    #  - check that "isFunctionEvaluation" is used correctly
-    #  - check that Function result types match the expected expression type
-    #  -- subexpressions (i.e. the evaluation arguments) should already be sub-checked in the syntax-above!)
-    #  - check that ValueDomain instantiations are subtypes of the expected expression type
-    #  -- subexpressions thereof were already checked when they were parsed
-    #  - check that the variables (literal template variables, code variables, and instance prop chains)
-    #    match the expected expression type
-    #  -- for literal template variables check that the literal constraint type is a registered defaultSerialization
-    #     somewhere; if it is not registered, then it can't be used!
-    #     if it is registered, interpret the template variable value as the type that registers
-    raise NotImplementedError
-
 
 def get_expression_type(
     json_value: object,
