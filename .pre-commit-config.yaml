@@ -11,7 +11,7 @@ repos:
         stages: [pre-commit]
 
   - repo: https://github.com/AndreiCostinescu/DevTools
-    rev: b0b747598e766e885d51c4f48ee19a27bae9bfe4
+    rev: 77dbbfa9a9d7693e5fe796b2b84478557c8f78aa
     hooks:
       - id: license-header-check-python
         stages: [pre-commit]
