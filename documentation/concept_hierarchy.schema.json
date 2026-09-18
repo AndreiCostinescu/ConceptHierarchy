@@ -16,7 +16,8 @@
           }
         },
         "concepts": { "$ref": "#/$defs/concepts" },
-        "instances": { "$ref": "#/$defs/instances" }
+        "instances": { "$ref": "#/$defs/instances" },
+        "external": { "type": "array", "items": { "type": "string", "pattern": "\\.(ch|json)$" } }
       },
       "required": ["concepts"],
       "additionalProperties": false
@@ -42,7 +43,6 @@
           "type": "array",
           "items": {
             "type": "string",
-            "minLength": 1,
             "pattern": "\\.(ch|json)$"
           }
         },
