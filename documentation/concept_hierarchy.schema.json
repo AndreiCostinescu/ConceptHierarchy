@@ -449,6 +449,7 @@
             },
             "pattern": { "type": "string", "format": "regex" },
             "format": { "type": "string" },
+            "constraint": { "type": "string" },
             "contentMediaType": { "type": "string" },
             "contentEncoding": { "type": "string" },
 
