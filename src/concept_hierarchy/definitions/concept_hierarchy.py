@@ -33,8 +33,9 @@ class ConceptHierarchyDefinition:
     model_metadata: str = "metadata"
     model_concepts: str = "concepts"
     model_instances: str = "instances"
+    model_external: str = "external"
     model_concepts_external: str = "external"
-    model_keywords: set[str] = {model_name, model_metadata, model_concepts, model_instances}
+    model_keywords: set[str] = {model_name, model_metadata, model_concepts, model_instances, model_external}
 
     metadata_expansion_depth_limit_for_default_instantiation_expressions: str = (
         "maxExpansionDepthForDefaultInstantiationExpressions"
