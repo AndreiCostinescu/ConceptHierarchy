@@ -17,6 +17,7 @@ checker.py — Syntax- and semantic-level validation of a JSON-converted-to-pyth
 """
 
 import os
+from pathlib import Path
 from typing import Callable
 
 from frozendict import frozendict
@@ -74,21 +75,20 @@ from concept_hierarchy.validator.value_domain_template_constraint_checks import 
 
 class ConceptHierarchyChecker:
     @staticmethod
-    def read_concept_hierarchy(file: str, path_to_root_dir: str) -> object:
-        def create_json(file_name: str) -> object:
-            res = read_json_file(file_name)
-            if ConceptHierarchyDefinition.model_concepts_external in res:
-                assert isinstance(res[ConceptHierarchyDefinition.model_concepts_external], list)
-                for sub_file_name in res[ConceptHierarchyDefinition.model_concepts_external]:
-                    if os.path.isabs(sub_file_name):
-                        res.update(create_json(sub_file_name))
-                    else:
-                        rel_sub_file_name = sanitize_relative_path(join_path(path_to_root_dir, sub_file_name))
-                        res.update(create_json(rel_sub_file_name))
-                res.pop(ConceptHierarchyDefinition.model_concepts_external)
-            return res
-
-        return create_json(join_path(path_to_root_dir, file))
+    def read_concept_hierarchy(
+        file: str, path_to_root_dir: str | None, visited_files: set[str], location_id: LocationId
+    ) -> tuple[object, str, str]:
+        if not os.path.isabs(file):
+            if path_to_root_dir is None:
+                path_to_root_dir = str(Path.cwd().absolute())
+            file = sanitize_relative_path(join_path(path_to_root_dir, file))
+        if file in visited_files:
+            raise CHSemanticError(
+                f"Found an infinite loop in file traversal when reading the Concept Hierarchy!\n"
+                f'File "{file}" was read again while processing the data in itself!',
+                location_id=location_id,
+            )
+        return read_json_file(file), file, str(Path(file).parent)
 
     @staticmethod
     def alias_target_names(target: str) -> tuple[str, ...]:
@@ -114,7 +114,11 @@ class ConceptHierarchyChecker:
 
     @staticmethod
     def order_aliases(
-        alias_dependencies: dict[str, tuple[str, ...]], defined_names: dict, location_id: LocationId
+        alias_dependencies: dict[str, tuple[str, ...]],
+        defined_names: dict,
+        locations: dict[str, LocationId],
+        base_location_id: LocationId,
+        for_concepts: bool,
     ) -> list[str]:
         """
         Order the aliases so that each comes after every name it mentions, and reject cycles.
@@ -128,7 +132,7 @@ class ConceptHierarchyChecker:
         already resolved -- and it is what tells a bare-name alias whether it ended up naming a concept or a
         type, which decides its kind.
         """
-        entry_kind = str(location_id[-1])[:-1]  # "concepts" -> "concept", "instances" -> "instance"
+        entry_kind = "concept" if for_concepts else "instance"
         graph: dict[str, tuple[str, ...]] = {}
         for alias_name, mentioned_names in alias_dependencies.items():
             for mentioned_name in mentioned_names:
@@ -136,7 +140,7 @@ class ConceptHierarchyChecker:
                     raise CHSemanticError(
                         f"The referenced {entry_kind} {mentioned_name!r} of {alias_name} does not exist in "
                         f"the Concept Hierarchy!",
-                        location_id=location_id + [alias_name],
+                        location_id=locations[alias_name] + [alias_name],
                         part=PathPart.VALUE,
                     )
                 # every mentioned name has to be a node of its own: `topological_sort` raises KeyError
@@ -149,7 +153,7 @@ class ConceptHierarchyChecker:
             if str(e).startswith("Non-hierarchy structure detected!"):
                 raise CHSemanticError(
                     f"There is a cycle in the {entry_kind} references:\n{tab}{e!s}",
-                    location_id=location_id,
+                    location_id=base_location_id,
                     part=PathPart.VALUE,
                 ) from e
             raise
@@ -181,6 +185,245 @@ class ConceptHierarchyChecker:
     def ch(self) -> ConceptHierarchyDefinition:
         return self.model.ch
 
+    def merge_concept_hierarchy_structure_across_files(
+        self,
+        concept_hierarchy: dict[str, object],
+        location_id: LocationId,
+        file_dir: str | None,
+        visited_files: set[str],
+        external_from_concepts: bool,
+        concept_hierarchy_concept_only_shortform: bool,
+    ) -> tuple[dict, dict, dict[str, LocationId], dict[str, LocationId]]:
+        """
+
+        Parameters
+        ----------
+        concept_hierarchy
+        file_dir
+        visited_files
+        location_id
+        external_from_concepts: whether only concepts are allowed to be specified
+        concept_hierarchy_concept_only_shortform: whether the shorthand form of the file was used for this data
+        require_concepts_to_be_present: whether concepts must be present in this file
+
+        Returns
+        -------
+        the concept definitions present in `concept_hierarchy`: concept_name -> concept_def_data
+        the instance definitions present in `concept_hierarchy`: instance_name -> instance_def_data
+        a map of the defined concepts to their definition location: concept_name -> concept_def_location_id
+        a map of the defined instances to their definition location: instance_name -> instance_def_location_id
+        """
+        if any(
+            x in concept_hierarchy
+            for x in [ConceptHierarchyDefinition.model_name, ConceptHierarchyDefinition.model_name]
+        ):
+            if external_from_concepts:
+                raise CHSyntaxError(
+                    f"In external Concept Hierarchy concept files, the data must be either a JSON object of concepts "
+                    f"with optionally other external concept files!\n"
+                    f"Got top-level keys: {list(concept_hierarchy.keys())}",
+                    location_id=location_id,
+                    part=PathPart.VALUE,
+                )
+            else:
+                raise CHSyntaxError(
+                    f"In external Concept Hierarchy files, the data must be either a JSON object of concepts optionally"
+                    f" containing other external concept files, or a JSON object only containing "
+                    f'"{ConceptHierarchyDefinition.model_instances}", "{ConceptHierarchyDefinition.model_concepts}", or'
+                    f'" {ConceptHierarchyDefinition.model_external}" keys!\n'
+                    f"Got top-level keys: {list(concept_hierarchy.keys())}",
+                    location_id=location_id,
+                    part=PathPart.VALUE,
+                )
+        if ConceptHierarchyDefinition.model_instances in concept_hierarchy and external_from_concepts:
+            raise CHSyntaxError(
+                f"This external concept hierarchy was included as a concept-only file! "
+                f'"{ConceptHierarchyDefinition.model_instances}" is not allowed here!'
+            )
+
+        # -- concepts --------------------------------------------------------
+        concept_location_id: LocationId = location_id.copy()
+        if not concept_hierarchy_concept_only_shortform:
+            concept_location_id += [ConceptHierarchyDefinition.model_concepts]
+        concept_definition = concept_hierarchy.get(ConceptHierarchyDefinition.model_concepts, {})
+        # type checks for concept_definition data
+        if not isinstance(concept_definition, dict):
+            raise CHSyntaxError(
+                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_concepts}" data must be a JSON object of concept'
+                f" definitions, not {concept_definition!r}.",
+                location_id=concept_location_id,
+                part=PathPart.VALUE,
+            )
+        concept_definition = {
+            k: v for k, v in concept_definition.items() if k != ConceptHierarchyDefinition.model_concepts_external
+        }  # exclude external from this dictionary
+        concept_locations = {concept_name: concept_location_id for concept_name in concept_definition}
+
+        # -- external concepts -----------------------------------------------
+        external_concepts_content = concept_hierarchy[ConceptHierarchyDefinition.model_concepts].get(
+            ConceptHierarchyDefinition.model_concepts_external, []
+        )
+        if not isinstance(external_concepts_content, list):
+            raise CHSyntaxError(
+                f"Concept Hierarchy {ConceptHierarchyDefinition.model_concepts_external} must be an array of string "
+                f"values (paths to external Concept Hierarchy concept definition files relative to the directory of "
+                f"this file)!\nGot {external_concepts_content}",
+                location_id=concept_location_id + [ConceptHierarchyDefinition.model_concepts_external],
+                part=PathPart.VALUE,
+            )
+        for external_concept_index, external_concepts_file in enumerate(external_concepts_content):
+            if not isinstance(external_concepts_file, str):
+                raise CHSyntaxError(
+                    f"Concept Hierarchy {ConceptHierarchyDefinition.model_concepts_external} must be an array of string"
+                    f" values (paths to external Concept Hierarchy concept definition files relative to the directory "
+                    f"of this file)!\nGot non string file path: {external_concepts_file}",
+                    location_id=concept_location_id
+                    + [ConceptHierarchyDefinition.model_concepts_external, external_concept_index],
+                    part=PathPart.VALUE,
+                )
+            external_location_id = concept_location_id + [
+                ConceptHierarchyDefinition.model_concepts_external,
+                external_concept_index,
+                "ext:" + external_concepts_file,
+            ]
+            try:
+                external_data_of_concepts, ext_file, ext_file_dir = ConceptHierarchyChecker.read_concept_hierarchy(
+                    external_concepts_file, file_dir, visited_files, external_location_id
+                )
+            except FileNotFoundError:
+                raise CHSemanticError(
+                    f'External concepts file "{external_concepts_file}" not found relative to the path of the root '
+                    f"concept hierarchy file!",
+                    location_id=external_location_id,
+                    part=PathPart.VALUE,
+                )
+            if not isinstance(external_data_of_concepts, dict):
+                raise CHSyntaxError(
+                    f"External Concept Hierarchy concept file at {external_concepts_file} is not a JSON object!\n"
+                    f"Got {external_data_of_concepts}",
+                    location_id=external_location_id,
+                    part=PathPart.VALUE,
+                )
+            visited_files.add(ext_file)
+            is_shortform = ConceptHierarchyDefinition.model_concepts not in external_data_of_concepts
+            if is_shortform:
+                external_data_of_concepts = {ConceptHierarchyDefinition.model_concepts: external_data_of_concepts}
+            ext_concepts, ext_instances, ext_concept_locations, ext_instance_locations = (
+                self.merge_concept_hierarchy_structure_across_files(
+                    external_data_of_concepts, external_location_id, ext_file_dir, visited_files, True, is_shortform
+                )
+            )
+            visited_files.remove(ext_file)
+            assert not ext_instances
+            assert not ext_instance_locations
+            for ext_concept_name, ext_concept_data in ext_concepts.items():
+                if ext_concept_name in concept_definition:
+                    raise CHSemanticError(
+                        f"Found duplicate concept {ext_concept_name} defined at locations:\n"
+                        f"\t[{(concept_locations[ext_concept_name] + [ext_concept_name])!r}] and\n"
+                        f"\t[{(ext_concept_locations[ext_concept_name] + [ext_concept_name])!r}]!\n"
+                        f"Merging external files failed: duplicate concepts are not allowed!",
+                        location_id=external_location_id,
+                        part=PathPart.VALUE,
+                    )
+                concept_definition[ext_concept_name] = ext_concept_data
+            concept_locations.update(ext_concept_locations)
+
+        # -- instances (optional: default {}) --------------------------------
+        assert (
+            ConceptHierarchyDefinition.model_instances not in concept_hierarchy
+            or not concept_hierarchy_concept_only_shortform
+        )  # instances can only appear if this is not a shorthand form
+        instances_location_id: LocationId = location_id + [ConceptHierarchyDefinition.model_instances]
+        instance_definition = concept_hierarchy.get(ConceptHierarchyDefinition.model_instances, {})
+        if not isinstance(instance_definition, dict):
+            raise CHSyntaxError(
+                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_instances}" data must be a JSON object of'
+                f" definitions of instances, i.e. global variables, not {instance_definition!r}.",
+                location_id=instances_location_id,
+                part=PathPart.VALUE,
+            )
+        instance_locations = {instance_name: instances_location_id for instance_name in instance_definition}
+
+        # -- external (optional) --------------------------------------------
+        external_content = concept_hierarchy.get(ConceptHierarchyDefinition.model_external, [])
+        if not isinstance(external_content, list):
+            raise CHSyntaxError(
+                f"Concept Hierarchy {ConceptHierarchyDefinition.model_external} must be an array of string values "
+                f"(paths to external Concept Hierarchy definition files relative to the directory of this file)!\n"
+                f"Got {external_content!r}",
+                location_id=location_id + [ConceptHierarchyDefinition.model_external],
+                part=PathPart.VALUE,
+            )
+        for external_index, external_ch_file in enumerate(external_content):
+            if not isinstance(external_ch_file, str):
+                raise CHSyntaxError(
+                    f"Concept Hierarchy {ConceptHierarchyDefinition.model_external} must be an array of string values "
+                    f"(paths to external Concept Hierarchy definition files relative to the directory of this file)!\n"
+                    f"Got non string file path: {external_ch_file}",
+                    location_id=location_id + [ConceptHierarchyDefinition.model_external, external_index],
+                    part=PathPart.VALUE,
+                )
+            external_location_id = location_id + [
+                ConceptHierarchyDefinition.model_external,
+                external_index,
+                "ext:" + external_ch_file,
+            ]
+            try:
+                external_data_of_ch, ext_file, ext_file_dir = ConceptHierarchyChecker.read_concept_hierarchy(
+                    external_ch_file, self.ch.path_to_root_dir, visited_files, external_location_id
+                )
+            except FileNotFoundError:
+                raise CHSyntaxError(
+                    f'External concepts file "{external_ch_file}" not found relative to the path of the root '
+                    f"concept hierarchy file!",
+                    location_id=external_location_id,
+                    part=PathPart.VALUE,
+                )
+            if not isinstance(external_data_of_ch, dict):
+                raise CHSyntaxError(
+                    f"External Concept Hierarchy file at {external_ch_file} is not a JSON object!\n"
+                    f"Got {external_data_of_ch}",
+                    location_id=external_location_id,
+                    part=PathPart.VALUE,
+                )
+            visited_files.add(ext_file)
+            is_shortform = ConceptHierarchyDefinition.model_concepts not in external_data_of_ch
+            if is_shortform:
+                external_data_of_ch = {ConceptHierarchyDefinition.model_concepts: external_data_of_ch}
+            ext_concepts, ext_instances, ext_concept_locations, ext_instance_locations = (
+                self.merge_concept_hierarchy_structure_across_files(
+                    external_data_of_ch, external_location_id, ext_file_dir, visited_files, False, is_shortform
+                )
+            )
+            visited_files.remove(ext_file)
+            for ext_concept_name, ext_concept_data in ext_concepts.items():
+                if ext_concept_name in concept_definition:
+                    raise CHSemanticError(
+                        f"Found duplicate concept {ext_concept_name} defined at locations:\n"
+                        f"\t[{(concept_locations[ext_concept_name] + [ext_concept_name])!r}] and\n"
+                        f"\t[{(ext_concept_locations[ext_concept_name] + [ext_concept_name])!r}]!\n"
+                        f"Merging external files failed: duplicate concepts are not allowed!",
+                        location_id=external_location_id,
+                        part=PathPart.VALUE,
+                    )
+                concept_definition[ext_concept_name] = ext_concept_data
+            concept_locations.update(ext_concept_locations)
+            for ext_instance_name, ext_instance_data in ext_instances.items():
+                if ext_instance_name in concept_definition:
+                    raise CHSemanticError(
+                        f"Found duplicate instance {ext_instance_name} defined at locations:\n"
+                        f"\t[{(concept_locations[ext_instance_name] + [ext_instance_name])!r}] and\n"
+                        f"\t[{(ext_concept_locations[ext_instance_name] + [ext_instance_name])!r}]!\n"
+                        f"Merging external files failed: duplicate instances are not allowed!",
+                        location_id=external_location_id,
+                        part=PathPart.VALUE,
+                    )
+                instance_definition[ext_instance_name] = ext_instance_data
+            instance_locations.update(ext_instance_locations)
+
+        return concept_definition, instance_definition, concept_locations, instance_locations
+
     def check_structure(self):
         if self.ch.checked:
             return
@@ -189,24 +432,36 @@ class ConceptHierarchyChecker:
         if self.ch.file:
             base_location_id.append(join_path(self.ch.path_to_root_dir, self.ch.file))
 
+        file_path: str | None = None
+        file_dir: str | None = None
+        """
+        When this remains None after the statement below, external files will be read relative to the 
+        directory in which the program was started.
+        """
+        visited_files: set[str] = set()
+        """Set of visited files while resolving external files (to prevent infinite recursion reading the same file)."""
         if self.ch.definition_data is None:
-            self.ch.definition_data = ConceptHierarchyChecker.read_concept_hierarchy(
-                self.ch.file, self.ch.path_to_root_dir
-            )
+            self.ch.definition_data, file_path, file_dir = ConceptHierarchyChecker.read_concept_hierarchy(
+                self.ch.file, self.ch.path_to_root_dir, visited_files, base_location_id
+            )  # does not process external data!
+            assert file_path is not None
+            visited_files.add(file_path)
         if not isinstance(self.ch.definition_data, dict):
             raise CHSyntaxError("Concept Hierarchy definition must be a JSON object!", location_id=base_location_id)
         concept_hierarchy = self.ch.definition_data
 
         # interpret either as a meta-definition, or a direct definition of concepts
         ch_keys = set(concept_hierarchy.keys())
+        shorthand_concept_hierarchy_concept_only_definition = False
         if not (ch_keys <= ConceptHierarchyDefinition.model_keywords):
             # interpret this as a definition of concepts
             concept_hierarchy = {ConceptHierarchyDefinition.model_concepts: concept_hierarchy}
+            shorthand_concept_hierarchy_concept_only_definition = True
         elif len(ch_keys) == 0:
             concept_hierarchy = {ConceptHierarchyDefinition.model_concepts: {}}
+            shorthand_concept_hierarchy_concept_only_definition = True
 
         # -- hierarchy name (optional: default "ConceptHierarchy") ----------
-
         self.ch.name = concept_hierarchy.get(ConceptHierarchyDefinition.model_name, "ConceptHierarchy")
         if not check_ch_name(self.ch.name, allow_starting_with_underscore=True):
             raise CHSyntaxError(
@@ -226,30 +481,35 @@ class ConceptHierarchyChecker:
             )
         self.ch.metadata = {str(k): str(v) for k, v in raw_meta.items()}
 
+        concept_hierarchy = {
+            k: v
+            for k, v in concept_hierarchy.items()
+            if k not in {ConceptHierarchyDefinition.model_metadata, ConceptHierarchyDefinition.model_name}
+        }
+        concept_definition, instance_definition, concept_locations, instance_locations = (
+            self.merge_concept_hierarchy_structure_across_files(
+                concept_hierarchy,
+                base_location_id,
+                file_dir,
+                visited_files,
+                False,
+                shorthand_concept_hierarchy_concept_only_definition,
+            )
+        )
+        if file_path is not None:
+            visited_files.remove(file_path)
+        assert not visited_files, visited_files
+
         # -- concepts --------------------------------------------------------
-        concept_location_id: LocationId = base_location_id + [ConceptHierarchyDefinition.model_concepts]
-        if ConceptHierarchyDefinition.model_concepts not in concept_hierarchy:
-            raise CHSyntaxError(
-                f'Missing required top-level key: "{ConceptHierarchyDefinition.model_concepts}".',
-                location_id=concept_location_id,
-                part=PathPart.KEY,
-            )
-        concept_definition = concept_hierarchy[ConceptHierarchyDefinition.model_concepts]
-        # type checks for concept_definition data
-        if not isinstance(concept_definition, dict):
-            raise CHSyntaxError(
-                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_concepts}" data must be a JSON object of concept'
-                f" definitions, not {concept_definition!r}.",
-                location_id=concept_location_id,
-                part=PathPart.VALUE,
-            )
+        if not concept_definition:
+            raise CHSemanticError("The Concept Hierarchy has no concepts!", base_location_id, part=PathPart.VALUE)
         concept_aliases: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
         for concept_name, concept_def in concept_definition.items():  # type: str, object
             concept_definition = ConceptDefinition(
                 concept_name,
                 concept_def,
-                concept_location_id,
+                concept_locations[concept_name],
                 external_data_resolver=self.ch.external_concept_data_resolver,
             )
             if concept_definition.is_reference():
@@ -261,13 +521,15 @@ class ConceptHierarchyChecker:
         # order, not by the target's syntax alone.
         alias_targets = {name: TypeParser(a.is_reference_to, None).parse_types() for name, a in concept_aliases.items()}
         alias_dependencies = {name: self.alias_target_names(a.is_reference_to) for name, a in concept_aliases.items()}
-        for alias_name in self.order_aliases(alias_dependencies, defined_concepts, concept_location_id):
+        for alias_name in self.order_aliases(
+            alias_dependencies, defined_concepts, concept_locations, base_location_id, True
+        ):
             parsed_target = alias_targets[alias_name]
             if len(parsed_target) != 1:
                 raise CHSemanticError(
                     f"The alias {alias_name} must name exactly one concept or type, not "
                     f"{concept_aliases[alias_name].is_reference_to!r}.",
-                    location_id=concept_location_id + [alias_name],
+                    location_id=concept_locations[alias_name] + [alias_name],
                     part=PathPart.VALUE,
                 )
             (target,) = parsed_target
@@ -282,19 +544,12 @@ class ConceptHierarchyChecker:
             concept_def.canonicalize_concept_references(self.ch.canonical_concept_name)
 
         # -- instances (optional: default {}) --------------------------------
-        instances_location_id: LocationId = base_location_id + [ConceptHierarchyDefinition.model_instances]
-        instance_definition = concept_hierarchy.get(ConceptHierarchyDefinition.model_instances, {})
-        if not isinstance(instance_definition, dict):
-            raise CHSyntaxError(
-                f'Concept Hierarchy "{ConceptHierarchyDefinition.model_instances}" data must be a JSON object of'
-                f" definitions of instances, i.e. global variables, not {instance_definition!r}.",
-                location_id=instances_location_id,
-                part=PathPart.VALUE,
-            )
         variable_aliases: dict[str, GlobalVariableDefinition] = {}
         defined_instances: dict[str, GlobalVariableDefinition] = {}
         for variable_name, variable_def in instance_definition.items():  # type: str, object
-            variable_definition = GlobalVariableDefinition(variable_name, variable_def, instances_location_id)
+            variable_definition = GlobalVariableDefinition(
+                variable_name, variable_def, instance_locations[variable_name]
+            )
             # An alias is recognized by specifying a "string" value; but that value may just as well be a
             # "string" *expression* -> it is only an alias if it names another entry of "instances".
             if variable_definition.is_reference() and variable_definition.is_reference_to in instance_definition:
@@ -306,7 +561,9 @@ class ConceptHierarchyChecker:
         variable_alias_dependencies: dict[str, tuple[str]] = {
             name: (a.is_reference_to,) for name, a in variable_aliases.items()
         }
-        for alias_name in self.order_aliases(variable_alias_dependencies, defined_instances, instances_location_id):
+        for alias_name in self.order_aliases(
+            variable_alias_dependencies, defined_instances, instance_locations, base_location_id, False
+        ):
             self.ch.variable_aliases[alias_name] = self.ch.canonical_variable_name(
                 variable_aliases[alias_name].is_reference_to
             )
@@ -322,17 +579,21 @@ class ConceptHierarchyChecker:
                 if p_name not in defined_concepts:
                     raise CHSemanticError(
                         f"The parent {p_name!r} of concept {c_name!r} is not defined in the hierarchy.",
-                        location_id=concept_location_id + [c_name, ConceptDefinition.concept_direct_parents, index],
+                        location_id=concept_locations[c_name]
+                        + [c_name, ConceptDefinition.concept_direct_parents, index],
                     )
                 if p_name not in inverse_direct_parents:
                     inverse_direct_parents[p_name] = set()
                 inverse_direct_parents[p_name].add(c_name)
+        concept_definition_location_id = base_location_id
+        if not shorthand_concept_hierarchy_concept_only_definition:
+            concept_definition_location_id.append(ConceptHierarchyDefinition.model_concepts)
         try:
             self.ch.concept_topo_sort, roots = topological_sort(concept_parent_mapping)
             if self.ch.root_concept_name in roots and len(roots) != 1:
                 raise CHSemanticError(
                     f"Concept Hierarchy has multiple roots: {roots!r}",
-                    location_id=concept_location_id,
+                    location_id=concept_definition_location_id,
                     part=PathPart.VALUE,
                 )
             elif self.ch.root_concept_name not in roots:
@@ -343,7 +604,7 @@ class ConceptHierarchyChecker:
                     inverse_direct_parents[self.ch.root_concept_name].add(root)
                 self.ch.concept_topo_sort = [self.ch.root_concept_name] + self.ch.concept_topo_sort
                 defined_concepts[self.ch.root_concept_name] = ConceptDefinition(
-                    self.ch.root_concept_name, {}, concept_location_id
+                    self.ch.root_concept_name, {}, concept_definition_location_id
                 )
                 roots = [self.ch.root_concept_name]
             assert len(roots) == 1
@@ -352,7 +613,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f'The root concept of the Concept Hierarchy must be called "{self.ch.root_concept_name}", not '
                     f"{root!r}!",
-                    location_id=concept_location_id,
+                    location_id=concept_definition_location_id,
                     part=PathPart.VALUE,
                 )
             self.ch.root_concept_name = root
@@ -360,7 +621,7 @@ class ConceptHierarchyChecker:
             if str(e).startswith("Non-hierarchy structure detected! The following items form one or more cycles:"):
                 raise CHSemanticError(
                     f"Cycles detected in Concept Hierarchy:\n{tab}{e!s}",
-                    location_id=concept_location_id,
+                    location_id=concept_definition_location_id,
                     part=PathPart.VALUE,
                 ) from e
             raise e
@@ -387,7 +648,7 @@ class ConceptHierarchyChecker:
                 raise CHSemanticError(
                     f"The global variable name {instance_name!r} is also a concept name!\n\tThis can create ambiguity! "
                     f"Please rename the global variable name!",
-                    location_id=instances_location_id + [instance_name],
+                    location_id=instance_locations[instance_name] + [instance_name],
                     part=PathPart.KEY,
                 )
         self.ch.instances = defined_instances
