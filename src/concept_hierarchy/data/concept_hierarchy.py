@@ -37,6 +37,7 @@ from concept_hierarchy.data.types.concept_hierarchy_types import (
 from concept_hierarchy.data.utils import UNINITIALIZED
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
     FunctionDefinitionKeywords,
+    HookType,
     PropertyDefinitionKeywords,
 )
 from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
@@ -69,6 +70,22 @@ class DomainConceptData(ConceptData):
     property_types: frozendict[str, InstantiatedType]
     property_constraints: frozendict[str, Expression]
     static_properties: frozenset[str]
+    property_expressions: frozendict[
+        str,
+        frozendict[
+            str,
+            frozendict[
+                str,
+                Expression | list[Expression] | frozendict[tuple[InstantiatedType, str, HookType], Expression],
+            ],
+        ],
+    ]
+    """
+    Format: { prop_name: { forThis/forSub: { prop_keyword: Expression | list[Expression] | frozendict[...] } } }.
+    The nested value can be the `computations` of a property (list[Expression]), the `hooks` (frozendict), or
+    the expression of `default`, `confidenceHalfDecayTime`, `constraint`. 
+    """
+
     function_types: frozendict[str, InstantiatedType]
     static_functions: frozenset[str]
     function_expressions: frozendict[str, frozendict[str, Expression]]
