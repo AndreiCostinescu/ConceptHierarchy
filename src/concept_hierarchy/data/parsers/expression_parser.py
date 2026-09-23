@@ -1191,7 +1191,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
 
     # Check `Narrow` and `FEval` expressions.
     # The FunctionInterpretation handed down by the caller already applies to *this* value.
-    function_interpretation = function_interpretation_from_caller
+    intended_expression_interpretation = function_interpretation_from_caller
     if len_content_keys == 1:
         assert isinstance(json_value, dict)
         key, value = get_items_of_single_entry_dict(json_value)
@@ -1202,7 +1202,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
             is_concept_hierarchy_expression = False
 
         if is_concept_hierarchy_expression:
-            sub_expressions, function_interpretation = _parse_expression_of_json_object(
+            sub_expressions, intended_expression_interpretation = _parse_expression_of_json_object(
                 key,
                 value,
                 expr_type,
@@ -1216,7 +1216,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
                 template_substitution,
                 expansion_depth,
             )
-            if function_interpretation == FunctionInterpretation.EVALUATION and all(
+            if intended_expression_interpretation == FunctionInterpretation.EVALUATION and all(
                 isinstance(x, IllFormedExpression) for x in sub_expressions
             ):
                 sub_expressions = []
@@ -1229,10 +1229,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
     # they cannot be produced at all -- so reaching here means the commitment cannot be honored.
     # `COMPOSITION` is the exception: a composition *is* an `Inst`, so it is produced
     # by the `Inst` alternative further down, and only when this site's type is a `FunctionComposition`.
-    if function_interpretation_from_caller in (
-        FunctionInterpretation.EVALUATION,
-        FunctionInterpretation.INSTANTIATION,
-    ):
+    if function_interpretation_from_caller in {FunctionInterpretation.EVALUATION, FunctionInterpretation.INSTANTIATION}:
         committed_to = _commitment_description(function_interpretation_from_caller)
         why = _why_the_commitment_cannot_stand(
             function_interpretation_from_caller, expr_type, validator, expr_template_context, location_id
@@ -1249,8 +1246,8 @@ def _parse_syntax_of_expression_with_instantiated_type(
     ):
         expressions_res.append(
             IllFormedExpression(
-                f'The value must be a FunctionComposition (via "fComp:"), but {expr_type} is expected at '
-                f"this position, and {expr_type} is not a FunctionComposition",
+                f'The value must be a FunctionComposition (value was specified with "fComp:"), but {expr_type} is '
+                f"expected at this position, and {expr_type} is not a FunctionComposition",
                 attempts=tuple(attempts),
             )
         )
@@ -1415,7 +1412,7 @@ def _parse_syntax_of_expression_with_instantiated_type(
             location_id,
             template_substitution,
             expansion_depth,
-            function_interpretation,
+            intended_expression_interpretation,
         )
         if inst_res.parsed is not None and inst_res.parsed.is_valid():
             # Whether this instantiation is *decided* (= fully parsed & not template-dependent) is not determined here.
