@@ -55,6 +55,24 @@ class TestParseEmpty:
         assert "Concept" in model.concepts
         assert len(model.instances) == 0
 
+    def test_missing_concepts(self):
+        model = ConceptHierarchyDefinition.create_from_data({"name": "X"})
+        check_model(model)
+        assert model.name == "X"
+        assert dict(model.metadata) == {}
+        assert len(model.concepts) == 1
+        assert "Concept" in model.concepts
+        assert len(model.instances) == 0
+
+    def test_concepts_empty(self):
+        model = ConceptHierarchyDefinition.create_from_data({"name": "X", "concepts": {}})
+        check_model(model)
+        assert model.name == "X"
+        assert dict(model.metadata) == {}
+        assert len(model.concepts) == 1
+        assert "Concept" in model.concepts
+        assert len(model.instances) == 0
+
 
 class TestParseMinimal:
     model = MINIMAL
@@ -110,14 +128,6 @@ class TestParseErrors:
         model = ConceptHierarchyDefinition.create_from_data({"concepts": {"Concept": {}}})
         check_model(model)
         assert model.name == "ConceptHierarchy"
-
-    def test_missing_concepts(self):
-        with pytest.raises(CHSyntaxError, match="concepts"):
-            check_model(ConceptHierarchyDefinition.create_from_data({"name": "X"}))
-
-    def test_concepts_empty(self):
-        # with pytest.raises(CHSemanticError):  # <- an empty concept hierarchy is allowed
-        check_model(ConceptHierarchyDefinition.create_from_data({"name": "X", "concepts": {}}))
 
     def test_concepts_without_normal_root_but_with_it_implied_without_data(self):
         with pytest.raises(

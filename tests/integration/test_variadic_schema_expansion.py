@@ -1366,5 +1366,5 @@ class TestTheShorthandNeedsNoDeclaredIdentifiers:
         groups out, which needs no declaration, or declare the empty identifier for one of them.
         """
         messages = declaration_rejected({**self.inner(self.TWO), **box("Inner<Integer, String>")})
-        assert "which group it belongs to" in messages, messages
+        assert "does not say which variadic group" in messages, messages
         assert "variadicGroupIdentifiers" in messages, messages

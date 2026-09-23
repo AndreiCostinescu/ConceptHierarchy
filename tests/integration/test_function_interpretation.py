@@ -111,6 +111,15 @@ STRINGY = function("Stringy", {"res": "String"}, template=GROUND)
 WEIRD = function("Weird", {"isFunctionEvaluation": ["Integer"], "res": "Integer"}, template=GROUND)
 """A Function with an argument *named* ``isFunctionEvaluation``. Perfectly legal, and must stay legal."""
 
+MAP = vd(
+    "Map",
+    [
+        [["String", ""], {"type": "object", "additionalProperties": "V", "propertyNames": {"pattern": "(^s:)?"}}],
+        [["", ""], {"type": "array", "items": {"type": "array", "maxItems": 2, "minItems": 2, "items": ["K", "V"]}}],
+    ],
+    ["K", "V"],
+)
+
 LEAF = vd("Leaf", {"type": "object", "additionalProperties": False})
 """A key that names a perfectly good type which is not a Function."""
 
@@ -265,6 +274,7 @@ HOLDER = vd(
             "resStr": {"type": "FunctionCompositionRes<String>"},
             "fn": {"type": "Function"},
             "num": {"type": "Integer"},
+            "map": {"type": "Map<String, String>"},
             "boxy": {"type": "Boxy"},
             "flagged": {"type": "Flagged"},
             "paired": {"type": "Paired"},
@@ -298,6 +308,7 @@ CONCEPTS = {
     **VOID,
     **STRINGY,
     **WEIRD,
+    **MAP,
     **LEAF,
     **BOXY,
     **FLAGGED,
@@ -1917,3 +1928,12 @@ class TestTheKeywordIsNoLongerADirective:
                 in self._unexpected_property(at(fn={"Nullary": {}, "isFunctionEvaluation": written}))
             )
         assert outcomes == {True}, outcomes
+
+
+class TestMarkersDoNoAffectRegularJSONObjects:
+    def test_single_key_map_instantiation_with_marked_key_should_not_be_recognized_as_function(self):
+        error = rejection(at(map={"fEval:Leaf": "s:124"}))
+        assert "only qualifies a key that names a Function" in " ".join(m for _, m in error_sites(error))
+        check(at(map={"s:fEval:Leaf": "s:124"}))
+        check(at(map={"s:Leaf": "s:124"}))
+        check(at(map={"leaf": "s:124"}))
