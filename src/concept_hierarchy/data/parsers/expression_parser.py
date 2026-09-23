@@ -2119,9 +2119,9 @@ def parse_function_evaluation_expression(
     # An interpretation marker is part of the key, not part of the name it carries:
     # the type is resolved from the remainder, while `f_location_id` keeps the marked key,
     # because that is what the author wrote and what a diagnosis should point at.
-    marker, type_key = split_function_interpretation_marker(key)
+    marker, key_without_marker = split_function_interpretation_marker(key)
     try:
-        key_type = validator.create_possibly_template_dependent_type(type_key, f_location_id)
+        key_type = validator.create_possibly_template_dependent_type(key_without_marker, f_location_id)
         if template_substitution:
             # The key is written in source text, so it can name the enclosing concept's template
             # variables (`{"Add<T>": ...}`); ground them before anything is decided from the type.
