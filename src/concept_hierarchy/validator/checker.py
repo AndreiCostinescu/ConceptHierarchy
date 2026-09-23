@@ -501,8 +501,6 @@ class ConceptHierarchyChecker:
         assert not visited_files, visited_files
 
         # -- concepts --------------------------------------------------------
-        if not concept_definition:
-            raise CHSemanticError("The Concept Hierarchy has no concepts!", base_location_id, part=PathPart.VALUE)
         concept_aliases: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
         for concept_name, concept_def in concept_definition.items():  # type: str, object
