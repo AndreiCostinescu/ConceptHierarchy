@@ -79,7 +79,7 @@ TemplateConstraintFormulae are either:
         - And, Or, Not
         - HierarchyOperators
             - X, X., X*, ^X, ^X*
-    - NonTypeTemplateConstraintFormula (\equiv LiteralConstraintFormula)
+    - NonTypeTemplateConstraintFormula (\\equiv LiteralConstraintFormula)
         - LiteralValueConstraintFormula
 - StructureConstraintFormula
     - ConstraintGroup
@@ -175,7 +175,7 @@ class Unconstrained(NonStructureConstraintFormula):
     The vacuously true constraint: any type or literal value satisfies it.
 
     Most importantly, ``Neg(<Unconstrained>)`` means that no value satisfies it.
-    ``Neg(<Unconstrained>)`` \equiv ``<Empty>``
+    ``Neg(<Unconstrained>)`` \\equiv ``<Empty>``
 
     ``Unconstrained`` represents both non-type values and type-values;
     it is the only constraint (so far) that merges the type and non-type
