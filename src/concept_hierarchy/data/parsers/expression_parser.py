@@ -2227,8 +2227,8 @@ def parse_function_evaluation_expression(
     # A `FunctionComposition` value is recognized by its instantiation schema and never by this function:
     # no Function returns a `FunctionComposition`, so `res(K) <= tau` could not hold anyway, and asking it
     # here is what used to reject `{"LessEqual<Number>": ...}` at a `FunctionCompositionRes<Boolean>` site
-    # with "Boolean is not a subtype of FunctionCompositionRes<Boolean>". Only the `"properties": "args"`
-    # node evaluates a composed Function, and it calls in with no expected type at all.
+    # with "Boolean is not a subtype of FunctionCompositionRes<Boolean>".
+    # Only the `"properties": "args"` node evaluates a composed Function, and it calls in with no expected type at all.
     evaluate_here = (
         is_function_subtype
         and not possible_function_composition
@@ -2488,7 +2488,7 @@ def parse_function_evaluation_expression(
 
     if not was_error:
         expressions_res.append(f_eval)
-    return expressions_res, key_type, True, FunctionInterpretation.UNSPECIFIED
+    return expressions_res, key_type, True, interpretation
 
 
 def _parse_expression_of_json_object(
