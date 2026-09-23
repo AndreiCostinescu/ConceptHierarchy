@@ -248,7 +248,9 @@ def validate_instantiation_constraints_in_template_argument_value(
             return [
                 CHSemanticError(
                     f"The existing constraints on the template variables {template_context.variables} are incompatible "
-                    f"with the instantiation constraints of {ch_type}!",
+                    f"with the instantiation constraints of {ch_type}\n"
+                    f"Existing constraint: {template_context.constraint}\n"
+                    f"Determined constraint: {to_check_template_context.determined.constraint}!",
                     location_id=location_id,
                 )
             ]
@@ -384,7 +386,8 @@ def validate_complete_instantiation_of_type(
             # there was no non-template-variable-related error and no template constraints => this means failure!
             err = CHSemanticError(
                 f"Sub structure-formula {formula.structure_constraint} passed without constraints on template arguments"
-                f" {template_context.original} => negation fails",
+                f" {template_context.original} => negation fails\n{complete_instantiation} does not satisfy "
+                f"Neg({formula.structure_constraint})",
                 location_id=location_id,
             )
             return [err]
@@ -538,7 +541,8 @@ def _validate_not(
         # there was no non-template-variable-related error and no template constraints => this means failure!
         err = CHSemanticError(
             f"Sub formula {formula.sub_formula} passed without constraints on template arguments"
-            f" {state.template_context.original} => negation fails",
+            f" {state.template_context.original} => negation fails\n{template_argument_value} does not satisfy "
+            f"Not({formula.sub_formula})",
             location_id=state.location_id,
         )
         state.errors.append(err)
