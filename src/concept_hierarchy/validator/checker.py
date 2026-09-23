@@ -260,7 +260,7 @@ class ConceptHierarchyChecker:
         concept_locations = {concept_name: concept_location_id for concept_name in concept_definition}
 
         # -- external concepts -----------------------------------------------
-        external_concepts_content = concept_hierarchy[ConceptHierarchyDefinition.model_concepts].get(
+        external_concepts_content = concept_hierarchy.get(ConceptHierarchyDefinition.model_concepts, {}).get(
             ConceptHierarchyDefinition.model_concepts_external, []
         )
         if not isinstance(external_concepts_content, list):
