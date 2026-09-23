@@ -2516,7 +2516,7 @@ def _parse_expression_of_json_object(
         force_function_evaluation_interpretation = True
     else:
         force_function_evaluation_interpretation = None
-    expressions_res, key_type, is_function_subtype, function_interpretation = parse_function_evaluation_expression(
+    expressions_res, key_type, is_function_subtype, intended_interpretation = parse_function_evaluation_expression(
         key,
         value,
         expr_type,
@@ -2531,21 +2531,20 @@ def _parse_expression_of_json_object(
         expansion_depth,
     )
     if key_type is None or ensure_expression_invariant(expressions_res, expr_type):
-        return expressions_res, function_interpretation
+        return expressions_res, intended_interpretation
 
-    # `COMPOSITION` says the object is a composition of `K`, and `EVALUATION` that it is a call of it --
-    # neither is the Function *value*, which is what a `Narrow` builds. Only `INSTANTIATION` and the two
-    # undecided states may take this branch, and that is what separates the two readings of an
-    # argument-less Function at a `FunctionCompositionRes<T>` site: they are otherwise identical JSON.
-    narrow_is_admissible = function_interpretation not in (
-        FunctionInterpretation.COMPOSITION,
-        FunctionInterpretation.EVALUATION,
-    )
-    if narrow_is_admissible and _check_if_subtype(validator, key_type, expr_type, expr_template_context, location_id):
+    # If the interpretation is COMPOSITION or EVALUATION, this can not be a `Narrow` expression.
+    # If the interpretation is UNSPECIFIED, INSTANTIATION, or NOT_AN_EVALUATION, this can be a `Narrow` expression.
+    # Confusion may arise at a `FunctionCompositionRes<Function>` site, where the "T" instantiation schema branch is a
+    # `Narrow` Function instantiation, but could also be the composition or evaluation of an argumentless Function.
+    if intended_interpretation in {FunctionInterpretation.COMPOSITION, FunctionInterpretation.EVALUATION}:
+        return expressions_res, intended_interpretation
+
+    if _check_if_subtype(validator, key_type, expr_type, expr_template_context, location_id):
         if not recursively_parse:
             expressions_res.append(NarrowExpression(None, key_type, key_type != expr_type))
             if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res, function_interpretation
+                return expressions_res, intended_interpretation
         elif isinstance(key_type, TemplateVariable):
             # `T` names no concept, so there is no instantiation schema to check the value against and no
             # `is_type_abstract` to ask -- the schema is whatever `T` turns out to be. The interpretation is still
@@ -2553,7 +2552,7 @@ def _parse_expression_of_json_object(
             # site every interpretation the value could still have is kept, and the grounded reparse decides.
             expressions_res.append(PossibleNarrowExpression(key_type))
             if ensure_expression_invariant(expressions_res, expr_type):
-                return expressions_res, function_interpretation
+                return expressions_res, intended_interpretation
         else:
             # abstract Types do not have instantiation schemas
             narrow_location_id = location_id + [key]
@@ -2571,7 +2570,7 @@ def _parse_expression_of_json_object(
             if narrow_res.parsed is not None and narrow_res.parsed.is_valid():
                 expressions_res.append(NarrowExpression(narrow_res.parsed, key_type, key_type != expr_type))
                 if ensure_expression_invariant(expressions_res, expr_type):
-                    return expressions_res, function_interpretation
+                    return expressions_res, intended_interpretation
             attempts.append(_instantiation_attempt(ExpressionKind.NARROW, key_type, narrow_res))
     else:
         attempts.append(
@@ -2582,8 +2581,8 @@ def _parse_expression_of_json_object(
             )
         )
 
-    # if expr_type is InstantiatedTypes, this expression is neither a `FEval` nor a `Narrow`
-    return expressions_res, function_interpretation
+    # if expr_type is InstantiatedType, this expression is neither a `FEval` nor a `Narrow`
+    return expressions_res, intended_interpretation
 
 
 class SubtypeVerdict(Enum):
