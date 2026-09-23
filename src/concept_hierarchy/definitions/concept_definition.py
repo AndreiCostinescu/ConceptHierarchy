@@ -417,7 +417,7 @@ class ConceptDefinition(DefinitionInsideConceptHierarchy):
             super().location_of_impl(*keywords),
             ConceptDefinition.definition_location(self),
             location_check=self.name,
-            previous_location=self.definition_location_id[-1],
+            previous_location=self.definition_location_id[-1] if self.definition_location_id else None,
             allow_start_at_this_location=True,
         )
         # processes top-level concept keys:
