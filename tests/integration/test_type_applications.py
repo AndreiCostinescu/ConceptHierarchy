@@ -46,11 +46,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 
 import pytest
 
 from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType, InstantiatedVariadicGroup
-from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, ConceptHierarchyError
 from tests.integration.test_expression_parsing import build_hierarchy, check_hierarchy, error_messages
 
 # --------------------------------------------------------------------------------------------------
@@ -766,3 +767,40 @@ class TestOnlyTheIdentifierSyntaxMayIntertwine:
     def test_an_identifier_may_not_be_mixed_with_a_written_group(self):
         """Both syntaxes answering the same question at once has no defined meaning."""
         assert refuses(self.ORDER, "Target<[String], !Number>", identifiers=self.IDENTIFIED)
+
+    def test_an_identifier_may_not_be_mixed_with_a_written_group_even_after_the_number_of_parameters(self):
+        application = "Target<String, !Number, [!Number]>"
+        with pytest.raises(
+            CHSyntaxError,
+            match=rf"Variadic group identifiers are only allowed in template arguments! "
+            rf"Found at position 25 of '{re.escape(application)}'",
+        ):
+            check_hierarchy(build_hierarchy(written(self.ORDER, application, identifiers=self.IDENTIFIED)))
+        application = "Target<String, !Number, !Number, [Number]>"
+        with pytest.raises(
+            CHSyntaxError,
+            match=rf"Can not define template argument values combining variadic groups and types with variadic "
+            rf"identifiers! Found at '{re.escape(application)}'",
+        ):
+            check_hierarchy(build_hierarchy(written(self.ORDER, application, identifiers=self.IDENTIFIED)))
+        application = "Target<String, String, String, [Number]>"
+        with pytest.raises(
+            CHSemanticError,
+            match=r"Writing a variadic group makes the match positional. Thus, every template parameter needs one value"
+            r" at its defined position",
+        ):
+            check_hierarchy(build_hierarchy(written(["A..."], application, identifiers={"A": ""})))
+        application = "Target<[Number], !String>"
+        with pytest.raises(
+            CHSyntaxError,
+            match=rf"Can not define template argument values combining variadic groups and types with variadic "
+            rf"identifiers! Found at '{re.escape(application)}'",
+        ):
+            check_hierarchy(build_hierarchy(written(["A...", "B..."], application, identifiers={"A": "", "B": "!"})))
+        application = "Target<[Number], String>"
+        with pytest.raises(
+            CHSemanticError,
+            match=rf"String is not a variadic group, but the expected B... is variadic.\n[\s\S]*"
+            rf"{re.escape('Target<A..., B...>')} is matched positionally once any variadic group is written.",
+        ):
+            check_hierarchy(build_hierarchy(written(["A...", "B..."], application, identifiers={"A": "!", "B": ""})))

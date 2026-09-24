@@ -45,6 +45,7 @@ from concept_hierarchy.data.types.parsed_type import (
     TemplateArgumentVariadicGroup,
     TemplateArgumentWithVariadicId,
 )
+from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, LocationId
 
 
@@ -201,70 +202,103 @@ def _validate_type_and_parse_to_variadic_groups(
             location_id=location_id,
         )
 
-    # check whether the variadic group identifiers syntax is mixed with the explicit list-syntax
-    uses_variadic_groups = False
-    allow_empty_variadic_identifier = (
-        "" in template_data.defined_variadic_group_identifiers or nr_variadic_template_arguments < nr_template_arguments
-    )
-    count_values_without_variadic_identifier = 0
-    for t_arg_name, parsed_t_arg_val in zip(template_context.variables, parsed_template_arguments):
-        is_variadic_group = isinstance(parsed_t_arg_val, TemplateArgumentVariadicGroup)
-        uses_variadic_groups |= is_variadic_group
-        if (t_arg_name in template_context.variadic_variables) != is_variadic_group:
-            # if found a variadic group at a position where none was expected,
-            # or didn't find a variadic group at a position where one was expected,
-            #  then the ParsedType is using the syntax with variadic group ids
-            uses_variadic_ids = True
-        # check that the used variadic ids actually match a variadic group defined in the concept definition
-        if isinstance(parsed_t_arg_val, TemplateArgumentWithVariadicId):
-            # if the variadic identifier is not known for this type (no variadic template argument defines it)
-            if (
-                parsed_t_arg_val.has_variadic_identifier
-                and parsed_t_arg_val.variadic_group_identifier not in template_data.defined_variadic_group_identifiers
-            ):
-                raise CHSemanticError(
-                    f"Found a template argument value {parsed_t_arg_val.full_name} with an undefined variadic "
-                    f"identifier {parsed_t_arg_val.variadic_group_identifier}.\nDefined variadic identifiers "
-                    f"are {template_data.defined_variadic_group_identifiers!r}",
-                    location_id=location_id,
-                )
-            # if empty variadic identifier is not allowed
-            #   (i.e. when all arguments are variadic and none of them defines the empty variadic identifier)
-            # but the empty variadic identifier was used (by not-specifying one)
-            if not parsed_t_arg_val.has_variadic_identifier and not allow_empty_variadic_identifier:
-                raise CHSemanticError(
-                    f"Empty variadic identifier is not allowed for template argument value {parsed_t_arg_val} of "
-                    f"{full_type_name}!",
-                    location_id=location_id,
-                )
-            count_values_without_variadic_identifier += not parsed_t_arg_val.has_variadic_identifier
-    if uses_variadic_ids and uses_variadic_groups:
-        # Can't catch the mixed-syntax in the type parsing
-        # (because the empty variadic identifier does not look like a variadic identifier).
-        # This is the check that checks the correct use of the empty variadic identifier with variadic groups
-        # Example: Instance<T1..., T2...> (with T1: "", and T2: "!") instantiated as Instance<Concept, []>
-        #   looks valid at parse time, but is actually invalid
-        assert "" in template_data.defined_variadic_group_identifiers
-        raise CHSemanticError(
-            f"Can not define template argument values combining variadic groups and types with variadic "
-            f"identifiers! Found at {ch_type.full_name!r}",
-            location_id=location_id,
-        )
-    non_variadic_template_arguments = [
-        x for x in template_context.variables if x not in template_context.variadic_variables
-    ]
-    if "" not in template_data.defined_variadic_group_identifiers and count_values_without_variadic_identifier < len(
-        non_variadic_template_arguments
+    group_names = [name for name in template_context.variables if name in template_context.variadic_variables]
+    # Writing anything *as* a group -- bracketed, or a variadic parameter named on its own -- puts the whole
+    # application in the group syntax, where the match is strictly **positional**: argument i fills parameter i,
+    # and its kind has to be the kind that parameter takes.
+    #
+    # The identifier syntax may specify arguments out of order: there the members of a group are written bare
+    # (not in a group) and told apart by their prefix, so they may appear among the non-variadic arguments.
+    # Matching by *counting* kinds instead accepts every permutation of a correct application:
+    # `Target<G, Pet, H, Number>` has the right number of groups and the right number of values, and is wrong at two of
+    # its four positions.
+    if any(
+        isinstance(t_arg_value, TemplateArgumentVariadicGroup) or _forwards_a_group(t_arg_value, validator)
+        for t_arg_value in parsed_template_arguments
     ):
-        raise CHSemanticError(
-            f"The template-instantiation of {full_type_name} in {ch_type.full_name} does not specify a value for "
-            f"the non-variadic template argument(s) "
-            f"{non_variadic_template_arguments[count_values_without_variadic_identifier:]}",
-            location_id=location_id,
+        _positional_match_checks(ch_type, parsed_template_arguments, template_context, validator, location_id)
+    else:
+        # Either there are no template arguments, only non-variadic template parameters, or the syntax uses variadic ids
+        # `variadicGroupIdentifiers` is a *disambiguator*, not a prerequisite: it is what lets an author write
+        # the bare argument form when several groups could claim an argument. So the empty identifier is allowed
+        # whenever nothing is left to settle -- one declares it, or a non-variadic parameter has to take bare arguments
+        # anyway, or there is only one group for a bare argument to join.
+        has_identifiers_defined = len(template_data.defined_variadic_group_identifiers) != 0
+        is_empty_identifier_defined = "" in template_data.defined_variadic_group_identifiers
+        allow_empty_variadic_identifier = (
+            is_empty_identifier_defined
+            or nr_variadic_template_arguments < nr_template_arguments
+            or (nr_variadic_template_arguments == 1 and not has_identifiers_defined)
         )
-    # Only bring to canonic form (i.e. only using variadic groups) if variadic ids are used
-    if uses_variadic_ids:
-        ch_type = _make_canonic(ch_type, template_context.variables, template_data.variadic_group_identifiers)
+        count_values_without_variadic_identifier = 0
+        uses_variadic_ids |= len(template_context.variadic_variables) > 0
+        # check that the used variadic ids actually match a variadic group defined in the concept definition
+        for parsed_t_arg_val in parsed_template_arguments:
+            assert not _forwards_a_group(parsed_t_arg_val, validator)
+            if isinstance(parsed_t_arg_val, TemplateArgumentWithVariadicId):
+                # if the variadic identifier is not known for this type (no variadic template argument defines it)
+                if (
+                    parsed_t_arg_val.has_variadic_identifier
+                    and parsed_t_arg_val.variadic_group_identifier
+                    not in template_data.defined_variadic_group_identifiers
+                ):
+                    if has_identifiers_defined:
+                        message = (
+                            f"Found a template argument value {parsed_t_arg_val.full_name} with an undefined "
+                            f"variadic identifier '{parsed_t_arg_val.variadic_group_identifier}'.\nDefined "
+                            f"variadic identifiers are {template_data.defined_variadic_group_identifiers!r}"
+                        )
+                    else:
+                        message = (
+                            f"Found a template argument value {parsed_t_arg_val.full_name} with the variadic "
+                            f"identifier '{parsed_t_arg_val.variadic_group_identifier}'.\nThere are no defined "
+                            f"variadic identifiers in {full_type_name}."
+                        )
+                    raise CHSemanticError(message, location_id=location_id)
+                # if empty variadic identifier is not allowed
+                #   (i.e. when all arguments are variadic and none of them defines the empty variadic identifier)
+                # but the empty variadic identifier was used (by not-specifying one)
+                if not parsed_t_arg_val.has_variadic_identifier and not allow_empty_variadic_identifier:
+                    assert group_names
+                    # Only the shorthand can be ambiguous -- a written group fills one parameter and never gets here.
+                    # A plain value with no identifier and the empty identifier is not defined among the identifiers of
+                    # the variadic template parameters.
+                    groups = ", ".join(f'"{name}..."' for name in group_names)
+                    message = (
+                        f"{parsed_t_arg_val.full_name} in {ch_type.full_name} does not specify to which variadic group "
+                        f"of {validator.full_type_name(ch_type.clean_name)} it belongs; the groups are [{groups}].\n"
+                        f"Write the groups out -- {ch_type.clean_name}<{', '.join('[...]' for _ in group_names)}> -- or"
+                    )
+                    if not has_identifiers_defined:
+                        message += (
+                            f' declare "{HiddenImplementationDefinition.hidden_template_arguments_variadic_ids}" and'
+                        )
+                    message += " prefix the value with the one for its group."
+                    if has_identifiers_defined:
+                        message += f"\nAvailable group identifiers are: {template_data.variadic_group_identifiers!r}"
+                    raise CHSemanticError(message, location_id=location_id)
+                count_values_without_variadic_identifier += not parsed_t_arg_val.has_variadic_identifier
+        non_variadic_template_arguments = [
+            x for x in template_context.variables if x not in template_context.variadic_variables
+        ]
+        if not is_empty_identifier_defined and count_values_without_variadic_identifier < len(
+            non_variadic_template_arguments
+        ):
+            raise CHSemanticError(
+                f"The template-instantiation of {full_type_name} in {ch_type.full_name} does not specify a value for "
+                f"the non-variadic template argument(s) "
+                f"{non_variadic_template_arguments[count_values_without_variadic_identifier:]}",
+                location_id=location_id,
+            )
+        # Only bring to canonic form (i.e. only using variadic groups) if variadic ids are used.
+        if uses_variadic_ids:
+            ch_type = _make_canonic(
+                ch_type,
+                template_context.variables,
+                template_context.variadic_variables,
+                template_data.variadic_group_identifiers,
+                validator,
+            )
 
     # `ch_type` is now definitely in canonic form (only contains variadic groups)
     if not ch_type.is_templated:
@@ -287,31 +321,172 @@ def _validate_type_and_parse_to_variadic_groups(
     )
 
 
+def _forwards_a_group(t_arg_value: TemplateArgumentValue, validator: TypeValidator) -> bool:
+    """
+    Whether ``t_arg_value`` is a variadic parameter named **on its own**, which denotes a whole group.
+
+    This is what separates the two bare forms, and they follow opposite rules. A plain value -- a concept
+    or an ordinary variable -- *joins* a group, so it is routed by identifier and a group nothing names
+    stays empty. A variadic parameter *is* a group, so it *fills* one, positionally, and a group left
+    unfilled was not said rather than said to be empty.
+
+    "On its own" is both of the exclusions below, and each is a different way of saying something else:
+
+    * an explicit identifier -- ``!G`` -- asks to be routed to that group, which is the opposite of being
+      placed positionally, so the author has already said where it goes;
+    * the expansion operator -- ``G...`` -- splices the *members* of ``G`` into the group being built,
+      which is what makes ``<[G...], [H...]>`` mean something different from ``<G, H>`` only in spelling
+      and ``<[G..., H...]>`` mean something different in fact.
+    """
+    return (
+        isinstance(t_arg_value, ParsedType)
+        and not t_arg_value.has_variadic_template_expansion
+        and not t_arg_value.has_variadic_identifier
+        and validator.is_variadic_template_variable(t_arg_value.clean_name)
+    )
+
+
+def _positional_match_checks(
+    ch_type: ParsedType,
+    parsed_template_arguments: tuple[TemplateArgumentValue, ...],
+    template_context: TemplateContext,
+    validator: TypeValidator,
+    location_id: LocationId,
+) -> None:
+    """
+    Every parameter matched by the argument written at its position, and by that one only.
+
+    Two things are checked (they fail differently): the **arity**, because in this syntax nothing defaults and nothing
+    is collected, so each parameter takes exactly one argument; and the **kind** at each position, because a group fills
+    a variadic parameter and a value fills a plain one, never the other way round.
+    """
+    declared_name = validator.full_type_name(ch_type.clean_name)
+    order = template_context.variables
+    if len(parsed_template_arguments) != len(order):
+        groups = ", ".join(f"{name}..." if name in template_context.variadic_variables else name for name in order)
+        raise CHSemanticError(
+            f"{ch_type.full_name} writes {len(parsed_template_arguments)} template argument(s), but "
+            f"{declared_name} declares {len(order)}: {groups}.\nWriting a variadic group makes the match positional. "
+            f"Thus, every template parameter needs one value at its defined position; an empty group is written [].",
+            location_id=location_id,
+        )
+    for index, (parameter, t_arg_value) in enumerate(zip(order, parsed_template_arguments)):
+        parameter_is_variadic = parameter in template_context.variadic_variables
+        value_is_a_group = isinstance(t_arg_value, TemplateArgumentVariadicGroup) or _forwards_a_group(
+            t_arg_value, validator
+        )
+        if parameter_is_variadic == value_is_a_group:
+            continue
+        written = f"{parameter}..." if parameter_is_variadic else parameter
+        if parameter_is_variadic:
+            reason = f"{t_arg_value.full_name} is not a variadic group, but the expected {written} is variadic"
+            remedy = f"Write it as [{t_arg_value.full_name}], or move it to the position it belongs at"
+        else:
+            reason = f"a variadic group is written where {written} is declared, which is not variadic"
+            remedy = "Move the group to its own position"
+        raise CHSemanticError(
+            f"At position {index} of {ch_type.full_name}: {reason}.\n"
+            f"{declared_name} is matched positionally once any variadic group is written. {remedy}.",
+            location_id=location_id,
+        )
+
+
 def _make_canonic(
-    ch_type: ParsedType, template_argument_order: tuple[str, ...], variadic_group_identifiers: dict[str, str]
+    ch_type: ParsedType,
+    template_argument_order: tuple[str, ...],
+    variadic_template_arguments: tuple[str, ...],
+    variadic_group_identifiers: dict[str, str],
+    validator: TypeValidator,
 ) -> ParsedType:
+    # A group written *as* a group -- bracketed, or a variadic parameter named on its own -- fills one group parameter,
+    # in the order written. Those are taken out first: they carry no identifier to be routed by, and the arity check in
+    # the caller has already established there is one per parameter.
+    # What is left is the shorthand, which is what the buckets below are for.
+    written_groups = [
+        t_arg_value
+        for t_arg_value in ch_type.template_arguments
+        if isinstance(t_arg_value, TemplateArgumentVariadicGroup) or _forwards_a_group(t_arg_value, validator)
+    ]
+    positional_groups: dict[str, TemplateArgumentVariadicGroup] = {
+        t_arg: value
+        if isinstance(value, TemplateArgumentVariadicGroup)
+        # Canonic form is groups all the way, so forwarding becomes a group holding the parameter with the
+        # expansion operator: `Target<G>` is `Target<[G...]>` written short.
+        else TemplateArgumentVariadicGroup(
+            (
+                ParsedType(
+                    variadic_group_identifier=None,
+                    name=value.name,
+                    has_variadic_template_expansion=True,
+                    template_arguments=value.template_arguments,
+                    function_arguments=value.function_arguments,
+                ),
+            )
+        )
+        for t_arg, value in zip(
+            [t for t in template_argument_order if t in variadic_template_arguments], written_groups
+        )
+    }
+
     # verify variadicGroupIdentifiers and create the variadic groups
     variadic_groups: dict[str | None, list[TemplateArgumentWithVariadicId]] = {}
     # collect variadic group elements
     for parsed_t_arg_val in ch_type.template_arguments:
+        if isinstance(parsed_t_arg_val, TemplateArgumentVariadicGroup) or _forwards_a_group(
+            parsed_t_arg_val, validator
+        ):
+            continue
         assert isinstance(parsed_t_arg_val, TemplateArgumentWithVariadicId)
         variadic_identifier = parsed_t_arg_val.variadic_group_identifier
         if variadic_identifier not in variadic_groups:
             variadic_groups[variadic_identifier] = []
         variadic_groups[variadic_identifier].append(parsed_t_arg_val)
+    # The `None` bucket is shared: it holds the arguments of the group whose identifier is the empty one
+    # *and* every argument of a non-variadic parameter, because neither carries an identifier. Split it by
+    # position, the way a variadic parameter list is read in other programming languages:
+    # the plain parameters declared before the group claim from the front, those declared after it claim from the back,
+    # and the group takes what is left in the middle -- which is nothing at all when the type has no variadic parameter
+    # using the empty identifier, and the whole bucket when it has no plain ones.
+    bare_arguments = variadic_groups.get(None, [])
+    plain_arguments_before_the_group = 0
+    seen_the_empty_identifier_group = False
+    for t_arg in template_argument_order:
+        if t_arg in variadic_template_arguments:
+            seen_the_empty_identifier_group |= variadic_group_identifiers.get(t_arg, "") == ""
+        elif not seen_the_empty_identifier_group:
+            plain_arguments_before_the_group += 1
+    number_of_plain_arguments = len(template_argument_order) - len(variadic_template_arguments)
+    plain_arguments_after_the_group = number_of_plain_arguments - plain_arguments_before_the_group
+    empty_identifier_group = bare_arguments[
+        plain_arguments_before_the_group : len(bare_arguments) - plain_arguments_after_the_group
+    ]
+    # The plain parameters, back in declaration order: those before the group, then those after it.
+    plain_arguments = (
+        bare_arguments[:plain_arguments_before_the_group]
+        + bare_arguments[len(bare_arguments) - plain_arguments_after_the_group :]
+        if plain_arguments_after_the_group
+        else bare_arguments[:plain_arguments_before_the_group]
+    )
+
     # create curated template argument
     curated_template_arguments: list[TemplateArgumentValue] = []
-    passed_number_of_variadic_template_arguments = 0
+    number_of_plain_arguments_consumed = 0
     count_template_arguments_parsed = 0
     # check whether the variadic group identifiers are correctly used!
     for index, t_arg in enumerate(template_argument_order):
-        if t_arg in variadic_group_identifiers:
-            t_arg_var_id = variadic_group_identifiers[t_arg]
-            if t_arg_var_id == "":
-                t_arg_var_id = None
-            if t_arg_var_id in variadic_groups:
+        # Whether the *parameter* is variadic, not whether an identifier was declared for it: an
+        # undeclared group is still a group, and its identifier is simply the empty one. Keying this on
+        # the declaration sent every parameter of an identifier-less type down the non-variadic branch,
+        # where it either crashed or mis-assigned the arguments.
+        if t_arg in positional_groups:
+            count_template_arguments_parsed += 1
+            curated_template_arguments.append(positional_groups[t_arg])
+        elif t_arg in variadic_template_arguments:
+            t_arg_var_id = variadic_group_identifiers.get(t_arg, "")
+            group_arguments = empty_identifier_group if t_arg_var_id == "" else variadic_groups.get(t_arg_var_id, [])
+            if group_arguments:
                 new_variadic_group_elements: list[ParsedType | TemplateArgumentLiteral] = []
-                for group_elem in variadic_groups[t_arg_var_id]:
+                for group_elem in group_arguments:
                     # remove the variadic identifier from all template argument values inside a variadic group!
                     if isinstance(group_elem, TemplateArgumentLiteral):
                         new_variadic_group_elements.append(
@@ -319,11 +494,21 @@ def _make_canonic(
                         )
                     else:
                         assert isinstance(group_elem, ParsedType)
+                        # A variadic template variable written *without* brackets is the group itself being handed on,
+                        # not a member of a new one -- `Inner<T>` is what `Inner<[T...]>` spells out.
+                        # It is the only reading that type-checks: a bare variadic variable already denotes a group,
+                        # and a group is not a member of a group. Canonic form is the list form, so the operator is what
+                        # the forwarding becomes here.
+                        # Brackets are the other reading and keep their meaning: `Inner<[T]>` constructs a
+                        # group, so it reaches `_validate_type` unchanged and is refused there.
+                        forwards_a_group = validator.is_variadic_template_variable(group_elem.clean_name)
                         new_variadic_group_elements.append(
                             ParsedType(
                                 variadic_group_identifier=None,
                                 name=group_elem.name,
-                                has_variadic_template_expansion=group_elem.has_variadic_template_expansion,
+                                has_variadic_template_expansion=(
+                                    group_elem.has_variadic_template_expansion or forwards_a_group
+                                ),
                                 template_arguments=group_elem.template_arguments,
                                 function_arguments=group_elem.function_arguments,
                             )
@@ -332,17 +517,18 @@ def _make_canonic(
                 curated_template_arguments.append(TemplateArgumentVariadicGroup(tuple(new_variadic_group_elements)))
             else:
                 curated_template_arguments.append(TemplateArgumentVariadicGroup(()))
-            passed_number_of_variadic_template_arguments += 1
         else:
-            # this is clearly a non-variadic template argument;
-            # all non-variadic template argument values live inside the variadic_groups[None] list entry
-            index_in_empty_variadic_group = index - passed_number_of_variadic_template_arguments
-            assert len(variadic_groups[None]) > index_in_empty_variadic_group
+            # this is clearly a non-variadic template argument; its value carries no identifier either,
+            # so it comes out of the shared bucket at the position the split above assigned it.
+            assert len(plain_arguments) > number_of_plain_arguments_consumed, (
+                f"{ch_type.full_name} has no value for the non-variadic template argument {t_arg}"
+            )
             count_template_arguments_parsed += 1
-            curated_template_arguments.append(variadic_groups[None][index_in_empty_variadic_group])
+            curated_template_arguments.append(plain_arguments[number_of_plain_arguments_consumed])
+            number_of_plain_arguments_consumed += 1
     assert count_template_arguments_parsed == len(ch_type.template_arguments), (
-        f"Expected to parse {len(ch_type.template_arguments)} arguments, parsed only {count_template_arguments_parsed} "
-        f"arguments!"
+        f"Expected to parse {len(ch_type.template_arguments)} arguments of {ch_type.template_arguments}, parsed only "
+        f"{count_template_arguments_parsed} arguments!"
     )
     return ParsedType(
         variadic_group_identifier=ch_type.variadic_group_identifier,
