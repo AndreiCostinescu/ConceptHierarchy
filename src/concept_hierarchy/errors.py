@@ -16,56 +16,132 @@
 errors.py — Custom exception hierarchy for the ConceptHierarchy compiler.
 """
 
+from __future__ import annotations
+
 import json
+import warnings
+from collections import UserList
+from enum import Enum
 from typing import TypeAlias
 
 from concept_hierarchy.utils import tab
 
-LocationId: TypeAlias = list[str | int]
+PathSegment: TypeAlias = str | int
+LocationIdLike: TypeAlias = list[PathSegment]
 
 
-def print_location_id(location_id: LocationId):
-    return ":".join(json.dumps(x) for x in location_id)
+class LocationId(UserList[PathSegment]):
+    def __str__(self):
+        return repr(self)
+
+    def __repr__(self):
+        return self.print()
+
+    def print(self):
+        return ": ".join(json.dumps(x) for x in self)
+
+
+class PathPart(Enum):
+    """
+    Whether a :class:`ConceptHierarchyError` refers to the *key* / property name at ``path``,
+     or to the *value* found under that key.
+    """
+
+    KEY = "key"
+    VALUE = "value"
+    NONE = ""
 
 
 class ConceptHierarchyError(Exception):
     """Base class for all ConceptHierarchy compiler errors."""
 
-    def __init__(self, message: str, location_id: LocationId | None = None):
+    def __init__(
+        self,
+        message: str,
+        location_id: LocationIdLike | LocationId | None,
+        part: PathPart,
+        causes: list[ConceptHierarchyError] | None,
+    ):
         super().__init__(message)
         if location_id is None:
             self.prefix = ""
-        elif not location_id:  # location_id == []
-            self.prefix = "ROOT"
+            self.location_id = location_id
         else:
-            self.prefix = print_location_id(location_id)
+            if not isinstance(location_id, LocationId):
+                self.location_id = LocationId(location_id)
+            else:
+                self.location_id = location_id
+            if not self.location_id:  # location_id == []
+                self.prefix = "ROOT"
+            else:
+                self.prefix = self.location_id.print()
+        if part is PathPart.KEY:
+            self.prefix += f" ({part.value})"
+
+        self.part = part
+        self.causes = causes or []
+
+    def __str__(self):
+        return self.print()
 
     def __repr__(self):
         return self.print()
 
-    def print(self, indent: int = 0):
+    def print(self, indent: int = 0) -> str:
         """Prints the Concept Hierarchy error message with indents and the location causing the error."""
-        message_lines = str(self).split("\n")
-        prefix_str = f"[{self.prefix}] " if self.prefix else ""
-        indent_str = tab * indent + prefix_str
-        return indent_str + ("\n" + indent_str).join(message_lines)
+        message_lines = self.args[0].split("\n")
+        if self.prefix:
+            prefix_str = f"[{self.prefix}] " if self.prefix else ""
+            content_indent_str = tab * (indent + 1)
+            indent_str = tab * indent + prefix_str + "\n" + content_indent_str
+        else:
+            indent_str = tab * indent
+            content_indent_str = tab * indent
+        text = indent_str + ("\n" + content_indent_str).join(message_lines)
+        for cause in self.causes:
+            text += "\n" + cause.print(indent + 1)
+        return text
 
 
 class CHSyntaxError(ConceptHierarchyError):
     """Raised when the JSON definition violates ConceptHierarchy syntax rules."""
 
-    def __init__(self, message: str, location_id: LocationId | None = None) -> None:
-        super().__init__(message, location_id)
-        self.location_id = location_id
+    def __init__(
+        self,
+        message: str,
+        location_id: LocationIdLike | LocationId | None = None,
+        part: PathPart = PathPart.NONE,
+        causes: list[ConceptHierarchyError] | None = None,
+    ) -> None:
+        super().__init__(message, location_id, part, causes)
 
 
 class CHSemanticError(ConceptHierarchyError):
     """Raised when the hierarchy is syntactically valid but semantically incorrect."""
 
-    def __init__(self, message: str, location_id: LocationId | None = None) -> None:
-        super().__init__(message, location_id)
-        self.location_id = location_id
+    def __init__(
+        self,
+        message: str,
+        location_id: LocationIdLike | LocationId | None = None,
+        part: PathPart = PathPart.NONE,
+        causes: list[ConceptHierarchyError] | None = None,
+    ) -> None:
+        super().__init__(message, location_id, part, causes)
 
 
 class CodegenError(ConceptHierarchyError):
     """Raised when code generation fails for a valid hierarchy."""
+
+
+class CHWarning(CHSemanticError, Warning):
+    def __str__(self):
+        return "\n" + self.print()
+
+
+def warn(
+    message: str,
+    location_id: LocationIdLike | LocationId | None,
+    part: PathPart | None = None,
+    causes: list[ConceptHierarchyError] | None = None,
+) -> None:
+    warnings.warn(CHWarning(message, location_id, part, causes))

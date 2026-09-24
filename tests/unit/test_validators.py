@@ -16,19 +16,46 @@
 
 import pytest
 
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
+from concept_hierarchy.errors import CHSemanticError, CHSyntaxError, CHWarning
 from concept_hierarchy.validator.checker import check_model
 
 
 def _model(concepts, name="MyHierarchy"):
-    return ConceptHierarchyModel.create_from_data({"name": name, "concepts": concepts})
+    return ConceptHierarchyDefinition.create_from_data({"name": name, "concepts": concepts})
 
 
 class TestSyntaxValidator:
     def test_valid_passes(self):
-        model = _model({"Foo": {"data": {"properties": {"x": "Integer"}}}})
+        model = _model(
+            {
+                "Foo": {"data": {"properties": {"x": "Integer"}}},
+                "Integer": {"directParents": ["ValueDomain"], "data": {"defaultSerialization": "integer"}},
+                "ValueDomain": {"data": {}},
+            }
+        )
         check_model(model)  # should not raise
+
+    def test_property_definition_without_value_domain(self):
+        with pytest.raises(
+            CHSemanticError,
+            match=r"ParsedType 'ValueDomain' is not a template variable \(in this context\) nor a concept!",
+        ):
+            model = _model({"Foo": {"data": {"properties": {"x": "Integer"}}}, "Integer": {"data": {"properties": {}}}})
+            check_model(model)  # should raise because ValueDomain is not defined
+
+    def test_property_definition_with_no_value_domain_type(self):
+        with pytest.raises(
+            CHSemanticError, match="The defined ValueDomain of property x is not a subtype of ValueDomain!"
+        ):
+            model = _model(
+                {
+                    "Foo": {"data": {"properties": {"x": "Integer"}}},
+                    "Integer": {"data": {"properties": {}}},
+                    "ValueDomain": {"data": {}},
+                }
+            )
+            check_model(model)  # should raise because Integer is not a ValueDomain
 
     def test_invalid_concept_name(self):
         model = _model({"123invalid": {"data": {"properties": {"x": "Integer"}}}})
@@ -48,13 +75,14 @@ class TestSyntaxValidator:
 
 class TestSemanticValidator:
     def test_valid_hierarchy_passes(self):
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {}, "Child": {"directParents": ["Base"]}}))
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {"data": {}}, "Child": {"directParents": ["Base"]}}))
-        with pytest.raises(CHSemanticError):
+        with pytest.raises(CHSyntaxError):
             check_model(_model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"]}}))
-        with pytest.raises(CHSemanticError):
+        # Concepts without any defined data are allowed; the below should not raise
+        with pytest.warns(CHWarning, match="Found a domain concept with no data defined: 'Child'"):
             check_model(
                 _model({"Base": {"data": {"properties": {}}}, "Child": {"directParents": ["Base"], "data": {}}})
             )
@@ -64,12 +92,14 @@ class TestSemanticValidator:
         check_model(model)  # should not raise
 
     def test_undefined_parent(self):
-        model = _model({"Child": {"directParents": ["Ghost"]}})
-        with pytest.raises(CHSemanticError, match="Ghost"):
+        model = _model({"Child": {"directParents": ["Ghost"], "data": {"properties": {}}}})
+        with pytest.raises(
+            CHSemanticError, match="The parent 'Ghost' of concept 'Child' is not defined in the hierarchy"
+        ):
             check_model(model)
 
     def test_cycle_detected(self):
-        model = _model({"A": {"directParents": ["B"]}, "B": {"directParents": ["A"]}})
+        model = _model({"A": {"directParents": ["B"], "data": {}}, "B": {"directParents": ["A"], "data": {}}})
         with pytest.raises(CHSemanticError, match="[Cc]ycle(s?)"):
             check_model(model)
 
@@ -89,25 +119,38 @@ class TestSemanticValidator:
             check_model(model)
 
     def test_value_domain_reference(self):
+        """
+        An alias of a ValueDomain *is* that ValueDomain. It is not an entry of its own, and every
+        membership predicate answers for the concept it names -- so it is a ValueDomain too, where the
+        clone it used to produce was a parentless domain concept.
+        """
         model = _model(
             {"Concept": {}, "ValueDomain": {"directParents": ["Concept"], "data": {}}, "Type": "ValueDomain"}
         )
-        with pytest.raises(CHSemanticError, match="Found a domain concept with no data defined Type"):
-            check_model(model)
+        check_model(model)
+        assert model.concept_aliases == {"Type": "ValueDomain"}
+        assert "Type" not in model.concepts
+        assert "Type" not in model.domain_concepts
+        assert "Type" not in model.value_domains
+        assert model.is_value_domain("Type")
 
     def test_reference_chain(self):
         model = _model({"Concept": {}, "A": {"directParents": ["Concept"], "data": {"properties": {}}}, "B": "A"})
         check_model(model)
 
     def test_root_reference_chain(self):
+        """An alias of the root is a second *name* for the root, not a second root."""
         model = _model({"Concept": {}, "A": "Concept"})
-        with pytest.raises(CHSemanticError, match=r"Concept Hierarchy has multiple roots: \['Concept', 'A'\]"):
-            check_model(model)
+        check_model(model)
+        assert model.concept_aliases == {"A": "Concept"}
+        assert model.concept_topo_sort == ["Concept"]
 
     def test_long_root_reference_chain(self):
+        """A chain resolves all the way to the canonical concept, not to the next link."""
         model = _model({"Concept": {}, "A": "Concept", "B": "A"})
-        with pytest.raises(CHSemanticError, match=r"Concept Hierarchy has multiple roots: \['Concept', 'A', 'B'\]"):
-            check_model(model)
+        check_model(model)
+        assert model.concept_aliases == {"A": "Concept", "B": "Concept"}
+        assert model.concept_topo_sort == ["Concept"]
 
     def test_self_reference(self):
         model = _model({"Concept": {}, "A": "A"})

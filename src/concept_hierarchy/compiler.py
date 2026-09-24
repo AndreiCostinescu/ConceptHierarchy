@@ -25,21 +25,21 @@ Pipeline
 import os
 
 from concept_hierarchy.codegen.generator import generate
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.errors import ConceptHierarchyError
-from concept_hierarchy.models import ConceptHierarchyModel
 from concept_hierarchy.validator.checker import check_model
 
 
 def compile_impl(
-    ch: ConceptHierarchyModel,
+    ch: ConceptHierarchyDefinition,
     target: str = "cpp",
     output_path: str | None = None,
 ) -> str:
     # Read file source, validate and interpret data!
-    check_model(ch)
+    model = check_model(ch)
 
     # Code generation
-    code = generate(ch, target=target)
+    code = generate(model, target=target)
 
     # Optional file output
     if output_path is not None:
@@ -81,7 +81,7 @@ def ch_compile(
         When an unsupported *target* language is requested.
     """
     # Create ConceptHierarchy definition container from file source
-    model = ConceptHierarchyModel.create_by_parser(source)
+    model = ConceptHierarchyDefinition.create_by_parser(source)
     return compile_impl(model, target, output_path)
 
 
@@ -117,16 +117,19 @@ def ch_compile_from_json(
         When an unsupported *target* language is requested.
     """
     # Create ConceptHierarchy definition container from json-deserialized data
-    model = ConceptHierarchyModel.create_from_data(data)
+    model = ConceptHierarchyDefinition.create_from_data(data)
     return compile_impl(model, target, output_path)
 
 
-def check_impl(ch: ConceptHierarchyModel) -> bool:
-    try:
-        check_model(ch)  # parse definition and validate it
-    except ConceptHierarchyError as e:
-        print("There was an error in validating the Concept Hierarchy definition:\n", e.print(1), sep="")
-        return False
+def check_impl(ch: ConceptHierarchyDefinition, *, raise_errors: bool = False) -> bool:
+    if raise_errors:
+        check_model(ch)  # To let the errors pass through
+    else:
+        try:
+            check_model(ch)  # parse definition and validate it
+        except ConceptHierarchyError as e:
+            print("There was an error in validating the Concept Hierarchy definition:\n", e.print(1), sep="")
+            return False
     print("The Concept Hierarchy definition is valid!")
     return True
 
@@ -155,7 +158,7 @@ def ch_check(source: str) -> bool:
         Upon logical coding errors of the compiler itself...
     """
     source = os.path.abspath(source)
-    ch = ConceptHierarchyModel(source, os.path.dirname(source))
+    ch = ConceptHierarchyDefinition(source, os.path.dirname(source))
     return check_impl(ch)
 
 
@@ -182,5 +185,5 @@ def ch_check_from_json(data: object) -> bool:
     RuntimeError
         Upon logical coding errors of the compiler itself...
     """
-    ch = ConceptHierarchyModel.create_from_data(data)
+    ch = ConceptHierarchyDefinition.create_from_data(data)
     return check_impl(ch)

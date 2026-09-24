@@ -22,9 +22,13 @@ public data members.
 """
 
 from concept_hierarchy.backends.base import BaseBackend
+from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 from concept_hierarchy.definitions.concept_definition import ConceptDefinition
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition, PropertyDefinition
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    DomainConceptDefinition,
+    PropertyDefinitionKeywords,
+)
+from concept_hierarchy.definitions.concept_hierarchy import ConceptHierarchyDefinition
 from concept_hierarchy.utils import topological_sort
 
 # ---------------------------------------------------------------------------
@@ -50,22 +54,50 @@ _HEADER = """\
 
 
 class CppBackend(BaseBackend):
-    """Generate a C++ header from a :class:`ConceptHierarchyModel`."""
+    """Generate a C++ header from a :class:`ConceptHierarchy`."""
 
-    def generate(self, model: ConceptHierarchyModel) -> str:
+    def generate(self, model: ConceptHierarchy) -> str:
         lines: list[str] = [_HEADER]
 
         # Topologically sorted so base classes always appear before derived ones.
-        ordered, _roots = topological_sort({c: c_data.parents for c, c_data in model.concepts.items()})
+        ordered, _roots = topological_sort({c: c_data.parents for c, c_data in model.ch.concepts.items()})
 
         for concept_name in ordered:
-            lines.append(CppBackend.render_concept(model.concepts[concept_name]))
+            lines.append(CppBackend.render_concept(model.ch.concepts[concept_name]))
+
+        aliases = CppBackend.render_aliases(model.ch)
+        if aliases:
+            lines.append(aliases)
 
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def render_aliases(ch: ConceptHierarchyDefinition) -> str:
+        """
+        The ``using`` declarations, one per alias.
+
+        An alias is a name, not an entity, so it emits a declaration and never a second struct -- which is
+        what keeps the generated header free of the duplicated definitions the old cloning produced. The
+        alias containers are the whole of the metadata this needs, which is why they live on the definition
+        the backend is handed.
+
+        Emitted after every struct, so each names something already declared. The target names are written
+        unmapped, exactly as ``render_concept`` names the structs, so that a declaration refers to the
+        struct that is actually there.
+
+        Global-variable aliases are deliberately absent: ``using`` introduces a *type* name in C++, and this
+        backend does not emit global variables at all. How a variable's second name should be spelled is for
+        whoever emits the variables.
+        """
+        declarations = [f"using {alias} = {concept};" for alias, concept in ch.concept_aliases.items()]
+        declarations += [f"using {alias} = {alias_type};" for alias, alias_type in ch.type_aliases.items()]
+        if not declarations:
+            return ""
+        return "// Aliases: further names for the concepts and types declared above.\n" + "\n".join(declarations) + "\n"
 
     @staticmethod
     def render_concept(concept: ConceptDefinition) -> str:
@@ -83,9 +115,8 @@ class CppBackend(BaseBackend):
         if isinstance(concept, DomainConceptDefinition):
             for prop_name, prop_type in concept.properties.items():
                 assert isinstance(prop_type, dict)
-                cpp_type = _TYPE_MAP.get(
-                    prop_type[PropertyDefinition.VALUE_DOMAIN], prop_type[PropertyDefinition.VALUE_DOMAIN]
-                )
+                prop_value_domain = prop_type[PropertyDefinitionKeywords.VALUE_DOMAIN]
+                cpp_type = _TYPE_MAP.get(prop_value_domain, prop_value_domain)
                 parts.append(f"    {cpp_type} {prop_name};")
 
         parts.append("};\n")

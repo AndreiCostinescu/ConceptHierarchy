@@ -12,34 +12,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concept_hierarchy.definitions.definition import ConceptHierarchyDefinition
+from concept_hierarchy.definitions.definition import DefinitionInsideConceptHierarchy, LocationOfCheckData
 from concept_hierarchy.definitions.utils import check_ch_name
+from concept_hierarchy.errors import CHSyntaxError, LocationId, PathPart
 
 
-class GlobalVariableDefinition(ConceptHierarchyDefinition):
-    def __init__(self, name: str, definition_data: object):
+class GlobalVariableDefinition(DefinitionInsideConceptHierarchy):
+    global_variable_name: str = "Global Variable"
+
+    def __init__(self, name: str, definition_data: object, definition_location_id: LocationId):
         self.orig_data = None
         self.value = None
         self.value_type = None
         self.deserialize_with_value = False
         self.is_literal = False
         self.is_instance = False
-        super().__init__(name, definition_data)
+        super().__init__(name, definition_data, definition_location_id)
 
     def check(self):
-        super().check()
-        check_ch_name(self.name, "instance", allow_starting_with_underscore=True)
+        super()._check_impl(check_type_of_data=False)
+        if not check_ch_name(self.name, allow_starting_with_underscore=True):
+            raise CHSyntaxError(
+                f"Names of global variables must be valid non-digit-starting string names, not {self.name}",
+                location_id=self.location_id(),
+                part=PathPart.KEY,
+            )
 
-    @property
     def definition_type(self) -> str:
-        return "Global Variable"
+        return GlobalVariableDefinition.global_variable_name
 
-    @property
-    def definition_location(self) -> list[str]:
-        return ["instances", self.name]
+    def definition_location(self) -> LocationId:
+        return super().definition_location() + [self.name]
+
+    def location_of_impl(self, *keywords: str) -> LocationOfCheckData:
+        # processes name-of-variable keyword (after processing parent keywords: "concepts"/"instances")
+        # if there will be subclasses of this; extend this code with logic on when to raise StopLocationOfCheck
+        return self.check_location_id(
+            super().location_of_impl(*keywords),
+            GlobalVariableDefinition.definition_location(self),
+            location_check=self.name,
+            previous_location=self.definition_location_id[-1],
+            allow_start_at_this_location=True,
+        )
 
     def check_syntax(self):
-        self.value = self.orig_data
+        if not self.is_reference():
+            self.value = self.definition_data
 
     def check_semantics(self):
         """
@@ -56,8 +74,8 @@ class GlobalVariableDefinition(ConceptHierarchyDefinition):
             # collect the used types in the definition to pass to valueDomains/generationUtils.cpp
             self.value = Expression.process_expression(
                 self.value_type,
-                ExpressionRef.NO_REF,
-                ExpressionMod.GET,
+                ExpressionProvenance.ANY,
+                ExpressionAccess.GET,
                 self.value,
                 GlobalValueDomainInstance.template_context,
                 GlobalValueDomainInstance.global_variable_context,

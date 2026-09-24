@@ -18,12 +18,12 @@ base.py — Abstract base class that every code-generation backend must implemen
 
 from abc import ABC, abstractmethod
 
-from concept_hierarchy.models import ConceptHierarchyModel
+from concept_hierarchy.data.concept_hierarchy import ConceptHierarchy
 
 
 class BaseBackend(ABC):
     """Contract for all language backends."""
 
     @abstractmethod
-    def generate(self, model: ConceptHierarchyModel) -> str:
+    def generate(self, model: ConceptHierarchy) -> str:
         """Return generated source code as a string."""

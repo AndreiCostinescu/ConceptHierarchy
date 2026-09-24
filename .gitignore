@@ -32,3 +32,5 @@ coverage.xml
 
 # mypy
 .mypy_cache/
+.devtools-sync.sha256.tmp
+.devtools/
