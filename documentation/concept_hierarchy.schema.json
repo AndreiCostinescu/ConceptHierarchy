@@ -472,6 +472,7 @@
                 { "$ref": "#/$defs/concepts/$defs/nonNegativeInteger" }
               ]
             },
+            "requireAllItems": { "type": "boolean" },
             "uniqueItems": { "type": "boolean" },
             "contains": { "$ref": "#/$defs/concepts/$defs/CHSchema" },
 
