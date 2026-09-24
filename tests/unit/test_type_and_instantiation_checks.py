@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import pytest
 
-from concept_hierarchy.errors import CHSemanticError, CHSyntaxError
+from concept_hierarchy.errors import CHSemanticError
 from tests.ch_support import check_concepts
 
 # ``Box<T>`` requires its argument to be a Number.
@@ -417,7 +417,7 @@ class TestInstantiationSchemas:
         )
 
     def test_a_schema_naming_an_unknown_type(self):
-        with pytest.raises(CHSyntaxError, match="into a json schema failed"):
+        with pytest.raises(CHSemanticError, match="into a json schema failed"):
             check_concepts(
                 {
                     "Point": {
@@ -505,7 +505,7 @@ class TestNestedInstantiationConstraints:
 
     def test_a_violating_argument_in_an_instantiation_schema(self):
         """The schema parser wraps the violation, as it wraps any type failure inside a schema."""
-        with pytest.raises(CHSyntaxError, match="into a json schema failed") as raised:
+        with pytest.raises(CHSemanticError, match="into a json schema failed") as raised:
             check_concepts(
                 {
                     **BOX,

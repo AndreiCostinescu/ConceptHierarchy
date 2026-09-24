@@ -418,7 +418,8 @@ def check_types_in_value_domain_definition(
             c.name, instantiation_schema, context.instantiation_schema_validator, instantiation_location_id
         )
         if errors:
-            raise CHSyntaxError(f"Parsing {instantiation_schema!r} into a json schema failed!", causes=errors)
+            exception_type = CHSyntaxError if all(isinstance(x, CHSyntaxError) for x in errors) else CHSemanticError
+            raise exception_type(f"Parsing {instantiation_schema!r} into a json schema failed!", causes=errors)
         group_constraints: list[NonStructureConstraintFormula] = []
         for constraint in instantiation_constraints:
             parsed_constraint = parse_constraint_definition(
