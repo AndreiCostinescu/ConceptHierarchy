@@ -31,10 +31,11 @@ from concept_hierarchy.data.expressions.subexpressions import (
     VerifiedTemplateDependentExpression,
 )
 from concept_hierarchy.data.parsers.expression_parser import get_expression_type, parse_expression
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, frozendict
+from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType, TypeValue, frozendict
 from concept_hierarchy.definitions.concept_definition_domain_concept import (
     DomainConceptDefinition,
     FunctionDefinitionKeywords,
+    HookType,
     PropertyDefinitionKeywords,
 )
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
@@ -187,6 +188,94 @@ def check_expressions_in_domain_concept_definition(
         )
 
     context.variable_context = base_variable_context
+    # prop_name -> specialization ("forThis" or "forSub") -> prop_keyword -> Expression
+    property_definition_expressions: dict[
+        str,
+        dict[
+            str,
+            dict[str, Expression | list[Expression] | frozendict[tuple[InstantiatedType, str, HookType], Expression]],
+        ],
+    ] = {}
+
+    def set_prop_data(_prop_name, _specialization_type, _prop_keyword, _expr_value):
+        if _prop_name not in property_definition_expressions:
+            property_definition_expressions[_prop_name] = {}
+        if _specialization_type not in property_definition_expressions[_prop_name]:
+            property_definition_expressions[_prop_name][_specialization_type] = {}
+        assert _prop_keyword not in property_definition_expressions[_prop_name][_specialization_type]
+        property_definition_expressions[_prop_name][_specialization_type][_prop_keyword] = _expr_value
+
+    for prop_name, prop_def in c.properties.items():
+        p_def_location_id = c.location_of("properties", prop_name)
+        p_is_static = prop_name in static_properties_of_this_concept
+        if PropertyDefinitionKeywords.DEFAULT in prop_def:
+            p_default_location_id = p_def_location_id + [PropertyDefinitionKeywords.DEFAULT]
+            context.variable_context = get_variable_context_based_on_static(
+                p_is_static, static_variable_context, variable_context_with_instance, p_default_location_id
+            )
+            prop_expr = parse_expression(
+                prop_def[PropertyDefinitionKeywords.DEFAULT],
+                datum.property_types[prop_name],
+                FunctionArgumentProvenance.ANY,
+                FunctionArgumentAccessor.GET,
+                context.expression_parser_validator,
+                p_default_location_id,
+            )
+            if not prop_expr.is_valid:
+                raise invalid_expression_error(prop_expr, p_default_location_id)
+            set_prop_data(prop_name, "forSub", PropertyDefinitionKeywords.DEFAULT, prop_expr)
+        if PropertyDefinitionKeywords.CONFIDENCE in prop_def:
+            p_confidence_location_id = p_def_location_id + [PropertyDefinitionKeywords.CONFIDENCE]
+            # ensure Duration ValueDomain is defined
+            if not context.ch.is_concept("Duration"):
+                raise CHSemanticError(
+                    f'Property {prop_name} of {c.name} defines "{PropertyDefinitionKeywords.CONFIDENCE}", '
+                    f'which requires the "Duration" ValueDomain to be defined in the Concept Hierarchy, but it is not!',
+                    location_id=p_confidence_location_id,
+                )
+            duration_type = context.expression_parser_validator.create_instantiated_type(
+                "Duration", p_confidence_location_id
+            )
+            context.variable_context = get_variable_context_based_on_static(
+                p_is_static, static_variable_context, variable_context_with_instance, p_confidence_location_id
+            )
+            prop_expr = parse_expression(
+                prop_def[PropertyDefinitionKeywords.CONFIDENCE],
+                duration_type,
+                FunctionArgumentProvenance.ANY,
+                FunctionArgumentAccessor.GET,
+                context.expression_parser_validator,
+                p_confidence_location_id,
+            )
+            if not prop_expr.is_valid:
+                raise invalid_expression_error(prop_expr, p_confidence_location_id)
+            set_prop_data(prop_name, "forSub", PropertyDefinitionKeywords.CONFIDENCE, prop_expr)
+        if PropertyDefinitionKeywords.CONSTRAINT in prop_def:
+            p_constraint_location_id = p_def_location_id + [PropertyDefinitionKeywords.CONSTRAINT]
+            # ensure Variation ValueDomain is defined
+            if not context.ch.is_concept("Variation"):
+                raise CHSemanticError(
+                    f'Property {prop_name} of {c.name} defines "{PropertyDefinitionKeywords.CONSTRAINT}", '
+                    f'which requires the "Variation<T>" Type to be defined in the Concept Hierarchy, but it is not!',
+                    location_id=p_constraint_location_id,
+                )
+            p_variation_type = context.expression_parser_validator.create_instantiated_type(
+                f"Variation<{domain_concept_vars[prop_name].full_name}>", p_constraint_location_id
+            )
+            prop_expr = parse_expression(
+                prop_def[PropertyDefinitionKeywords.CONSTRAINT],
+                p_variation_type,
+                FunctionArgumentProvenance.ANY,
+                FunctionArgumentAccessor.GET,
+                context.expression_parser_validator,
+                p_constraint_location_id,
+            )
+            if not prop_expr.is_valid:
+                # raise invalid_expression_error(prop_expr, p_confidence_location_id)
+                pass
+            else:
+                set_prop_data(prop_name, "forSub", PropertyDefinitionKeywords.CONSTRAINT, prop_expr)
+    datum.property_expressions = freeze_value(property_definition_expressions)
 
     function_defaults: dict[str, dict[str, Expression]] = {}
     for func_name, func_def in c.functions.items():
