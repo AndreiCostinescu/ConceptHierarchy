@@ -18,8 +18,19 @@ from collections import defaultdict
 from copy import deepcopy
 from datetime import date
 from pathlib import Path
+from typing import Generic, TypeVar
+
+from frozendict import frozendict
 
 tab = "    "
+
+
+T = TypeVar("T")
+
+
+class Reference(Generic[T]):
+    def __init__(self, x: T | None = None):
+        self.ref: T | None = x
 
 
 def capitalize(s: str) -> str:
@@ -56,11 +67,6 @@ def sanitize_include_relative_paths(include_header: str) -> str:
     post = (">" if len(include_header_split) > 0 else "") + ">".join(include_header_split[1:])
     include_header = sanitize_relative_path(include_header_split[0])
     return pre + include_header + post
-
-
-class Reference:
-    def __init__(self, x=None):
-        self.ref = x
 
 
 def is_integer(s, x: Reference = None):
@@ -216,12 +222,32 @@ def get_items_of_single_entry_dict(d: dict) -> tuple:
     raise RuntimeError("Dictionary is empty... can't get single-entry!")
 
 
+def get_dict_without_items(d: dict, *keys) -> dict:
+    exclude = set(keys)
+    missing = exclude - d.keys()
+    if missing:
+        raise KeyError(f"Key{'s' if len(missing) > 1 else ''} {missing!r} not found in dict!")
+    return {k: v for k, v in d.items() if k not in exclude}
+
+
+def remove_indices(sequence: list | tuple, indices_to_remove: list[int] | set[int]) -> list | tuple:
+    """Remove elements at specified indices from a list/tuple."""
+    indices_set = set(indices_to_remove)
+    return type(sequence)(item for i, item in enumerate(sequence) if i not in indices_set)
+
+
+def remove_indices_from_list_inplace(list_to_modify: list, indices_to_remove: list[int] | set[int]) -> None:
+    """Remove elements at specified indices from a list (modifies in-place)."""
+    for index in sorted(indices_to_remove, reverse=True):
+        del list_to_modify[index]
+
+
 def replace_template_chars(x: str) -> str:
     return x.replace("<", "__").replace(">", "").replace(", ", "_").replace("!", "not")
 
 
 # Topological sort (Kahn's algorithm)
-def topological_sort(parents: dict[str, list[str]]) -> tuple[list[str], list[str]]:
+def topological_sort(parents: dict[str, tuple[str, ...]]) -> tuple[list[str], list[str]]:
     from collections import deque
 
     # children[parent] = list of child names
@@ -251,3 +277,13 @@ def topological_sort(parents: dict[str, list[str]]) -> tuple[list[str], list[str
             f"Non-hierarchy structure detected! The following items form one or more cycles: {nodes_in_cycles!r}"
         )
     return result, roots
+
+
+def freeze_value(value: object) -> object:
+    if isinstance(value, set):
+        return frozenset(freeze_value(x) for x in value)
+    if isinstance(value, list):
+        return tuple(freeze_value(x) for x in value)
+    if isinstance(value, dict):
+        return frozendict({freeze_value(k): freeze_value(v) for k, v in value.items()})
+    return value

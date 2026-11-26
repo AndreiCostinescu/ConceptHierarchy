@@ -1,0 +1,12 @@
+root = true
+
+[*.json]
+indent_size = 4
+indent_style = space
+
+[*.schema.json]
+indent_size = 2
+
+[*.{js,java,py}]
+indent_size = 4
+indent_style = space

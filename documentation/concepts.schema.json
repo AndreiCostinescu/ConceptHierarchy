@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cdn.jsdelivr.net/gh/AndreiCostinescu/ConceptHierarchy@develop/documentation/concepts.schema.json",
+  "title": "Concept Hierarchy - Definition of Concepts",
+  "description": "JSON Schema for validating concept definitions in the Concept Hierarchy",
+  "$ref": "concept_hierarchy.schema.json#/$defs/concepts"
+}

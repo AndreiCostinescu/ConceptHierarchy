@@ -34,7 +34,7 @@ Then go to repository settings, in the Commits section, and enable **"Require co
 | **GPG / SSH commit signing** | The commit was actually made by the key owner (identity) | `git commit -S` (capital S) |
 
 Both are enforced in this repo:
-- DCO is checked by the `dco.yml` workflow on every PR.
+- DCO is checked by the [GitHub App](https://github.com/apps/dco) on every PR.
 - GPG/SSH signing is enforced by the GitHub branch protection rule **"Require signed commits"**.
 
 Contributors need to set up both:

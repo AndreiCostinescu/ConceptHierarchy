@@ -26,6 +26,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "frozendict>=2.4.7",
+    "jsonschema>=4.26.0"
 ]
 
 [project.optional-dependencies]
@@ -36,7 +37,7 @@ dev = [
     "build",
     "twine",
     "mypy",
-    "ruff>=0.4",
+    "ruff==0.15.17",
     "pre-commit>=3.7",
 ]
 
@@ -53,20 +54,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.ruff]
-line-length = 120
-indent-width = 4
-target-version = "py310"
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "auto"
-docstring-code-format = true
-
-[tool.ruff.lint]
-select = ["E", "F", "I"]
 
 [tool.mypy]
 python_version = "3.10"

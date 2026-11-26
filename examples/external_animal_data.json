@@ -1,0 +1,31 @@
+{
+    "properties": {
+        "age": "Integer",
+        "name": "String",
+        "type": {
+            "valueDomain": "String"
+        },
+        "description": {
+            "valueDomain": "String",
+            "description": "Test property",
+            "hooks": {},
+            "confidenceHalfDecayTime": [2, "d"],
+            "nameDefaultInstanceValuesWithThisInstanceName": false
+        },
+        "_specializations": {
+            "_forThis": {
+                "age": {
+                    "constraint": {
+                        "ClosedInterval<Integer>": {
+                            "min": 0,
+                            "max": 14
+                        }
+                    }
+                },
+                "description": {
+                    "confidenceHalfDecayTime": [1, "y"]
+                }
+            }
+        }
+    }
+}

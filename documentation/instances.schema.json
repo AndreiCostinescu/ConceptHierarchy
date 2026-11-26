@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cdn.jsdelivr.net/gh/AndreiCostinescu/ConceptHierarchy@develop/documentation/instances.schema.json",
+  "title": "Concept Hierarchy - Definition of Instances",
+  "description": "JSON Schema for validating instance definitions in the Concept Hierarchy",
+  "$ref": "concept_hierarchy.schema.json#/$defs/instances"
+}
