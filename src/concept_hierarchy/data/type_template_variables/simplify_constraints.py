@@ -486,7 +486,7 @@ def simplify_non_structure_constraint(f: NonStructureConstraintFormula) -> NonSt
     The following rules are applied in order:
 
     1. **Terminal normalisation** – Three mutually exclusive terminal states are
-       recognised and, if reached by a non-canonical node, replaced with their
+       recognized and, if reached by a non-canonical node, replaced with their
        canonical sentinel:
 
        * ``is_empty`` → ``Empty(location_id, constraint_type)``

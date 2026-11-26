@@ -799,7 +799,7 @@ class TestPartiallySubstitutedSitesAreLeftUnresolved:
     template-dependent after substitution is never resolved -- it ends up with ``used_default=True`` and no
     expression, which is what `ParsedValue.unresolved_default_sites()` reports.
 
-    That is the intended behaviour (there is no application to ground it against yet, D5), but it is the
+    That is the intended behavior (there is no application to ground it against yet, D5), but it is the
     one route by which a materialised default legitimately has no value, so it is pinned rather than left
     to be rediscovered.
     """

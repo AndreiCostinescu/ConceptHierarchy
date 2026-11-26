@@ -290,7 +290,7 @@ def check_types_in_hidden_implementation_definition(
         parent_def_data = context.ch.concepts[parent]
         if not isinstance(parent_def_data, HiddenImplementationDefinition) or not parent_def_data.is_templatable():
             continue
-        parent_model_data = datum.parents[parent]
+        parent_model_data = datum.direct_parents[parent]
         assert isinstance(parent_model_data, TypeData)
         instantiation_values_of_parent_template_variables: list[ConceptHierarchyTemplateArgument] = []
         parent_template_substitution: dict[str, ConceptHierarchyTemplateArgument] = {}
@@ -418,7 +418,8 @@ def check_types_in_value_domain_definition(
             c.name, instantiation_schema, context.instantiation_schema_validator, instantiation_location_id
         )
         if errors:
-            raise CHSyntaxError(f"Parsing {instantiation_schema!r} into a json schema failed!", causes=errors)
+            exception_type = CHSyntaxError if all(isinstance(x, CHSyntaxError) for x in errors) else CHSemanticError
+            raise exception_type(f"Parsing {instantiation_schema!r} into a json schema failed!", causes=errors)
         group_constraints: list[NonStructureConstraintFormula] = []
         for constraint in instantiation_constraints:
             parsed_constraint = parse_constraint_definition(

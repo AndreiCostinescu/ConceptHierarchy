@@ -160,7 +160,7 @@ class TestTemplateArgumentParsing:
         }
         with pytest.raises(
             CHSemanticError,
-            match=r'\["concepts": "SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution": "data": '
+            match=r'\["SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution": "data": '
             r'"templateContext": "substitution" \(key\)\] \n    The substitution specification of template '
             r"argument T is ambiguous in SubTemplatedTemplateConceptWithAmbiguousShorthandSubstitution because "
             r"the parent concepts \[\'Template1\', \'Template3_Template\'\] define the template argument with the"
@@ -179,7 +179,7 @@ class TestTemplateArgumentParsing:
         }
         with pytest.raises(
             CHSemanticError,
-            match=r'\["concepts": "SubTemplatedConceptWithAmbiguousShorthandSubstitution": "data": "templateContext":'
+            match=r'\["SubTemplatedConceptWithAmbiguousShorthandSubstitution": "data": "templateContext":'
             r' "substitution" \(key\)\] \n    The substitution specification of template argument T is ambiguous'
             r" in SubTemplatedConceptWithAmbiguousShorthandSubstitution because the parent concepts "
             r"\[\'Template1\', \'Template3_NonTemplate\'\] define the template argument with the same name. Use "

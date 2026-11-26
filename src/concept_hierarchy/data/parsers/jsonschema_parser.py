@@ -61,7 +61,13 @@ from concept_hierarchy.data.jsonschema.parsed_schema import (
     find_reference_cycle,
 )
 from concept_hierarchy.data.parsers.string_parser import StringParser
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ExpandedVariadicTemplateVariable,
+    InstantiatedType,
+    NonVariadicTemplateVariable,
+    TypeValue,
+    VariadicTemplateVariable,
+)
 from concept_hierarchy.data.utils import StopValidation, record
 from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import (
@@ -151,7 +157,7 @@ class CHSchemaValidator(ABC):
 
     @abstractmethod
     def parse_custom_type(
-        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool
+        self, type_name: str, location_id: LocationId, allow_x_as_template_variable: bool, in_variadic_context: bool
     ) -> TypeValue:
         """
         Parse ``type_name`` into a valid type value in this context.
@@ -161,6 +167,7 @@ class CHSchemaValidator(ABC):
             location_id: Location of the ``"type"`` keyword in the *original* (shorthand) schema,
                 for use in the returned error's ``path``.
             allow_x_as_template_variable: whether to accept x as a template variable or not
+            in_variadic_context: whether this value can accept expanded variadic template argument values
 
         Returns:
             ``None`` if ``type_name`` is invalid, otherwise a :class:`CHSemanticError` explaining why it isn't.
@@ -171,6 +178,10 @@ class CHSchemaValidator(ABC):
 
     @abstractmethod
     def is_concept(self, concept_name: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_domain_concept(self, concept_name: str) -> bool:
         pass
 
     @abstractmethod
@@ -212,13 +223,37 @@ class _State:
     errors: list[ConceptHierarchyError] = field(default_factory=list)
     collect_all_errors: bool = True
     called_from_object_schema: bool = False
+    in_expandable_context: bool = False
+    """
+    Whether an **expandable container** encloses the node being built: `anyOf`, `oneOf`, `allOf`, or an
+    `items` tuple.
+
+    Only under one of those may a type be written as ``T...``. It is carried *down* rather than tested at
+    the container itself, because the operator may sit at any depth inside the container's element: the
+    element is what gets replicated, not the node holding the operator
+    (`documentation/TODO_VARIADIC_SCHEMA_EXPANSION.md` 2.1). `$defs` resets it -- a reference target is
+    shared by its referrers and cannot be replicated for one of them (2.4).
+
+    The fifth container of 2.1, a `props`/`funcs` argument list, is **not** tracked here: it is not a
+    schema position at all, so it never reaches `_build_node`. `_parse_custom_concept_data_constraint`
+    parses its entries itself and opens the context unconditionally, which is right -- the list is a
+    container wherever it is written, with no enclosing one needed.
+    """
 
     def record(self, err: ConceptHierarchyError) -> None:
         """Record ``err`` globally; raises :class:`StopValidation` in fail-fast mode."""
         record(self.errors, self.collect_all_errors, err)
 
-    def new_state(self, called_from_object_schema: bool) -> _State:
-        return replace(self, called_from_object_schema=called_from_object_schema)
+    def new_state(self, called_from_object_schema: bool, in_expandable_context: bool | None = None) -> _State:
+        """
+        A child state. ``in_expandable_context`` is **carried** unless given, which is what lets a
+        ``T...`` sit arbitrarily deep inside a container's element; pass it explicitly to open a context
+        (a container) or to close one (`$defs`).
+        """
+        new = replace(self, called_from_object_schema=called_from_object_schema)
+        if in_expandable_context is not None:
+            new.in_expandable_context = in_expandable_context
+        return new
 
 
 def parse_schema(
@@ -389,6 +424,35 @@ def _build_node(
     return _finish_builtin_node(node, work, location_id, state)
 
 
+def _check_one_group_per_unit(
+    elements: list[CHSchemaNode], keyword: str, location_id: LocationId, state: _State
+) -> None:
+    """
+    Every ``T...`` of one replication unit must name the same variadic group.
+
+    Two occurrences of one group are zipped -- copy *i* substitutes argument *i* throughout the unit.
+    Two *different* groups would need zipping across groups of unequal length, which has no defensible
+    answer, so they are refused here rather than at expansion time, where the lengths would decide and
+    the same schema would be legal for some applications and not others. Written as separate elements
+    they need no zipping and are fine (`documentation/TODO_VARIADIC_SCHEMA_EXPANSION.md` 2.3).
+    """
+    for index, element in enumerate(elements):
+        # Every way a group can be named in the unit, a `props`/`funcs` argument included: the reason two
+        # groups have no answer is about the *unit*, not about the kind of thing that names one, so a
+        # check that walked only the subschemas would let the case through wherever a selector wrote it.
+        groups = element.variadic_template_parameters_of_this_unit()
+        if len(groups) > 1:
+            names = ", ".join(f'"{name}..."' for name in sorted(groups))
+            state.record(
+                CHSemanticError(
+                    f"{names} are different variadic groups written in the same replicated schema, which would have to "
+                    f"be zipped across groups of possibly different lengths; put them in separate elements of "
+                    f'"{keyword}"',
+                    location_id=location_id + [keyword, index],
+                )
+            )
+
+
 def _finish_custom_type_node(
     node: CHSchemaNode,
     type_name: str,
@@ -412,9 +476,46 @@ def _finish_custom_type_node(
         )
 
     try:
-        node.custom_type = state.context.parse_custom_type(type_name, type_location_id, allow_x_as_template_variable)
+        node.custom_type = state.context.parse_custom_type(
+            type_name, type_location_id, allow_x_as_template_variable, state.in_expandable_context
+        )
+        node.expands_variadic = isinstance(node.custom_type, ExpandedVariadicTemplateVariable)
     except ConceptHierarchyError as e:
-        state.record(e)
+        # The type parser's own message is about type *syntax* and says nothing about schemas, which is
+        # the only thing an author writing `T...` here needs to hear. It is kept as a cause, and the
+        # message is only replaced for what it is actually about: a *variadic parameter* written where no
+        # container could take it. Any other name ending in "..." failed for some other reason, and
+        # "needs an enclosing anyOf" would send the reader looking for a container that would not help.
+        # ("T...." is covered by the same test: its stem "T." is no template variable either.)
+        if (
+            type_name.endswith("...")
+            and state.context.is_template_variable(type_name[: -len("...")])
+            and not state.in_expandable_context
+        ):
+            state.record(
+                CHSemanticError(
+                    f'"{type_name}" needs an enclosing "anyOf", "oneOf", "allOf", "items" array, or '
+                    f'"props"/"funcs" list to expand into; there is none here. '
+                    f'Note that a "$ref" target is not a schema replication site, because its referrers share it',
+                    location_id=type_location_id,
+                    causes=[e],
+                )
+            )
+        else:
+            state.record(e)
+
+    # A variadic parameter names a *group* of arguments, not a type, so it cannot stand where one type is expected.
+    # Only its expansion, `T...`, means anything in a schema -- and that is refused elsewhere unless an expandable
+    # container encloses it.
+    if isinstance(node.custom_type, VariadicTemplateVariable) and not node.custom_type.is_variadic_expanded:
+        state.record(
+            CHSemanticError(
+                f'"{type_name}" is a variadic template variable and names a group of arguments rather than '
+                f'a type; write "{type_name}..." to expand it into the enclosing "anyOf", "oneOf", '
+                f'"allOf", "items" tuple, or "props"/"funcs" list',
+                location_id=type_location_id,
+            )
+        )
 
     provenance = ValueDomainArgumentProvenance(work.get("provenance", ValueDomainArgumentProvenance.ANY.value))
     if "provenance" in work and work["provenance"] not in state.context.argument_provenance_types:
@@ -472,26 +573,39 @@ def _parse_custom_concept_data_constraint(
         has_concept_restriction = True
     else:
         has_concept_restriction = custom_concept_data_parser.try_consume("(")
-    concept_restriction = []
+    concept_restriction = None
+    index = 0
     if has_concept_restriction:
         # process list of uppercase names separated by ', '
-        concept_name = custom_concept_data_parser.parse_upper_case_name()
-        if not validator.is_concept(concept_name):
-            # FIXME: possibly extend to allow an expanded variadic template argument here
-            raise CHSemanticError(
-                f"{concept_name} is not a valid concept in this Concept Hierarchy!",
-                location_id=location_id,
-            )
-        concept_restriction.append(concept_name)
-        while custom_concept_data_parser.try_consume(", "):
+        constraint_location_id = location_id + [constraint[:5]]
+
+        def parse_name(_index):
             concept_name = custom_concept_data_parser.parse_upper_case_name()
-            if not validator.is_concept(concept_name):
-                # FIXME: possibly extend to allow an expanded variadic template argument here
+            if custom_concept_data_parser.try_consume("..."):
+                concept_name += "..."
+            # create a new value to not overwrite previously used location_id (in error messages)
+            current_location_id = constraint_location_id + [_index]
+            # the statement below will throw an error if concept_name is not a concept/type/template variable
+            concept_type = validator.parse_custom_type(concept_name, current_location_id, False, True)
+            if not (
+                (validator.is_concept(concept_name) and validator.is_domain_concept(concept_name))
+                or isinstance(concept_type, (NonVariadicTemplateVariable, ExpandedVariadicTemplateVariable))
+            ):
                 raise CHSemanticError(
-                    f"{concept_name} is not a valid concept in this Concept Hierarchy!",
-                    location_id=location_id,
+                    f"{concept_name} is not a valid DomainConcept in this Concept Hierarchy, nor a non-variadic "
+                    f"template variable, nor an expanded variadic template variable!\n"
+                    f"Those are the only acceptable values at this location; got {concept_type.__class__}",
+                    location_id=current_location_id,
                 )
-            concept_restriction.append(concept_name)
+            assert isinstance(
+                concept_type, (ExpandedVariadicTemplateVariable, InstantiatedType, NonVariadicTemplateVariable)
+            )
+            return concept_type
+
+        concept_restriction = [parse_name(index)]
+        while custom_concept_data_parser.try_consume(", "):
+            index += 1
+            concept_restriction.append(parse_name(index))
         custom_concept_data_parser.consume(")")
     return CustomConceptDataConstraint(
         for_properties_of_functions, include_parent_data, concept_restriction, value_schema, require_all_keys
@@ -511,8 +625,8 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
         work.pop("provenance", None)
     # "default" is a normal draft-07 annotation keyword here; leave it in extra_keywords untouched.
 
-    def child(value: object, *suffix: PathSegment) -> CHSchemaNode:
-        return _build_node(value, location_id + list(suffix), state.new_state(False), False)
+    def child(value: object, *suffix: PathSegment, expandable: bool | None = None) -> CHSchemaNode:
+        return _build_node(value, location_id + list(suffix), state.new_state(False, expandable), False)
 
     def child_from_object_properties(value: object, *suffix: PathSegment) -> CHSchemaNode:
         return _build_node(value, location_id + list(suffix), state.new_state(True), False)
@@ -597,7 +711,7 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
                             child_with_x(props[1], "properties", 1),
                             require_all_keys,
                             state.context,
-                            location_id,
+                            location_id + ["properties"],
                         )
                     )
                 except ConceptHierarchyError as e:
@@ -611,7 +725,7 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
                             child_with_x(custom_constraint_entry[1], "properties", custom_entry_index, 1),
                             require_all_keys,
                             state.context,
-                            location_id,
+                            location_id + ["properties"],
                         )
                         for existing_custom_constraint in node.custom_concept_data_constraints:
                             if (
@@ -701,9 +815,34 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
     if "items" in work:
         items = work.pop("items")
         if isinstance(items, list):
-            node.items = [child(sub, "items", i) for i, sub in enumerate(items)]
+            # The tuple form is a container; `"items": <schema>` is not, so it opens nothing.
+            node.items = [child(sub, "items", i, expandable=True) for i, sub in enumerate(items)]
+            _check_one_group_per_unit(node.items, "items", location_id, state)
         else:
             node.items = child(items, "items")
+
+    if "requireAllItems" in work:
+        require_all_items = work.pop("requireAllItems")
+        if not isinstance(require_all_items, bool):
+            state.record(
+                CHSyntaxError(
+                    f'"requireAllItems" must be a boolean, got {require_all_items!r}',
+                    location_id=location_id + ["requireAllItems"],
+                )
+            )
+        elif not isinstance(node.items, list):
+            # It says something only about a *positional* list. With no tuple to be exhaustive about,
+            # there is nothing for it to mean, and a keyword that means nothing must not be accepted silently.
+            state.record(
+                CHSemanticError(
+                    '"requireAllItems" requires every position of an "items" tuple to be present, so it '
+                    'is only meaningful where "items" is an array of schemas; there is none here',
+                    location_id=location_id + ["requireAllItems"],
+                    part=PathPart.KEY,
+                )
+            )
+        else:
+            node.require_all_items = require_all_items
 
     if "additionalItems" in work:
         ai = work.pop("additionalItems")
@@ -727,7 +866,11 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
         if keyword in work:
             arr = work.pop(keyword)
             if isinstance(arr, list):
-                setattr(node, attr, [child(sub, keyword, i) for i, sub in enumerate(arr)])
+                if len(arr) == 0:
+                    state.record(CHSyntaxError(f'"{keyword}" must be a non-empty array!', location_id + [keyword]))
+                else:
+                    setattr(node, attr, [child(sub, keyword, i, expandable=True) for i, sub in enumerate(arr)])
+                    _check_one_group_per_unit(getattr(node, attr), keyword, location_id, state)
             else:
                 state.record(CHSyntaxError(f'"{keyword}" must be an array of schemas', location_id + [keyword]))
 
@@ -744,7 +887,9 @@ def _finish_builtin_node(node: CHSchemaNode, work: dict, location_id: LocationId
             defs = work.pop(keyword)
             if isinstance(defs, dict):
                 for key, sub in defs.items():
-                    node.definitions[key] = child(sub, keyword, key)
+                    # Closed, not carried: a `$ref` target is shared by its referrers, so it is not a
+                    # replication site even when the reference sits inside a container (2.4).
+                    node.definitions[key] = child(sub, keyword, key, expandable=False)
             else:
                 state.record(CHSyntaxError(f'"{keyword}" must be an object', location_id + [keyword]))
 

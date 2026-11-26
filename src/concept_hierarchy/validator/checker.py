@@ -260,7 +260,7 @@ class ConceptHierarchyChecker:
         concept_locations = {concept_name: concept_location_id for concept_name in concept_definition}
 
         # -- external concepts -----------------------------------------------
-        external_concepts_content = concept_hierarchy[ConceptHierarchyDefinition.model_concepts].get(
+        external_concepts_content = concept_hierarchy.get(ConceptHierarchyDefinition.model_concepts, {}).get(
             ConceptHierarchyDefinition.model_concepts_external, []
         )
         if not isinstance(external_concepts_content, list):
@@ -430,7 +430,7 @@ class ConceptHierarchyChecker:
 
         base_location_id: LocationId = LocationId()
         if self.ch.file:
-            base_location_id.append(self.ch.file)
+            base_location_id.append(join_path(self.ch.path_to_root_dir, self.ch.file))
 
         file_path: str | None = None
         file_dir: str | None = None
@@ -501,8 +501,6 @@ class ConceptHierarchyChecker:
         assert not visited_files, visited_files
 
         # -- concepts --------------------------------------------------------
-        if not concept_definition:
-            raise CHSemanticError("The Concept Hierarchy has no concepts!", base_location_id, part=PathPart.VALUE)
         concept_aliases: dict[str, ConceptDefinition] = {}
         defined_concepts: dict[str, ConceptDefinition] = {}
         for concept_name, concept_def in concept_definition.items():  # type: str, object
@@ -660,25 +658,30 @@ class ConceptHierarchyChecker:
         for c_name in self.ch.concept_topo_sort:
             c = self.ch.concepts[c_name]
             parents_concept_data: dict[str, ConceptData] = {}
+            all_parents_concept_data: dict[str, ConceptData] = {}
             for parent in c.parents:
                 assert parent in self.model.concepts
-                parents_concept_data[parent] = self.model.concepts[parent]
+                parent_model = self.model.concepts[parent]
+                parents_concept_data[parent] = parent_model
+                all_parents_concept_data[parent] = parent_model
+                all_parents_concept_data.update(parent_model.all_parents)
             parents_concepts = frozendict(parents_concept_data)
+            all_parents_concepts = frozendict(all_parents_concept_data)
             try:
                 if self.ch.is_function(c_name):
                     self.ch.concepts[c_name] = FunctionDefinition.from_node(c)
-                    concept_data = FunctionData(c_name, parents_concepts)
+                    concept_data = FunctionData(c_name, parents_concepts, all_parents_concepts)
                     self.model.concepts[c_name] = concept_data
                     self.model.value_domains[c_name] = concept_data
                     self.model.functions[c_name] = concept_data
                 elif self.ch.is_value_domain(c_name):
                     self.ch.concepts[c_name] = ValueDomainDefinition.from_node(c)
-                    concept_data = ValueDomainData(c_name, parents_concepts)
+                    concept_data = ValueDomainData(c_name, parents_concepts, all_parents_concepts)
                     self.model.concepts[c_name] = concept_data
                     self.model.value_domains[c_name] = concept_data
                 elif self.ch.is_domain_concept(c_name):
                     self.ch.concepts[c_name] = DomainConceptDefinition.from_node(c)
-                    concept_data = DomainConceptData(c_name, parents_concepts)
+                    concept_data = DomainConceptData(c_name, parents_concepts, all_parents_concepts)
                     self.model.concepts[c_name] = concept_data
                     self.model.domain_concepts[c_name] = concept_data
                 else:

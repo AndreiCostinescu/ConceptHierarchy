@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import warnings
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -24,6 +24,7 @@ from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
+    FunctionInterpretation,
     FunctionResultAccessor,
     ValueDomainArgumentProvenance,
 )
@@ -40,6 +41,7 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import Co
 from concept_hierarchy.data.types.concept_hierarchy_types import (
     ConceptHierarchyTemplateArgument,
     InstantiatedType,
+    InstantiatedVariadicGroup,
     TemplateDependentType,
     TypeValue,
 )
@@ -47,7 +49,7 @@ from concept_hierarchy.data.utils import MISSING
 from concept_hierarchy.data.validators.template_argument_constraints_validator import TypeTemplateInstantiationValidator
 from concept_hierarchy.data.validators.type_validator import parse_convert_type, parse_convert_type_in_template_context
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
-from concept_hierarchy.errors import ConceptHierarchyError, LocationId
+from concept_hierarchy.errors import CHSemanticError, CHWarning, ConceptHierarchyError, LocationId, PathPart
 
 
 class ExpressionValidator(ExpressionParserValidator):
@@ -190,8 +192,59 @@ class ExpressionValidator(ExpressionParserValidator):
     def get_properties_of_concepts(self, concepts: list[str]) -> dict[str, InstantiatedType]:
         raise NotImplementedError
 
-    def get_type_of_instance_property(self, instance_type: InstantiatedType, prop_name: str) -> InstantiatedType:
-        raise NotImplementedError
+    def get_type_of_instance_property_or_function(
+        self, instance_name: str, instance_type: InstantiatedType, prop_or_func_name: str, location_id: LocationId
+    ) -> InstantiatedType:
+        if not self.is_a_subtype_of_b(
+            instance_type, self.create_instantiated_type("InstanceBase", location_id), location_id
+        ):
+            raise CHSemanticError(
+                f"Expected the type of the instance {instance_name} to be a subtype of InstanceBase, but isn't!",
+                location_id=location_id,
+                part=PathPart.VALUE,
+            )
+        if (
+            prop_or_func_name not in self.context.ch.all_domain_concept_properties
+            and prop_or_func_name not in self.context.ch.all_domain_concept_functions
+        ):
+            raise CHSemanticError(
+                f"Interpreted {prop_or_func_name} as the name of a property or function of {instance_name}, but it is "
+                f"not registered in this Concept Hierarchy!",
+                location_id=location_id,
+                part=PathPart.VALUE,
+            )
+        concept_defining_prop_of_func = self.context.ch.all_domain_concept_properties.get(prop_or_func_name, None)
+        if concept_defining_prop_of_func is None:
+            concept_defining_prop_of_func = self.context.ch.all_domain_concept_functions[prop_or_func_name]
+        not_certain_that_has_property = True
+        if instance_type.full_name != "InstanceBase":
+            # compute substitution of Instance's AcceptConcepts template variable
+            subst_res = self.context.type_application_constraints_validator.create_substitution_for(
+                "Instance", instance_type, location_id, self.get_current_template_context()
+            )[0]
+            assert subst_res[0] == "AcceptConcepts"
+            variadic_group = subst_res[1]
+            assert isinstance(variadic_group, InstantiatedVariadicGroup)
+            accept_concepts = variadic_group.variadic_group
+            # reject concepts don't need to be checked.
+            for accept_concept in accept_concepts:
+                if self.context.ch.is_a_subconcept_of_b(
+                    accept_concept.full_name, concept_defining_prop_of_func, include_self=True
+                ):
+                    not_certain_that_has_property = False
+                    break
+        if instance_type.full_name == "InstanceBase" or not_certain_that_has_property:
+            warnings.warn(
+                CHWarning(
+                    f"Instance {instance_name} of type {instance_type} may not have {prop_or_func_name} as a property "
+                    f"or function!",
+                    location_id=location_id,
+                )
+            )
+        if prop_or_func_name in self.context.model.domain_concepts[concept_defining_prop_of_func].property_types:
+            return self.context.model.domain_concepts[concept_defining_prop_of_func].property_types[prop_or_func_name]
+        assert prop_or_func_name in self.context.model.domain_concepts[concept_defining_prop_of_func].function_types
+        return self.context.model.domain_concepts[concept_defining_prop_of_func].function_types[prop_or_func_name]
 
     def get_if_has_instantiation_schema(
         self, type_data: TypeValue
@@ -220,6 +273,7 @@ class ExpressionValidator(ExpressionParserValidator):
         location_id: LocationId,
         template_substitution: dict[str, ConceptHierarchyTemplateArgument] | None,
         expansion_depth: int,
+        function_interpretation: FunctionInterpretation,
     ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
         return parse_value(
             value,
@@ -228,6 +282,7 @@ class ExpressionValidator(ExpressionParserValidator):
             location_id,
             template_substitution,
             expansion_depth,
+            function_interpretation,
         )
 
     def register_default_site(
@@ -367,7 +422,7 @@ class ExpressionValidator(ExpressionParserValidator):
                 return definition.evaluation_argument_default_values[f_arg_name]
             model = self.context.model.functions.get(name)
             if model is not None:
-                to_visit.extend(parent for parent in model.parents if parent in self.context.ch.functions)
+                to_visit.extend(parent for parent in model.direct_parents if parent in self.context.ch.functions)
         return MISSING
 
     def get_parsed_function_argument_default(self, f_name: str, f_arg_name: str) -> Expression | None:
@@ -417,26 +472,47 @@ class ExpressionValidator(ExpressionParserValidator):
 
     @contextmanager
     def function_argument_scope(
-        self, arguments: dict[str, TypeValue], template_context: TemplateContext
+        self, arguments: dict[str, TypeValue], template_context: TemplateContext | None, *, append: bool
     ) -> Iterator[None]:
         previous = self.context.variable_context
         assert previous is not None, "there is no variable context to scope"
-        # Frame 0 is the global variables -- `check_expressions_in_concept_hierarchy` starts from an empty
-        # context and `init_expressions` pushes them first, before anything Function- or ValueDomain-local.
-        # Those stay; every frame above them is dropped for the duration.
-        globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
-        self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(arguments)]))
+        if append:
+            self.context.variable_context.push_variable_context(VariableStackFrame(arguments))
+        else:
+            # Frame 0 is the global variables -- `check_expressions_in_concept_hierarchy` starts from an empty
+            # context and `init_expressions` pushes them first, before anything Function- or ValueDomain-local.
+            # Those stay; every frame above them is dropped for the duration.
+            globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
+            self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(arguments)]))
         try:
-            with self.template_context_scope(template_context):
+            if template_context is None:
                 yield
+            else:
+                with self.template_context_scope(template_context):
+                    yield
         finally:
-            self.context.set_variable_context(previous)
+            if append:
+                self.context.variable_context.pop_variable_context()
+            else:
+                self.context.set_variable_context(previous)
 
     def get_grounded_function_default(self, application: str, argument: str) -> GroundedArgumentDefault | None:
         return self._grounded_function_defaults.get((application, argument))
 
     def put_grounded_function_default(self, application: str, argument: str, grounded: GroundedArgumentDefault) -> None:
         self._grounded_function_defaults[(application, argument)] = grounded
+
+    def get_function_variables_to_add_in_existing_scope(self, f_name: str) -> frozendict[str, tuple[TypeValue, bool]]:
+        return self.context.model.functions[f_name].new_vars_in_scope
+
+    def add_variables_in_existing_scope(self, vars_to_add: dict[str, tuple[TypeValue, str]]) -> None:
+        if vars_to_add:
+            self.context.variable_context = self.context.variable_context.add_variables(vars_to_add)
+
+    def get_function_variables_to_add_per_argument(
+        self, f_name: str
+    ) -> frozendict[str, frozendict[str, tuple[TypeValue, bool]]]:
+        return self.context.model.functions[f_name].sub_scope_vars
 
     def get_current_template_context(self) -> TemplateContext:
         return self.context.template_context

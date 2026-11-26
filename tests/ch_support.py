@@ -45,6 +45,17 @@ CH_PRELUDE: dict[str, dict] = {
     "FunctionReturning": {"directParents": ["Function"], "data": {"templateContext": ["T"]}, "abstract": True},
     # the default value domain of a DomainConcept's `functions` members
     "CustomFunction": {"directParents": ["ValueDomain"], "data": {}},
+    "Instance": {
+        "directParents": ["ValueDomain"],
+        "data": {
+            "templateContext": {
+                "order": ["AcceptConcepts...", "RejectConcepts..."],
+                "AcceptConcepts": "And(Concept, Not(ValueDomain))",
+                "RejectConcepts": "And(Concept, Not(ValueDomain))",
+                "variadicGroupIdentifiers": {"AcceptConcepts": "", "RejectConcepts": "!"},
+            }
+        },
+    },
 }
 """The built-in concepts essentially every Concept Hierarchy needs."""
 

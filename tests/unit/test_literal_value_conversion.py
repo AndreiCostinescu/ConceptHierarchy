@@ -16,7 +16,7 @@
 Unit tests for :meth:`LiteralValue.convert_to_value`, the step that turns a literal template argument's
 *notation* into the JSON value it stands for.
 
-These live at the unit level on purpose. A substituted literal is recognised only by
+These live at the unit level on purpose. A substituted literal is recognized only by
 ``defaultSerialization``, and that route keeps no parsed value tree -- so once substitution has happened
 the resulting expression records the *type* and not the value, and an integration test cannot see whether
 the conversion produced ``3`` or ``9``, ``True`` or ``False``. This is the only place the conversion's

@@ -409,7 +409,7 @@ class InstExpression(ExpressionValue):
 class DefaultSerializationExpression(InstExpression):
     kind_name = "default-serialized value"
     """
-    A value recognised by its concept's ``defaultSerialization`` rather than by an instantiation schema.
+    A value recognized by its concept's ``defaultSerialization`` rather than by an instantiation schema.
 
     There is no :class:`ParsedValue` for such an expression -- the JSON literal *is* the value, and no
     schema was walked to produce it -- so the value is kept here instead.
@@ -423,7 +423,7 @@ class DefaultSerializationExpression(InstExpression):
     def __init__(self, value_type: TypeValue, json_value: object, is_strict_subtype: bool | None = None):
         super().__init__(None, value_type, is_strict_subtype)
         self.json_value = json_value
-        """The JSON value this was recognised from, *after* any substitution -- unlike ``unparsed``."""
+        """The JSON value this was recognized from, *after* any substitution -- unlike ``unparsed``."""
 
 
 class NarrowExpression(InstExpression):

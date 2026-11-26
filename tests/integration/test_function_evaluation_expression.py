@@ -60,7 +60,7 @@ from concept_hierarchy.data.expressions.subexpressions import (
 )
 from concept_hierarchy.data.parsers.expression_parser import parse_expression, parse_function_evaluation_expression
 from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
-from concept_hierarchy.errors import ConceptHierarchyError
+from concept_hierarchy.errors import ConceptHierarchyError, LocationId
 from concept_hierarchy.validator.expression_checks import ill_formed_parts, invalid_expression_error
 from tests.integration.test_expression_parsing import build_hierarchy, check_concepts, check_hierarchy
 from tests.integration.test_function_default_arguments import GROUND, add_like, function
@@ -155,7 +155,7 @@ def parse_evaluation(
     *,
     site_type: object = _SITE_TYPE_UNSET,
     recursively_parse: bool = True,
-    is_function_evaluation: bool = True,
+    is_function_evaluation: bool | None = None,
 ) -> Parsed:
     """
     Call `parse_function_evaluation_expression` with the arguments the ``args`` schema node can supply.
@@ -168,17 +168,17 @@ def parse_evaluation(
     asserts on ``expr_type``, which a caller passing ``None`` cannot use.
     """
     resolved_site_type = (
-        context.expression_parser_validator.create_instantiated_type("Integer", [])
+        context.expression_parser_validator.create_instantiated_type("Integer", LocationId())
         if site_type is _SITE_TYPE_UNSET
         else site_type
     )
     attempts: list[ExpressionAttempt] = []
-    expressions, key_type, is_function_subtype = parse_function_evaluation_expression(
+    expressions, key_type, is_function_subtype, _ = parse_function_evaluation_expression(
         key,
         value,
         resolved_site_type,
         context.expression_parser_validator,
-        [],
+        LocationId(),
         recursively_parse,
         False,
         is_function_evaluation,
@@ -207,7 +207,7 @@ class TestTheReturnedTriple:
         parsed = parse_evaluation(context, "NoSuchConcept", {"arg1": 1})
         assert parsed.expressions == []
         assert parsed.key_type is None
-        assert parsed.is_function_subtype is True, "no type was resolved, so nothing contradicts it"
+        assert parsed.is_function_subtype is False, "no type was resolved, so nothing contradicts or confirms it"
 
     def test_a_key_that_is_not_a_type_records_both_alternatives_as_impossible(self, context):
         """
@@ -273,7 +273,7 @@ class TestArgumentsAreParsedAndChecked:
 
     def test_an_argument_the_function_does_not_have_is_rejected(self, context):
         parsed = parse_evaluation(context, "Add", {"arg1": 1, "arg2": 2, "nope": 3})
-        assert 'does not have the argument "nope"' in parsed.ill_formed.reason
+        assert 'does not define the argument "nope"' in parsed.ill_formed.reason
         assert parsed.attempts[-1].kind is ExpressionKind.FUNCTION_EVALUATION
 
     def test_a_missing_required_argument_is_rejected(self, context):
@@ -294,7 +294,10 @@ class TestArgumentsAreParsedAndChecked:
 
     def test_a_non_object_value_gives_an_ill_formed_expression(self, context):
         parsed = parse_evaluation(context, "Add", 5)
-        assert "should have the value of the json object an other json object" in parsed.ill_formed.reason
+        assert (
+            "Wrong value type; expected a JSON object in which the Function's arguments are defined, not"
+            in parsed.ill_formed.reason
+        )
         assert parsed.key_type is not None, "the key was still resolved; only the value was wrong"
 
     def test_without_recursive_parsing_no_argument_is_looked_at(self, context):
@@ -363,10 +366,10 @@ class TestTheCallWithoutAnExpectedType:
         need not decide what to pass -- both spellings produce the evaluation.
         """
         for flag in (True, False):
-            parsed = parse_evaluation(
-                context, "Add", {"arg1": 1, "arg2": 2}, site_type=None, is_function_evaluation=flag
-            )
-            assert sorted(parsed.evaluation.arguments) == ["arg1", "arg2"], flag
+            with pytest.raises(
+                RuntimeError, match=f"Impossible case: expr_type: None, force FEval: {'True' if flag else 'False'}"
+            ):
+                parse_evaluation(context, "Add", {"arg1": 1, "arg2": 2}, site_type=None, is_function_evaluation=flag)
 
     def test_defaults_are_still_grounded_without_an_expected_type(self, context):
         """The checks the ``args`` node is being wired up for do not depend on there being a site type."""
@@ -428,7 +431,7 @@ PREVIOUSLY_RAISED = [
     (
         "an argument the Function does not have",
         {"Add": {"arg1": 1, "arg2": 2, "zz": 3}},
-        'does not have the argument "zz"',
+        'does not define the argument "zz"',
     ),
     ("a missing required argument", {"Add": {"arg1": 1}}, "are missing from the Function evaluation interface"),
     ("cyclic dependencies between the remaining defaults", {"Cyclic": {}}, "is not acyclic"),
@@ -587,5 +590,5 @@ class TestTheParseIsNotStoppedByTheFirstFailure:
         with pytest.raises(ConceptHierarchyError) as excinfo:
             check_hierarchy(hierarchy)
         text = str(excinfo.value)
-        assert 'does not have the argument "zz"' in text, "the first failure"
-        assert 'does not have the argument "qq"' in text, "the second, which a raise would have pre-empted"
+        assert 'does not define the argument "zz"' in text, "the first failure"
+        assert 'does not define the argument "qq"' in text, "the second, which a raise would have pre-empted"

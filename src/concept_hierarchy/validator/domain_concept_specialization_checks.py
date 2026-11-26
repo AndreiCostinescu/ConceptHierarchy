@@ -408,7 +408,7 @@ def process_specialization_for_domain_concepts(context: ConceptHierarchyContext)
         # property is available all the way down instead of only one generation below where it is defined.
         # The concept definitions are not consulted here: those describe only what their own JSON declares.
         # Entries record the providing concept rather than the parent it was reached through, so that one
-        # value inherited along several paths is recognised as one value and not as an ambiguity.
+        # value inherited along several paths is recognized as one value and not as an ambiguity.
         available_parent_data_for_properties: dict[str, dict[str, list[str]]] = {}
         available_parent_data_for_functions: dict[str, dict[str, list[str]]] = {}
         for parent_name in c.parents:

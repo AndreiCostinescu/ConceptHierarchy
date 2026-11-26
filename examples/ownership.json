@@ -1,0 +1,266 @@
+{
+    "name": "Ownership",
+    "metadata": {
+        "version": "v1.0",
+        "author": "Your Name"
+    },
+    "concepts": {
+        "Concept": { },
+        "Person": {
+            "directParents": ["Concept"],
+            "data": {
+                "properties": {
+                    "name": "String",
+                    "ownedObjects": "Set<Instance<Object>>"
+                },
+                "management": {
+                    "initialization": {
+                        "Condition": {
+                            "condition": {
+                                "IsInstancePropertyKnown": {
+                                    "instance": "instance",
+                                    "property": "s:ownedObjects"
+                                }
+                            },
+                            "ifTrue": [
+                                {
+                                    "IterateSet<Instance<Object>>": {
+                                        "set": "instance.ownedObjects",
+                                        "what": [
+                                            {
+                                                "Condition": {
+                                                    "condition": {
+                                                        "Not": {
+                                                            "arg": {
+                                                                "IsInstancePropertyKnown": {
+                                                                    "instance": "value",
+                                                                    "property": "s:ownedBy"
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    "ifTrue": [
+                                                        {
+                                                            "SetInstanceProperty<Instance<Person>>": {
+                                                                "instance": "value",
+                                                                "property": "s:ownedBy",
+                                                                "value": "instance"
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "Object": {
+            "directParents": ["Concept"],
+            "data": {
+                "properties": {
+                    "ownedBy": "Optional<Instance<Person>>"
+                }
+            }
+        },
+        "Guitar": {
+            "directParents": ["Object"],
+            "data": {
+                "properties": {
+                    "brand": "String"
+                }
+            }
+        },
+
+        "ValueDomain": {
+            "directParents": ["Concept"],
+            "data": { },
+            "abstract": true
+        },
+        "InstanceBase": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": {
+                        "concepts": "List<ConceptValue>",
+                        "properties": "InstanceDataBase",
+                        "instanceName": "string"
+                    }
+                }
+            }
+        },
+        "Instance": {
+            "directParents": ["InstanceBase"],
+            "data": {
+                "templateContext": {
+                    "order": ["AcceptConcepts...", "RejectConcepts..."],
+                    "AcceptConcepts": "And(Concept, Not(ValueDomain))",
+                    "RejectConcepts": "And(Concept, Not(ValueDomain))",
+                    "variadicGroupIdentifiers": {
+                        "AcceptConcepts": "",
+                        "RejectConcepts": "!"
+                    }
+                }
+            }
+        },
+        "ConceptValue": {
+            "directParents": ["String"],
+            "data": {
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
+            }
+        },
+        "String": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "string",
+                    "pattern": "^s:"
+                }
+            }
+        },
+        "Set": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": ["T"],
+                "instantiation": {
+                    "type": "array",
+                    "items": ["T"],
+                    "uniqueItems": true
+                }
+            }
+        },
+        "List": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": ["T"],
+                "instantiation": {
+                    "type": "array",
+                    "items": "T"
+                }
+            }
+        },
+        "InstanceDataBase": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "properties": [["props", "x", true], ["funcs", "x", true]]
+                }
+            }
+        },
+        "Optional": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "templateContext": ["T"],
+                "instantiation": {
+                    "oneOf": ["null", "T"]
+                }
+            }
+        },
+        "Boolean": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": "boolean"
+            }
+        },
+        "FunctionComposition": {
+            "directParents": ["ValueDomain"],
+            "data": {
+                "instantiation": {
+                    "type": "object",
+                    "minProperties": 1, "maxProperties": 1,
+                    "propertyNames": { "type": "string", "format": "Type", "constraint": "Function" },
+                    "additionalProperties": {"type": "object", "properties": "args", "additionalProperties": false}
+                }
+            }
+        },
+
+        "Function": {
+            "directParents": ["ValueDomain"],
+            "data": { },
+            "abstract": true
+        },
+        "Condition": {
+            "directParents": ["Function"],
+            "data": {
+                "interface": {
+                    "condition": "Boolean",
+                    "ifTrue": "List<FunctionComposition>",
+                    "ifFalse": "List<FunctionComposition>",
+                    "_defaultArgumentValues": {
+                        "ifFalse": []
+                    }
+                }
+            }
+        },
+        "IsInstancePropertyKnown": {
+            "directParents": ["Function"],
+            "data": {
+                "interface": {
+                    "instance": "InstanceBase",
+                    "property": "String",
+                    "res": "Boolean"
+                }
+            }
+        },
+        "SetInstanceProperty": {
+            "directParents": ["Function"],
+            "data": {
+                "templateContext": ["T"],
+                "interface": {
+                    "instance": "InstanceBase",
+                    "property": "String",
+                    "value": "T"
+                }
+            }
+        },
+        "IterateSet": {
+            "directParents": ["Function"],
+            "data": {
+                "templateContext": ["T"],
+                "interface": {
+                    "set": "Set<T>",
+                    "what": "List<FunctionComposition>"
+                },
+                "subScopes": {
+                    "what": {
+                        "value": "T"
+                    }
+                }
+            }
+        },
+        "Not": {
+            "directParents": ["Function"],
+            "data": { "interface": { "arg": "Boolean", "res": "Boolean" } }
+        }
+    },
+    "instances": {
+        "JamesHetfield": {
+            "InstanceBase": {
+                "instanceName": "JamesHetfield",
+                "concepts": ["Person"],
+                "properties": {
+                    "name": "James Hetfield",
+                    "ownedObjects": ["FenderExplorerInstance"]
+                }
+            }
+        },
+        "FenderExplorerInstance": {
+            "InstanceBase": {
+                "instanceName": "FenderExplorerInstance",
+                "concepts": ["Guitar"],
+                "properties": {
+                    "brand": "Fender"
+                }
+            }
+        }
+    }
+}

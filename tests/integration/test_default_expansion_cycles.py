@@ -1234,5 +1234,5 @@ class TestHardErrorsDuringResolution:
         with pytest.raises(ConceptHierarchyError) as excinfo:
             check_concepts(concepts)
         text = str(excinfo.value)
-        assert "does not have the argument" in text, "the real cause must survive"
+        assert "does not define the argument" in text, "the real cause must survive"
         assert "can never be applied" not in text, "a half-resolved cache entry must not be read as a cycle"

@@ -24,7 +24,7 @@ is only the first line of it. For ``Inst``/``Narrow`` the attempt also carries e
 that was tried and the :class:`~instantiated_value.ParsedValue` errors of the one that matched, which is
 what says *which property* was missing, additional, or wrongly typed.
 
-These tests were written against the *old* behaviour, where all of this was lost, and are now the
+These tests were written against the *old* behavior, where all of this was lost, and are now the
 regression guard on the trace that replaced it.
 
 The asserts deliberately look for content (a property name, a type name, a constraint) rather than exact
@@ -467,7 +467,7 @@ class TestFunctionEvaluationFailures:
     def test_function_evaluation_value_is_not_an_object(self):
         text = explanation({**ADD, **site("Integer", {"Add<Integer>": 5})}, {"Add<Integer>": 5})
         assert "as FEval" in text
-        assert "json object" in text
+        assert "Wrong value type; expected a JSON object in which the Function's arguments are defined, not" in text
 
     def test_result_type_is_not_a_subtype(self):
         value = {"Add<Integer>": {"arg1": 1, "arg2": 2}}
@@ -490,10 +490,10 @@ class TestFunctionEvaluationFailures:
         assert 'argument "arg2" is not a valid Integer expression' in text
         assert "Nope" in text, "the argument's own failure must be nested underneath"
 
-    def test_is_function_evaluation_on_a_non_function_key(self):
-        value = {"Point": {"x": 1, "y": 2}, "isFunctionEvaluation": True}
+    def test_a_marker_on_a_non_function_key(self):
+        value = {"fEval:Point": {"x": 1, "y": 2}}
         text = explanation({**POINT, **site("Point", value)}, value)
-        assert "isFunctionEvaluation" in text
+        assert "fEval:" in text
         assert "Point" in text
 
 

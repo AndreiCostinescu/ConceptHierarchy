@@ -79,21 +79,34 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from typing import Callable
 
 from jsonschema import Draft7Validator
 
 from concept_hierarchy.data.expressions.expression import Expression
-from concept_hierarchy.data.expressions.expression_utils import ExpressionProvenance
+from concept_hierarchy.data.expressions.expression_utils import (
+    ExpressionProvenance,
+    FunctionInterpretation,
+    split_function_interpretation_marker,
+)
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedStructural, ParsedValue
 from concept_hierarchy.data.jsonschema.parsed_schema import CHSchemaNode
 from concept_hierarchy.data.type_template_variables.constraint_formula import (
     NonStructureConstraintFormula,
     TemplateConstraintFormula,
 )
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    ConceptHierarchyTemplateArgument,
+    InstantiatedType,
+    TypeValue,
+)
 from concept_hierarchy.data.utils import MISSING, StopValidation, record
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    DomainConceptDefinition,
+    ForPropertyOrFunction,
+)
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
 # ===========================================================================================================
@@ -118,6 +131,7 @@ class ValueInstantiationContext(ABC):
         location_id: LocationId,
         template_substitution: dict | None,
         expansion_depth: int,
+        function_interpretation: FunctionInterpretation,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         """Parse and validate ``value`` as an expression of ``custom_type``.
 
@@ -195,6 +209,41 @@ class ValueInstantiationContext(ABC):
     ) -> bool:
         pass
 
+    @abstractmethod
+    def parse_type(
+        self,
+        type_candidate: str,
+        template_substitution: dict[str, ConceptHierarchyTemplateArgument],
+        location_id: LocationId,
+    ) -> tuple[InstantiatedType, list[ConceptHierarchyError]]:
+        pass
+
+    @abstractmethod
+    def replace_variable_scope_for_custom_function(
+        self, new_variables: dict[str, TypeValue]
+    ) -> AbstractContextManager[None]:
+        pass
+
+    def is_domain_concept_datum_in_concept_hierarchy(self, key: str) -> bool:
+        pass
+
+    def substitute_with_x(
+        self,
+        custom_type: TypeValue,
+        substitution: dict[str, ConceptHierarchyTemplateArgument],
+        schema_owner: str,
+        key_location_id: LocationId,
+    ) -> TypeValue:
+        pass
+
+    def collect_data(
+        self,
+        concept_restriction: list[InstantiatedType] | None,
+        for_properties_or_functions: ForPropertyOrFunction,
+        include_parent_data: bool,
+    ) -> dict[str, InstantiatedType]:
+        pass
+
 
 # ===========================================================================================================
 # Traversal state
@@ -215,6 +264,19 @@ class _State:
     template_substitution: dict | None = None
     """Carried to every custom-type leaf; see `ValueInstantiationContext.parse_value_against_custom_type_expression`."""
     expansion_depth: int = 0
+    root_location_id: LocationId | None = None
+    """
+    Where this ``parse_value`` started, so that a node can ask whether it *is* the value being parsed.
+
+    One question needs it: `CustomFunction`'s instantiation offers a bare `FunctionComposition` as a
+    shorthand for the whole function, and also declares a `FunctionComposition` at its ``procedure`` property.
+    Both are custom-type leaves owned by `CustomFunction` and are otherwise indistinguishable --
+    but the shorthand *is* the value, so it sits at this location, while ``procedure`` sits at the "properties" key.
+    A full trace of the walk would answer the same question; but the root alone is enough for it.
+    """
+    function_interpretation_at: LocationId | None = None
+    """Where `function_interpretation` applies; a different location is a different value."""
+    function_interpretation: FunctionInterpretation = FunctionInterpretation.UNSPECIFIED
     upper_level_object_key: str | None = None
 
     def record(self, err: ConceptHierarchyError) -> None:
@@ -227,6 +289,13 @@ class _State:
 
     def new_state(self, upper_level_object_key: str | None = None) -> _State:
         return replace(self, upper_level_object_key=upper_level_object_key)
+
+    def reading(self, location_id: LocationId):
+        return (
+            self.function_interpretation
+            if location_id == self.function_interpretation_at
+            else FunctionInterpretation.UNSPECIFIED
+        )
 
 
 # ===========================================================================================================
@@ -241,6 +310,7 @@ def parse_value(
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
+    function_interpretation: FunctionInterpretation = FunctionInterpretation.UNSPECIFIED,
     collect_all_errors: bool = True,
 ) -> tuple[ParsedValue, list[ConceptHierarchyError]]:
     """Parse ``value`` against ``node``.
@@ -251,11 +321,13 @@ def parse_value(
         context: Handles custom-type leaves.
             is to be interpreted/parsed.
         location_id: Starting location in the Concept Hierarchy (``[]`` at the root).
-        collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
         template_substitution: If not ``None``, stores the mapping of template parameters that could have been used
             in this value and which must be substituted in the value to do a complete check of the value.
         expansion_depth: how many default-instantiation-expressions were triggered.
             This detects a possibly infinite expansion cycle.
+        function_interpretation: What an enclosing expression site already decided about reading this
+            value as a Function evaluation; honored at the custom-type leaf sitting at ``location_id``.
+        collect_all_errors: ``True`` to collect every error, ``False`` to stop at the first one.
 
     Returns:
         ``(result, errors)``.  ``result`` is always a tree, even on failure.  ``errors`` is the authoritative error
@@ -265,7 +337,16 @@ def parse_value(
     if location_id is None:
         location_id = []
 
-    state = _State(context, [], collect_all_errors, template_substitution, expansion_depth)
+    state = _State(
+        context,
+        [],
+        collect_all_errors,
+        template_substitution,
+        expansion_depth,
+        location_id,
+        None if function_interpretation is FunctionInterpretation.UNSPECIFIED else location_id,
+        function_interpretation,
+    )
     result: ParsedValue | None = None
     try:
         result = _parse(node, value, True, location_id, state)
@@ -286,6 +367,7 @@ def validate_value(
     location_id: LocationId | None = None,
     template_substitution: dict | None = None,
     expansion_depth: int = 0,
+    function_interpretation: FunctionInterpretation = FunctionInterpretation.UNSPECIFIED,
     collect_all_errors: bool = True,
 ) -> list[ConceptHierarchyError]:
     """Error projection of :func:`parse_value`, for call sites that discard the result tree.
@@ -293,7 +375,14 @@ def validate_value(
     This performs the full parse; it is not cheaper.
     """
     _, errors = parse_value(
-        value, node, context, location_id, template_substitution, expansion_depth, collect_all_errors
+        value,
+        node,
+        context,
+        location_id,
+        template_substitution,
+        expansion_depth,
+        function_interpretation,
+        collect_all_errors,
     )
     return errors
 
@@ -399,14 +488,23 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
             local.append(err)
             state.record(err)
     if not used_default:
-        expression, errs = state.context.parse_value_against_custom_type_expression(
-            node.custom_type,
-            node.provenance,
-            value,
-            location_id,
-            state.template_substitution,
-            state.expansion_depth,
-        )
+
+        def _parse_expr():
+            return state.context.parse_value_against_custom_type_expression(
+                node.custom_type,
+                node.provenance,
+                value,
+                location_id,
+                state.template_substitution,
+                state.expansion_depth,
+                state.reading(location_id),
+            )
+
+        if _is_the_custom_function_shorthand(node, location_id, state):
+            with state.context.replace_variable_scope_for_custom_function({}):
+                expression, errs = _parse_expr()
+        else:
+            expression, errs = _parse_expr()
         for err in errs:
             local.append(err)
             state.record(err)
@@ -426,6 +524,21 @@ def _parse_custom(node: CHSchemaNode, value: object, location_id: LocationId, st
 # ===========================================================================================================
 # Structural / composite node
 # ===========================================================================================================
+
+
+def _is_the_custom_function_shorthand(node: CHSchemaNode, location_id: LocationId, state: _State) -> bool:
+    """
+    Whether ``node`` is `CustomFunction`'s bare-`FunctionComposition` shorthand rather than its ``procedure``.
+
+    Both are custom-type leaves declared by `CustomFunction`; what separates them is position.
+    The shorthand is the whole value, so it stands at the root of this parse;
+    ``procedure`` is a property of the object form and stands one key below it.
+    """
+    return (
+        node.schema_owner == DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions
+        and state.root_location_id is not None
+        and location_id == state.root_location_id
+    )
 
 
 def _parse_structural(node: CHSchemaNode, value: object, location_id: LocationId, state: _State) -> ParsedStructural:
@@ -482,7 +595,7 @@ def _parse_structural(node: CHSchemaNode, value: object, location_id: LocationId
 
     # --- oneOf (exactly one branch) --------------------------------------
     if node.one_of:
-        _parse_one_of(node, value, location_id, structural, rec, child_silent)
+        _parse_one_of(node, value, location_id, structural, rec, child_silent, state)
 
     # --- not -------------------------------------------------------------
     if node.not_ is not None:
@@ -516,7 +629,7 @@ def _parse_object(
 
     # process "properties": [("props", "x"), ("funcs+(Dog)", "x")]
     if node.custom_concept_data_constraints:
-        _parse_custom_concept_data(node, value, location_id, structural, rec, state)
+        _parse_custom_concept_data(node, value, location_id, structural, matched_keys, rec, state)
 
     # process "properties": "args"
     if node.custom_object_properties is not None:
@@ -528,14 +641,65 @@ def _parse_object(
             )
 
     # --- properties -----------------------------------------------------------------------------------
-    for key, child_schema in node.properties.items():
-        matched_keys.add(key)
+    if node.schema_owner == DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions and all(
+        x in node.properties for x in ["interface", "procedure"]
+    ):
+        new_vars: dict[str, InstantiatedType] = {}
+        # First process the `interface` (the prerequisite for the `procedure`'s variable scope) and then the `procedure`
+        key = "interface"
+        child_schema = node.properties[key]
         if key in value:
+            matched_keys.add(key)
             result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
+            if result is not None:
+                # Transform interface definition into variables
+                assert isinstance(result, ParsedStructural)
+                assert isinstance(result.value, dict)
+                for new_var, new_var_def in result.value.items():
+                    if isinstance(new_var_def, str):
+                        new_var_type = new_var_def
+                    elif isinstance(new_var_def, list):
+                        new_var_type = new_var_def[0]
+                    else:
+                        raise RuntimeError(
+                            "Expected schema does not match the written interface schema of CustomFunction!"
+                        )
+                    new_var_instantiated_type, errors = state.context.parse_type(
+                        new_var_type[2:] if new_var_type.startswith("s:") else new_var_type,
+                        state.template_substitution,
+                        location_id,
+                    )
+                    if errors:
+                        for err in errors:
+                            state.record(err)
+                    else:
+                        assert new_var_instantiated_type is not None
+                        new_vars[new_var] = new_var_instantiated_type
         else:
             result = child_a(child_schema, location_id + [key], state.new_state(key))
         if result is not None:
             structural.properties_parsed[key] = result
+        # process procedure
+        key = "procedure"
+        child_schema = node.properties[key]
+        if key in value:
+            matched_keys.add(key)
+            # replace the variable scope in which the procedure of the CustomFunction is parsed!
+            with state.context.replace_variable_scope_for_custom_function(new_vars):
+                result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
+        else:
+            result = child_a(child_schema, location_id + [key], state.new_state(key))
+        if result is not None:
+            structural.properties_parsed[key] = result
+    else:
+        for key, child_schema in node.properties.items():
+            matched_keys.add(key)
+            if key in value:
+                result = child_p(child_schema, value[key], location_id + [key], state.new_state(key))
+            else:
+                result = child_a(child_schema, location_id + [key], state.new_state(key))
+            if result is not None:
+                structural.properties_parsed[key] = result
 
     # --- required -------------------------------------------------------------------------------------
     # A required key is satisfied either by being present or by having been materialised from a default
@@ -582,6 +746,7 @@ def _parse_object(
                     location_id + [key],
                     state.template_substitution,
                     state.expansion_depth,
+                    state.reading(location_id),
                 )
                 for err in errs:
                     err.part = PathPart.KEY
@@ -603,13 +768,103 @@ def _parse_object(
 
 def _parse_custom_concept_data(
     node: CHSchemaNode,
-    value: dict,
+    concept_data: dict,
     location_id: LocationId,
     structural: ParsedStructural,
+    matched_keys: set[str],
     rec: Callable[[ConceptHierarchyError], None],
     state: _State,
 ):
-    pass
+    constraints_to_satisfy: list[dict[str, InstantiatedType]] = []
+    for index, concept_data_constraint in enumerate(node.custom_concept_data_constraints):
+        if concept_data_constraint.concept_restriction is not None and any(
+            not isinstance(x, InstantiatedType) for x in concept_data_constraint.concept_restriction
+        ):
+            constraints_to_satisfy.append({})
+            continue
+        constraints_to_satisfy.append(
+            state.context.collect_data(
+                concept_data_constraint.concept_restriction,
+                concept_data_constraint.for_properties_or_functions,
+                concept_data_constraint.include_parent_data,
+            )
+        )
+
+    local_matches: set[str] = set()
+    satisfied_parsed_values: list[dict[str, ParsedCustomValue]] = [{} for _ in node.custom_concept_data_constraints]
+    for key, value in concept_data.items():
+        if not state.context.is_domain_concept_datum_in_concept_hierarchy(key):
+            continue
+        key_location_id = location_id + [key]
+        constraint_index, value_type, node_value_type = None, None, None
+        # Check if the key is contained in one of the constraints;
+        #  if the constraint is template dependent, it contains no data to satisfy
+        for constraint_index, (constraint_to_satisfy, concept_data_constraint) in enumerate(
+            zip(constraints_to_satisfy, node.custom_concept_data_constraints)
+        ):
+            if key in constraint_to_satisfy:
+                value_type, node_value_type = constraint_to_satisfy[key], concept_data_constraint.value
+                break
+        if value_type is None:
+            continue
+        local_matches.add(key)
+        assert constraint_index is not None
+        assert node_value_type is not None
+        # create the x-substitution
+        substitution: dict[str, ConceptHierarchyTemplateArgument] = {"x": value_type}
+        # update the substitution with the template_substitution of the context
+        if state.template_substitution is not None:
+            substitution.update(state.template_substitution)
+        # do the substitution
+        assert node_value_type.custom_type is not None
+        assert state.context.is_concept(node_value_type.schema_owner)
+        substituted_value = state.context.substitute_with_x(
+            node_value_type.custom_type, substitution, node_value_type.schema_owner, key_location_id
+        )
+        # check the expression at that site
+        expr_res, errors = state.context.parse_value_against_custom_type_expression(
+            substituted_value,
+            node_value_type.provenance,
+            value,
+            key_location_id,
+            state.template_substitution,
+            state.expansion_depth,
+            state.reading(key_location_id),
+        )
+        for err in errors:
+            rec(err)
+
+        # How to convert the Expression value into a ParsedValue?
+        parsed = ParsedCustomValue(
+            location_id=key_location_id,
+            schema_node=node_value_type,
+            errors=errors,
+            custom_type=substituted_value,
+            provenance=node_value_type.provenance,  # TODO: is this the provenance of the schema or of the expression?
+            used_default=False,
+            default_expr=MISSING,
+            expression=expr_res,
+        )
+        satisfied_parsed_values[constraint_index][key] = parsed
+
+    matched_keys.update(local_matches)
+    for constraint, concept_data_constraint in zip(constraints_to_satisfy, node.custom_concept_data_constraints):
+        if not concept_data_constraint.require_all_keys:
+            continue
+        required_keys = set(constraint.keys())
+        if not (required_keys <= local_matches):
+            rec(
+                CHSemanticError(
+                    f"The custom concept data constraint {concept_data_constraint}\nwas not satisfied because not all "
+                    f"keys were present; missing keys are: {sorted(required_keys - local_matches)}",
+                    location_id=location_id,
+                )
+            )
+
+    structural.custom_concept_data = {}
+    for constraint_index, parse_res in enumerate(satisfied_parsed_values):
+        for key, parsed_value in parse_res.items():
+            structural.custom_concept_data[key] = (parsed_value, constraint_index)
 
 
 def _parse_evaluation_arguments_of_function(
@@ -642,8 +897,11 @@ def _parse_evaluation_arguments_of_function(
     # parser appends the key itself, to the convention every expression caller uses. Handing it the
     # location it is standing on spelled the key twice: `.../procedure/Condition/Condition/condition`.
     assert location_id and str(location_id[-1]) == state.upper_level_object_key, (location_id, state)
+    # The key names the Function whose arguments these are, so an interpretation marker on it is not part of the name.
+    # The *location* keeps the marker -- it is what the author wrote.
+    _, function_name = split_function_interpretation_marker(state.upper_level_object_key)
     parsed, errors = state.context.parse_function_evaluation(
-        state.upper_level_object_key,
+        function_name,
         value,
         node,
         location_id[:-1],
@@ -653,8 +911,7 @@ def _parse_evaluation_arguments_of_function(
     for error in errors:
         rec(error)  # may raise StopValidation in fail-fast mode
     if parsed is not None:
-        # One entry, keyed by the Function name -- see `ParsedStructural.custom_expressions`.
-        structural.custom_expressions[state.upper_level_object_key] = [("args", parsed)]
+        structural.custom_args_evaluation = (parsed, state.upper_level_object_key)
 
 
 # ===========================================================================================================
@@ -675,6 +932,14 @@ def _parse_array(
     items_parsed: list[ParsedValue | None] = [None] * len(value)
 
     if isinstance(node.items, list):
+        if node.require_all_items and len(value) < len(node.items):
+            rec(
+                CHSemanticError(
+                    f"expected {len(node.items)} items, got {len(value)}: "
+                    f'"requireAllItems" requires every position of the tuple to be present',
+                    location_id=location_id,
+                )
+            )
         # Tuple validation.
         for i, item in enumerate(value):
             if i < len(node.items):
@@ -715,7 +980,12 @@ def _parse_string(node: CHSchemaNode, value: str, location_id: LocationId, rec, 
     # node.custom_string_format and node.custom_string_constraint must be checked.
     if node.custom_string_format is not None:
         assert node.custom_string_format in {"Concept", "Type"}
-        value_to_check = value[2:] if value.startswith("s:") else value
+        # A `format: "Type"` string may be an expression key.
+        # `FunctionComposition` constrains its `propertyNames` to a Type,
+        # so the possible marker must be stripper to check whether the remaining key is a Type.
+        marker, value_to_check = split_function_interpretation_marker(value)
+        if marker is None and value_to_check.startswith("s:"):
+            value_to_check = value_to_check[2:]
         if node.custom_string_format == "Concept":
             if not state.context.is_concept(value_to_check):
                 rec(
@@ -820,6 +1090,7 @@ def _parse_one_of(
     structural: ParsedStructural,
     rec,
     child_silent,
+    state: _State,
 ) -> None:
     """Exactly one branch must match."""
     matching: list[ParsedValue] = []
@@ -832,14 +1103,40 @@ def _parse_one_of(
         else:
             failed_branch_errors.extend(errs)
 
-    if len(matching) == 1:
+    # the state.template_substitution is None guards against the cases in which the schema is template dependent
+    # but processing of the value/schema is not being done with a ground instantiation!
+    if len(matching) == 1 or (len(matching) > 1 and node.is_template_dependent and state.template_substitution is None):
         structural.one_of_parsed = matching[0]
         return
+
+    # The ambiguity the fComp, fEval, and fInst markers exist for: a one-key object keyed by a Function is ambiguous.
+    # It could mean a Function composition, evaluation, or instantiation; and depending on the schemas and the
+    # expression parser, a schema defined with `oneOf` may match both branches (when the marker is not present).
+    #
+    # The advice is based on the value's **shape**, not the owning ValueDomain. E.g. `FunctionCompositionRes` is merely
+    # the declaration in the schema that has it; any `oneOf` written the same in any ValueDomain has the same issue.
+    # A key that already carries a marker is not offered again to the next branch:
+    # there the branches are ambiguous for some other reason, and naming the markers would misdirect.
+    #
+    # Which of the three is *acceptable* depends on the branch types, so the hint does not predict that;
+    # all three are selectable, which is what makes the hint worth saying at all.
+    addition = ""
+    if isinstance(value, dict) and len(value) == 1:
+        only_key = next(iter(value))
+        assert isinstance(only_key, str)  # this comes from the JSON object, whose keys are always strings
+        split_res = split_function_interpretation_marker(only_key)
+
+        if split_res[0] is None and split_res[1] != "" and split_res[1][0].isupper():
+            addition = (
+                f".\nIf {only_key} names a Function, you may want to say which reading is meant by writing the key as "
+                f'"fEval:{only_key}" (a Function evaluation), "fComp:{only_key}" (a FunctionComposition), or '
+                f'"fInst:{only_key}" (a Function instantiation).'
+            )
 
     message = (
         "Value does not match any schema in 'oneOf'"
         if not matching
-        else f"Value matches {len(matching)} schemas in 'oneOf' (expected exactly 1)"
+        else f"Value matches {len(matching)} schemas in 'oneOf' (expected exactly 1)" + addition
     )
     err = CHSemanticError(message, location_id)
     err.causes.extend(failed_branch_errors)

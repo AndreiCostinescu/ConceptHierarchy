@@ -152,7 +152,7 @@ class TestInstExpressionIsTemplateDependent:
         )
         assert InstExpression(value, INTEGER).is_template_dependent is True
 
-    def test_narrow_expression_inherits_the_behaviour(self):
+    def test_narrow_expression_inherits_the_behavior(self):
         assert NarrowExpression(structural(10), INTEGER).is_template_dependent is False
         assert NarrowExpression(structural(properties={"x": custom_leaf(BOX_T)}), INTEGER).is_template_dependent is True
 

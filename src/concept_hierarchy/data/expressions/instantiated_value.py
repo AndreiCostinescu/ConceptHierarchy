@@ -194,15 +194,8 @@ class ParsedStructural(ParsedValue):
     properties_parsed: dict[str, ParsedValue] = field(default_factory=dict)
     pattern_properties_parsed: dict[str, list[tuple[str, ParsedValue]]] = field(default_factory=dict)
     additional_properties_parsed: dict[str, ParsedValue] = field(default_factory=dict)
-    custom_expressions: dict[str, list[tuple[str | int, ParsedValue]]] = field(default_factory=dict)
-    """
-    Used to store the parsed values produced by 
-    `\"properties\": \"args\"` and `\"properties\": [(\"props\", \"x\", True), (\"funcs\", \"x\", False)]`.
-    
-    Data structure is: "key_in_JSON_object": [(discriminator, ParsedValue), (discriminator, ParsedValue), ...]
-    discriminator is either "args" or the index of the constraint in `custom_concept_data_constraints`.
-    If discriminator is args, then the whole list should have only one element
-    """
+    custom_concept_data: dict[str, tuple[ParsedValue, int]] | None = None
+    custom_args_evaluation: tuple[ParsedValue, str] | None = None
 
     # array structure
     items_parsed: list[ParsedValue | None] = field(default_factory=list)
@@ -221,6 +214,11 @@ class ParsedStructural(ParsedValue):
     dependent_schemas_parsed: dict[str, ParsedValue] = field(default_factory=dict)
 
     def iter_children(self) -> Iterator[tuple[tuple[PathSegment, ...], ParsedValue]]:
+        if self.custom_args_evaluation is not None:
+            yield ("properties", self.custom_args_evaluation[1], "args"), self.custom_args_evaluation[0]
+        if self.custom_concept_data is not None:
+            for concept_data_key, (value, constraint_data_index) in self.custom_concept_data.items():
+                yield ("properties", constraint_data_index, concept_data_key), value
         for key, child in self.properties_parsed.items():
             yield ("properties", key), child
         for key, matches in self.pattern_properties_parsed.items():
@@ -246,6 +244,13 @@ class ParsedStructural(ParsedValue):
             yield ("dependencies", key), child
 
     def iter_expressions(self) -> Iterator[tuple[tuple[PathSegment, ...], Expression]]:
+        if self.custom_args_evaluation is not None:
+            for expr_location, expr in self.custom_args_evaluation[0].iter_expressions():
+                yield ("properties", self.custom_args_evaluation[1], "args") + expr_location, expr
+        if self.custom_concept_data is not None:
+            for concept_data_key, (value, constraint_data_index) in self.custom_concept_data.items():
+                for expr_location, expr in value.iter_expressions():
+                    yield ("properties", constraint_data_index, concept_data_key) + expr_location, expr
         for key, child in self.properties_parsed.items():
             for expr_location, expr in child.iter_expressions():
                 yield ("properties", key) + expr_location, expr

@@ -106,22 +106,24 @@ def rejection(instances: dict) -> str:
 
 def stored_evaluations(context: ConceptHierarchyContext, global_variable: str) -> dict[str, ParsedValue]:
     """
-    Every ``custom_expressions`` entry the ``args`` node left anywhere under a global's parsed value.
+    Every ``custom_args_evaluation`` an ``args`` node left anywhere under a global's parsed value.
+
+    Keyed by the object key the arguments belonged to, which is the Function name *as written* -- an
+    interpretation marker included, since that is what the author put there.
 
     `ParsedValue.walk` stops at a custom-type leaf, because what hangs off it is an `Expression` and not a
     parsed value -- but that expression's *own* value is another parsed tree, and a nested
-    `FunctionComposition` lives in exactly that position. So the descent has to cross the boundary.
+    `FunctionComposition` lives in exactly that position. So the descent has to cross the boundary. Within
+    one tree no manual descent is needed: `ParsedStructural.iter_children` yields the ``args`` node, so
+    `walk` already reaches it and everything below it.
     """
     found: dict[str, ParsedValue] = {}
 
     def collect(parsed_value: ParsedValue) -> None:
         for node in parsed_value.walk():
-            if isinstance(node, ParsedStructural):
-                for key, entries in node.custom_expressions.items():
-                    assert len(entries) == 1, f"an args entry must be the only one for {key}"
-                    discriminator, parsed = entries[0]
-                    assert discriminator == "args"
-                    found[key] = parsed
+            if isinstance(node, ParsedStructural) and node.custom_args_evaluation is not None:
+                parsed, object_key = node.custom_args_evaluation
+                found[object_key] = parsed
             if isinstance(node, ParsedCustomValue) and node.expression is not None:
                 nested = getattr(node.expression.value, "value", None)
                 if isinstance(nested, ParsedValue):
@@ -193,7 +195,7 @@ class TestTheKeyMustNameAFunction:
 
     def test_a_key_naming_a_type_that_is_not_a_function_is_rejected(self):
         text = rejection({"p": {"FunctionComposition": {"Leaf": {}}}})
-        assert "'Leaf' names Leaf, which is not a Function" in text
+        assert "Leaf (of concept Leaf) is not a Function; it can not be evaluated here" in text
 
     def test_a_key_naming_nothing_at_all_is_rejected(self):
         text = rejection({"p": {"FunctionComposition": {"NoSuchThing": {}}}})
@@ -218,7 +220,7 @@ class TestInvalidEvaluationsAreRecordedNotRaised:
 
     def test_an_argument_the_function_does_not_have(self):
         text = rejection({"p": {"FunctionComposition": {"Add": {"arg1": 1, "arg2": 2, "zzz": 3}}}})
-        assert 'does not have the argument "zzz"' in text
+        assert 'does not define the argument "zzz"' in text
         assert "Additional property is not allowed" not in text, (
             "the evaluation parser names the Function and the argument; the schema keyword names neither"
         )
@@ -234,7 +236,7 @@ class TestInvalidEvaluationsAreRecordedNotRaised:
 
     def test_an_abstract_key(self):
         text = rejection({"p": {"FunctionComposition": {"ValueDomain": {}}}})
-        assert "is an abstract type" in text
+        assert "ValueDomain is an abstract type, so it can not be used in an expression value" in text
 
 
 # ==================================================================================================

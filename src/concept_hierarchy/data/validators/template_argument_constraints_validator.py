@@ -75,7 +75,7 @@ class TypeTemplateInstantiationValidator(ABC):
     @abstractmethod
     def create_substitution_for(
         self,
-        parent_type_name: str,
+        parent_concept_name: str,
         sub_type: ConceptHierarchyType,
         location_id: LocationId,
         template_context: TemplateContext | None = None,
@@ -224,6 +224,8 @@ def validate_instantiation_constraints_in_template_argument_value(
     if isinstance(ch_type, TemplateDependentType):
         template_context: TemplateContext = validator.get_template_context()
         to_check_template_context = TemplateContextDeterminator(template_context)
+        print("At validation of", ch_type)
+        print(template_context.constraint)
         # check if there are no substitution errors => no matter which substitution, instantiation will fail
         errors = validate_complete_instantiation_of_concept(
             ch_type.clean_name, ch_type.template_arguments, to_check_template_context, validator, location_id
@@ -232,11 +234,13 @@ def validate_instantiation_constraints_in_template_argument_value(
             return errors
         # check if the resulting template context merged with the existing context is not empty
         #   => the existing constraints on the type are incompatible with the instantiation constraints!
+        print(to_check_template_context.determined.constraint)
         simplified_formula = simplify_formula(
             StructureConjunction(
                 location_id, (template_context.constraint, to_check_template_context.determined.constraint)
             )
         )
+        print(simplified_formula)
         # FIXME: should this new formula be added to the existing constraint?
         #  I think so, because the usage of the template arguments demands this constraint as well...
         #  So it must be remembered!
@@ -244,7 +248,9 @@ def validate_instantiation_constraints_in_template_argument_value(
             return [
                 CHSemanticError(
                     f"The existing constraints on the template variables {template_context.variables} are incompatible "
-                    f"with the instantiation constraints of {ch_type}!",
+                    f"with the instantiation constraints of {ch_type}\n"
+                    f"Existing constraint: {template_context.constraint}\n"
+                    f"Determined constraint: {to_check_template_context.determined.constraint}!",
                     location_id=location_id,
                 )
             ]
@@ -380,7 +386,8 @@ def validate_complete_instantiation_of_type(
             # there was no non-template-variable-related error and no template constraints => this means failure!
             err = CHSemanticError(
                 f"Sub structure-formula {formula.structure_constraint} passed without constraints on template arguments"
-                f" {template_context.original} => negation fails",
+                f" {template_context.original} => negation fails\n{complete_instantiation} does not satisfy "
+                f"Neg({formula.structure_constraint})",
                 location_id=location_id,
             )
             return [err]
@@ -534,7 +541,8 @@ def _validate_not(
         # there was no non-template-variable-related error and no template constraints => this means failure!
         err = CHSemanticError(
             f"Sub formula {formula.sub_formula} passed without constraints on template arguments"
-            f" {state.template_context.original} => negation fails",
+            f" {state.template_context.original} => negation fails\n{template_argument_value} does not satisfy "
+            f"Not({formula.sub_formula})",
             location_id=state.location_id,
         )
         state.errors.append(err)
@@ -651,6 +659,12 @@ def _validate_type(
         _handle_template_variable(t_arg, check_formula, state, sub_location_id)
         return
     assert isinstance(t_arg, ConceptHierarchyType)
+    # `t_arg` has not been validated as an application *at this point*,
+    # but it does not need to be here: every nested application of a converted value is validated by the walk in
+    # `convert_template_argument_to_concept_hierarchy_template_argument`.
+    # Checking it here instead would re-check the same subtree once per enclosing level.
+    # However, `substitute()` still has branches that build values without validating them --
+    # see documentation/TODO_TYPE_CONSTRAINT_VALIDATION.md §4.1.
     if formula_names_context_template_variable:
         _constrain_context_template_variable(formula, t_arg, sub_location_id, state)
         return
@@ -764,7 +778,7 @@ def _check_literal_type(formula: NonTypeTemplateConstraintFormula, t_arg: Litera
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
         return t_arg.literal_type == "string"
     else:
-        raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
+        raise RuntimeError(f"Unknown constraint type: {formula.constraint_type}")
 
 
 def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: LiteralValue) -> bool:
@@ -780,7 +794,7 @@ def _check_literal_value(formula: LiteralValueConstraintFormula, t_arg: LiteralV
     elif formula.constraint_type == NonTypeTemplateConstraintFormula.STRING:
         return t_arg.clean_name == formula.raw_value
     else:
-        raise RuntimeError("Unknown constraint type: {}".format(formula.constraint_type))
+        raise RuntimeError(f"Unknown constraint type: {formula.constraint_type}")
 
 
 def _validate_literal(

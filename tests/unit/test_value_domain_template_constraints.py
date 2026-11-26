@@ -131,7 +131,7 @@ class TestRejectedFormulae:
 class TestKnownLimitations:
     @pytest.mark.xfail(
         reason="TemplateConstraintHierarchyOperator.is_empty is hardcoded False, so an unsatisfiable "
-        "constraint is never recognised and the 'prevent any type-instantiation' error can not fire",
+        "constraint is never recognized and the 'prevent any type-instantiation' error can not fire",
         strict=False,
     )
     def test_an_unsatisfiable_constraint_is_rejected(self):

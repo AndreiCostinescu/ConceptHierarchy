@@ -18,7 +18,6 @@ from concept_hierarchy.data.concept_hierarchy import (
     DomainConceptData,
     FunctionData,
     GlobalVariableData,
-    TypeData,
     ValueDomainData,
 )
 from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext
@@ -32,12 +31,17 @@ from concept_hierarchy.data.expressions.subexpressions import (
     VerifiedTemplateDependentExpression,
 )
 from concept_hierarchy.data.parsers.expression_parser import get_expression_type, parse_expression
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue, frozendict
-from concept_hierarchy.definitions.concept_definition_domain_concept import DomainConceptDefinition
+from concept_hierarchy.data.types.concept_hierarchy_types import InstantiatedType, TypeValue, frozendict
+from concept_hierarchy.definitions.concept_definition_domain_concept import (
+    DomainConceptDefinition,
+    FunctionDefinitionKeywords,
+    HookType,
+    PropertyDefinitionKeywords,
+)
 from concept_hierarchy.definitions.concept_definition_functions import FunctionDefinition
-from concept_hierarchy.definitions.concept_definition_hidden_implementation import HiddenImplementationDefinition
 from concept_hierarchy.definitions.concept_definition_value_domain import ValueDomainDefinition
 from concept_hierarchy.errors import CHSemanticError, LocationId, PathPart
+from concept_hierarchy.utils import freeze_value
 
 
 def ill_formed_parts(expr: Expression) -> tuple[IllFormedExpression, ...]:
@@ -87,6 +91,26 @@ def invalid_expression_error(expr: Expression, location_id) -> CHSemanticError:
     return error
 
 
+def get_variable_context_based_on_static(
+    is_static: bool,
+    static_variable_context: VariableContext,
+    non_static_variable_context: VariableContext,
+    location_id: LocationId,
+) -> VariableContext:
+    if not is_static:
+        if non_static_variable_context is None:
+            raise CHSemanticError(
+                'Non-static DomainConcept functions need the "instance" variable of type '
+                "Instance<AcceptConcepts..., RejectConcepts...>; but that type is not defined in this hierarchy.",
+                location_id=location_id,
+            )
+        # with property/function names and the instance variable
+        return non_static_variable_context
+    else:
+        # without the instance variable and without (implicit) property/function names as variables!
+        return static_variable_context
+
+
 def check_expressions_in_domain_concept_definition(
     c: DomainConceptDefinition, datum: DomainConceptData, context: ConceptHierarchyContext
 ):
@@ -113,30 +137,228 @@ def check_expressions_in_domain_concept_definition(
         - initialization function procedure
         - consolidation function procedure
     """
-    pass
+    context.set_template_context(TemplateContext(c.name))
 
+    prev_var_context = context.variable_context
+    # add (inherited and defined) properties and functions to available variables
+    domain_concept_vars: dict[str, TypeValue] = {}
+    static_domain_concept_vars: dict[str, TypeValue] = {}
+    static_properties_of_this_concept: set[str] = set()
+    for prop_name, prop_def_data in datum.available_property_data.items():
+        defining_domain_concept = context.model.domain_concepts[prop_def_data[PropertyDefinitionKeywords.VALUE_DOMAIN]]
+        domain_concept_vars[prop_name] = defining_domain_concept.property_types[prop_name]
+        if defining_domain_concept is datum:
+            if c.properties[prop_name].get(PropertyDefinitionKeywords.STATIC, False):
+                static_properties_of_this_concept.add(prop_name)
+                static_domain_concept_vars[prop_name] = datum.property_types[prop_name]
+        elif prop_name in defining_domain_concept.static_properties:
+            static_domain_concept_vars[prop_name] = defining_domain_concept.property_types[prop_name]
+    datum.static_properties = frozenset(static_properties_of_this_concept)
+    static_functions_of_this_concept: set[str] = set()
+    for func_name, func_def_data in datum.available_function_data.items():
+        defining_domain_concept = context.model.domain_concepts[func_def_data[FunctionDefinitionKeywords.VALUE_DOMAIN]]
+        domain_concept_vars[func_name] = defining_domain_concept.function_types[func_name]
+        if defining_domain_concept is datum:
+            if c.functions[func_name].get(FunctionDefinitionKeywords.STATIC, False):
+                static_functions_of_this_concept.add(func_name)
+                static_domain_concept_vars[func_name] = datum.function_types[func_name]
+        elif func_name in defining_domain_concept.static_functions:
+            static_domain_concept_vars[func_name] = defining_domain_concept.function_types[func_name]
+    datum.static_functions = frozenset(static_functions_of_this_concept)
 
-def check_expressions_in_hidden_implementation_definition(
-    c: HiddenImplementationDefinition, datum: TypeData, context: ConceptHierarchyContext
-):
-    """No expressions in HiddenImplementationDefinitions."""
-    pass
+    base_variable_context = prev_var_context.add_variables(domain_concept_vars)
+    static_variable_context = prev_var_context.add_variables(static_domain_concept_vars)
+
+    variable_context_with_instance, instance_type_name = None, f"Instance<{c.name}>"
+    if context.ch.is_concept("Instance"):
+        instance_type = context.expression_parser_validator.create_instantiated_type(
+            instance_type_name, c.location_of(c.name)
+        )
+        variable_context_with_instance = base_variable_context.add_variable("instance", instance_type)
+
+    function_composition_type = None
+    if context.ch.is_concept("FunctionComposition"):
+        function_composition_type = context.expression_parser_validator.create_instantiated_type(
+            "FunctionComposition", c.location_of(c.name)
+        )
+    custom_function_type = None
+    if context.ch.is_concept(DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions):
+        custom_function_type = context.expression_parser_validator.create_instantiated_type(
+            DomainConceptDefinition.default_value_domain_type_of_domain_concept_functions, c.location_of(c.name)
+        )
+
+    context.variable_context = base_variable_context
+    # prop_name -> specialization ("forThis" or "forSub") -> prop_keyword -> Expression
+    property_definition_expressions: dict[
+        str,
+        dict[
+            str,
+            dict[str, Expression | list[Expression] | frozendict[tuple[InstantiatedType, str, HookType], Expression]],
+        ],
+    ] = {}
+
+    def set_prop_data(_prop_name, _specialization_type, _prop_keyword, _expr_value):
+        if _prop_name not in property_definition_expressions:
+            property_definition_expressions[_prop_name] = {}
+        if _specialization_type not in property_definition_expressions[_prop_name]:
+            property_definition_expressions[_prop_name][_specialization_type] = {}
+        assert _prop_keyword not in property_definition_expressions[_prop_name][_specialization_type]
+        property_definition_expressions[_prop_name][_specialization_type][_prop_keyword] = _expr_value
+
+    for prop_name, prop_def in c.properties.items():
+        p_def_location_id = c.location_of("properties", prop_name)
+        p_is_static = prop_name in static_properties_of_this_concept
+        if PropertyDefinitionKeywords.DEFAULT in prop_def:
+            p_default_location_id = p_def_location_id + [PropertyDefinitionKeywords.DEFAULT]
+            context.variable_context = get_variable_context_based_on_static(
+                p_is_static, static_variable_context, variable_context_with_instance, p_default_location_id
+            )
+            prop_expr = parse_expression(
+                prop_def[PropertyDefinitionKeywords.DEFAULT],
+                datum.property_types[prop_name],
+                FunctionArgumentProvenance.ANY,
+                FunctionArgumentAccessor.GET,
+                context.expression_parser_validator,
+                p_default_location_id,
+            )
+            if not prop_expr.is_valid:
+                raise invalid_expression_error(prop_expr, p_default_location_id)
+            set_prop_data(prop_name, "forSub", PropertyDefinitionKeywords.DEFAULT, prop_expr)
+        if PropertyDefinitionKeywords.CONFIDENCE in prop_def:
+            p_confidence_location_id = p_def_location_id + [PropertyDefinitionKeywords.CONFIDENCE]
+            # ensure Duration ValueDomain is defined
+            if not context.ch.is_concept("Duration"):
+                raise CHSemanticError(
+                    f'Property {prop_name} of {c.name} defines "{PropertyDefinitionKeywords.CONFIDENCE}", '
+                    f'which requires the "Duration" ValueDomain to be defined in the Concept Hierarchy, but it is not!',
+                    location_id=p_confidence_location_id,
+                )
+            duration_type = context.expression_parser_validator.create_instantiated_type(
+                "Duration", p_confidence_location_id
+            )
+            context.variable_context = get_variable_context_based_on_static(
+                p_is_static, static_variable_context, variable_context_with_instance, p_confidence_location_id
+            )
+            prop_expr = parse_expression(
+                prop_def[PropertyDefinitionKeywords.CONFIDENCE],
+                duration_type,
+                FunctionArgumentProvenance.ANY,
+                FunctionArgumentAccessor.GET,
+                context.expression_parser_validator,
+                p_confidence_location_id,
+            )
+            if not prop_expr.is_valid:
+                raise invalid_expression_error(prop_expr, p_confidence_location_id)
+            set_prop_data(prop_name, "forSub", PropertyDefinitionKeywords.CONFIDENCE, prop_expr)
+        if PropertyDefinitionKeywords.CONSTRAINT in prop_def:
+            p_constraint_location_id = p_def_location_id + [PropertyDefinitionKeywords.CONSTRAINT]
+            # ensure Variation ValueDomain is defined
+            if not context.ch.is_concept("Variation"):
+                raise CHSemanticError(
+                    f'Property {prop_name} of {c.name} defines "{PropertyDefinitionKeywords.CONSTRAINT}", '
+                    f'which requires the "Variation<T>" Type to be defined in the Concept Hierarchy, but it is not!',
+                    location_id=p_constraint_location_id,
+                )
+            p_variation_type = context.expression_parser_validator.create_instantiated_type(
+                f"Variation<{domain_concept_vars[prop_name].full_name}>", p_constraint_location_id
+            )
+            prop_expr = parse_expression(
+                prop_def[PropertyDefinitionKeywords.CONSTRAINT],
+                p_variation_type,
+                FunctionArgumentProvenance.ANY,
+                FunctionArgumentAccessor.GET,
+                context.expression_parser_validator,
+                p_constraint_location_id,
+            )
+            if not prop_expr.is_valid:
+                # raise invalid_expression_error(prop_expr, p_confidence_location_id)
+                pass
+            else:
+                set_prop_data(prop_name, "forSub", PropertyDefinitionKeywords.CONSTRAINT, prop_expr)
+    datum.property_expressions = freeze_value(property_definition_expressions)
+
+    function_defaults: dict[str, dict[str, Expression]] = {}
+    for func_name, func_def in c.functions.items():
+        f_def_location_id = c.location_of("functions", func_name)
+        is_func_static = func_name in static_functions_of_this_concept
+        if custom_function_type is None:
+            raise CHSemanticError(
+                "DomainConcept functions are written as CustomFunction expressions, but the CustomFunction concept was "
+                "not defined in this hierarchy.",
+                location_id=f_def_location_id,
+            )
+        if FunctionDefinitionKeywords.DEFAULT not in func_def:
+            continue
+        f_default_location_id = f_def_location_id
+        if func_name not in c.is_shorthand_function_definition:
+            f_default_location_id += [FunctionDefinitionKeywords.DEFAULT]
+        context.variable_context = get_variable_context_based_on_static(
+            is_func_static, static_variable_context, variable_context_with_instance, f_default_location_id
+        )
+        expr_res = parse_expression(
+            func_def[FunctionDefinitionKeywords.DEFAULT],
+            custom_function_type,
+            FunctionArgumentProvenance.ANY,
+            FunctionArgumentAccessor.GET,
+            context.expression_parser_validator,
+            f_default_location_id,
+        )
+        if not expr_res.is_valid:
+            raise invalid_expression_error(expr_res, f_default_location_id)
+        if func_name not in function_defaults:
+            function_defaults[func_name] = {}
+        function_defaults[func_name]["forSub"] = expr_res
+    datum.function_expressions = freeze_value(function_defaults)
+
+    # the variable context is checked inside the "management"-parsing loop
+    if variable_context_with_instance is not None:
+        context.variable_context = variable_context_with_instance
+    management_functions: dict[str, Expression] = {}
+    for management_function_name, management_function_def in c.management.items():
+        management_f_location_id = c.location_of("management", management_function_name)
+        if function_composition_type is None:
+            raise CHSemanticError(
+                "Concept management functions are written as FunctionComposition expressions, "
+                "but the FunctionComposition concept was not defined in this hierarchy!",
+                location_id=management_f_location_id,
+            )
+        if variable_context_with_instance is None:
+            raise CHSemanticError(
+                f'Concept management functions are written as FunctionComposition expressions that have the "instance"'
+                f" as an implicit variable of type {instance_type_name}. However, the Instance-concept is not defined "
+                f"in the hierarchy! Please define the Instance-concept to define management functions!",
+                location_id=management_f_location_id,
+            )
+        expr_res = parse_expression(
+            management_function_def,
+            function_composition_type,
+            FunctionArgumentProvenance.ANY,
+            FunctionArgumentAccessor.GET,
+            context.expression_parser_validator,
+            management_f_location_id,
+        )
+        if not expr_res.is_valid:
+            raise invalid_expression_error(expr_res, management_f_location_id)
+        management_functions[management_function_name] = expr_res
+    datum.management = frozendict(management_functions)
+
+    context.variable_context = prev_var_context
+    context.reset_template_context()
 
 
 def check_expressions_in_value_domain_definition(
     c: ValueDomainDefinition, datum: ValueDomainData, context: ConceptHierarchyContext
 ):
-    """
-    Check default values of value domain instantiations (plus type-check value domain instantiations themselves)
-    """
-    pass
+    """No expressions to check (default values of instantiation-schemas were already processed)."""
+    return
 
 
 def check_expressions_in_function_definition(
     c: FunctionDefinition, datum: FunctionData, context: ConceptHierarchyContext
 ):
     """
-    Check Function evaluation default argument values, variations, procedure, and inversions
+    Function evaluation default argument values were already checked.
+    Remaining: Function variations, procedure, and inversions
 
     :param c: Function concept for which to check expressions
     :param datum: the output data container
@@ -265,7 +487,7 @@ def init_expressions(context: ConceptHierarchyContext):
                 all_default_argument_values[default_arg_name] = parsed_default_value_expr
 
         # collect default arguments of parents as well and set them in the model's Function data!
-        for p_name, p_model in c.parents.items():
+        for p_name, p_model in c.direct_parents.items():
             if p_name not in context.ch.functions:
                 continue
             assert isinstance(p_model, FunctionData)
@@ -532,11 +754,7 @@ def check_expressions_in_concept_hierarchy(context: ConceptHierarchyContext):
         context.pop_last_variable_stack_frame()
         context.reset_template_context()
 
-    # Second, process template types
-    for c_name, c in context.ch.concepts.items():
-        if isinstance(c, HiddenImplementationDefinition):
-            check_expressions_in_hidden_implementation_definition(c, context.model.value_domains[c_name], context)
-    # Then, check types in the Concept Hierarchy (property default values, Function argument default values, etc.)
+    # Check types in the Concept Hierarchy (property default values, Function argument default values, etc.)
     for c_name, c in context.ch.concepts.items():
         if isinstance(c, DomainConceptDefinition):
             check_expressions_in_domain_concept_definition(c, context.model.domain_concepts[c_name], context)

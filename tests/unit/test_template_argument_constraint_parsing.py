@@ -65,7 +65,7 @@ Known attribute names (from source)
     StructureConjunction / StructureDisjunction    →  .structure_constraints : tuple
     StructureNegation                              →  .structure_constraint : StructureConstraintFormula
 
-Critical behavioural changes vs. the previous test suite
+Critical behavioral changes vs. the previous test suite
 ---------------------------------------------------------
     * And / Or / Not now REQUIRE TypeTemplateConstraintFormula operands.
       Unconstrained, NonType, LiteralValue  all cause CHSyntaxError.

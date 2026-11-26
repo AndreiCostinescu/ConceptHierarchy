@@ -409,7 +409,7 @@ class TestKnownLimitations:
 
     @pytest.mark.xfail(
         reason="`TwinBox<E> <: Box<E>` holds for every E, but is reported as MAYBE under the "
-        "tautological constraint `E is E` rather than recognised as YES",
+        "tautological constraint `E is E` rather than recognized as YES",
         strict=False,
     )
     def test_a_tautological_constraint_is_recognised_as_yes(self, hierarchy: Hierarchy):

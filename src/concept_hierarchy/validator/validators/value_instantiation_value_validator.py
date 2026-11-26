@@ -11,13 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from contextlib import contextmanager
+from typing import Iterator
 
-from concept_hierarchy.data.contexts.context import ConceptHierarchyContext
+from concept_hierarchy.data.contexts.context import ConceptHierarchyContext, TemplateContext
+from concept_hierarchy.data.contexts.variable_context import VariableContext, VariableStackFrame
 from concept_hierarchy.data.expressions.expression import Expression
 from concept_hierarchy.data.expressions.expression_utils import (
     ExpressionProvenance,
     FunctionArgumentAccessor,
     FunctionArgumentProvenance,
+    FunctionInterpretation,
     ValueDomainArgumentProvenance,
 )
 from concept_hierarchy.data.expressions.instantiated_value import ParsedCustomValue, ParsedValue
@@ -30,13 +34,21 @@ from concept_hierarchy.data.type_template_variables.constraint_formula import (
     NonStructureConstraintFormula,
     TemplateConstraintFormula,
 )
-from concept_hierarchy.data.types.concept_hierarchy_types import TypeValue
+from concept_hierarchy.data.type_template_variables.template_substitution import substitute
+from concept_hierarchy.data.types.concept_hierarchy_types import (
+    TYPE_VALUE_IS_INSTANCE_CHECK,
+    ConceptHierarchyTemplateArgument,
+    Instantiated,
+    InstantiatedType,
+    TypeValue,
+)
 from concept_hierarchy.data.utils import MISSING
 from concept_hierarchy.data.validators.template_argument_constraints_validator import (
     TemplateContextDeterminator,
     validate_template_argument_value_against_constraint,
 )
 from concept_hierarchy.data.validators.type_validator import parse_convert_type_in_template_context
+from concept_hierarchy.definitions.concept_definition_domain_concept import ForPropertyOrFunction
 from concept_hierarchy.errors import CHSemanticError, ConceptHierarchyError, LocationId, PathPart
 
 
@@ -52,6 +64,7 @@ class ValueValidator(ValueInstantiationContext):
         location_id: LocationId,
         template_substitution: dict | None,
         expansion_depth: int,
+        function_interpretation: FunctionInterpretation,
     ) -> tuple[Expression | None, list[ConceptHierarchyError]]:
         expr = parse_expression(
             value,
@@ -62,6 +75,7 @@ class ValueValidator(ValueInstantiationContext):
             location_id,
             template_substitution=template_substitution,
             expansion_depth=expansion_depth,
+            function_interpretation=function_interpretation,
         )
         if expr.is_valid:
             return expr, []
@@ -85,7 +99,7 @@ class ValueValidator(ValueInstantiationContext):
         # Where the arguments are, which is where everything this method reports belongs: the key error is
         # about that key, and the evaluation is the value under it.
         arguments_location_id = location_id + [function_name]
-        expressions, function_type, is_function_subtype = parse_function_evaluation_expression(
+        expressions, function_type, is_function_subtype, _ = parse_function_evaluation_expression(
             function_name,
             arguments,
             None,  # no expected result type!
@@ -94,7 +108,9 @@ class ValueValidator(ValueInstantiationContext):
             # The whole point of the call: parse and check the argument expressions.
             recursively_parse=True,
             parse_template_expressions_without_type_checks=False,
-            is_function_evaluation=True,
+            # No enclosing site has decided anything about this value:
+            # the interpretation, if any, is the marker on `function_name`, which is handled by the parser.
+            force_function_evaluation_interpretation=None,
             # The caller's half of the protocol. The expression parser's version additionally asserts that
             # the expected type is a `TypeValue`, which is of no use to a caller that has none.
             ensure_expression_invariant=lambda produced, _expected: len(produced) == 1,
@@ -110,13 +126,12 @@ class ValueValidator(ValueInstantiationContext):
                     part=PathPart.KEY,
                 )
             ]
-        if not is_function_subtype:
-            # The one case the expression parser reports nothing for, because there it simply means "try
-            # `Narrow` instead". Here there is no other alternative: only an evaluation may stand.
+        if len(expressions) == 0:
+            # This is the case where the type is not a Function; normally, the `Narrow` expression check would follow.
+            # But here, there is no other alternative: only an evaluation may stand.
             return None, [
                 CHSemanticError(
-                    f"{function_name!r} names {function_type}, which is not a Function, so it can not be "
-                    f"evaluated here!",
+                    f"{function_type!r} (of concept {function_name}) is not a Function; it can not be evaluated here!",
                     location_id=arguments_location_id,
                     part=PathPart.KEY,
                 )
@@ -179,3 +194,104 @@ class ValueValidator(ValueInstantiationContext):
             constraint, value, template_context, self.context.type_application_constraints_validator, {}, location_id
         )
         return errors == []
+
+    def parse_type(
+        self,
+        type_candidate: str,
+        template_substitution: dict[str, ConceptHierarchyTemplateArgument],
+        location_id: LocationId,
+    ) -> tuple[InstantiatedType | None, list[ConceptHierarchyError]]:
+        try:
+            res = parse_convert_type_in_template_context(type_candidate, self.context.type_validator, location_id)
+            if not isinstance(res, Instantiated):
+                res = substitute(
+                    res,
+                    template_substitution,
+                    self.context.template_context,
+                    TemplateContext("global"),
+                    self.context.type_application_constraints_validator,
+                    location_id,
+                )
+                assert isinstance(res, TYPE_VALUE_IS_INSTANCE_CHECK)
+            return res, []
+        except ConceptHierarchyError as e:
+            return None, [e]
+
+    @contextmanager
+    def replace_variable_scope_for_custom_function(self, new_variables: dict[str, TypeValue]) -> Iterator[None]:
+        previous = self.context.variable_context
+        assert previous is not None, "there is no variable context to scope"
+        # Frame 0 is the global variables: those stay; every frame above them is dropped for the duration.
+        globals_frame = previous.stack_frames[0] if previous.stack_frames else VariableStackFrame()
+        self.context.set_variable_context(VariableContext([globals_frame, VariableStackFrame(new_variables)]))
+        try:
+            yield
+        finally:
+            self.context.set_variable_context(previous)
+
+    def is_domain_concept_datum_in_concept_hierarchy(self, key: str) -> bool:
+        return (
+            key in self.context.ch.all_domain_concept_functions or key in self.context.ch.all_domain_concept_properties
+        )
+
+    def substitute_with_x(
+        self,
+        custom_type: TypeValue,
+        substitution: dict[str, ConceptHierarchyTemplateArgument],
+        schema_owner: str,
+        key_location_id: LocationId,
+    ) -> TypeValue:
+        model_value_domain = self.context.model.value_domains[schema_owner]
+        template_context_in_which_type_was_written = model_value_domain.template_context
+        assert self.context.model.x_template_variable_constraint is not None
+        self.context.type_validator.add_template_variable(
+            "x", self.context.model.x_template_variable_constraint, key_location_id
+        )
+        try:
+            res = substitute(
+                custom_type,
+                substitution,
+                self.context.template_context,
+                template_context_in_which_type_was_written,
+                self.context.type_application_constraints_validator,
+                key_location_id,
+            )[0]
+            self.context.type_validator.delete_template_variable("x", key_location_id)
+            return res
+        except ConceptHierarchyError:
+            self.context.type_validator.delete_template_variable("x", key_location_id)
+            raise
+
+    def collect_data(
+        self,
+        concept_restriction: list[InstantiatedType] | None,
+        for_properties_or_functions: ForPropertyOrFunction,
+        include_parent_data: bool,
+    ) -> dict[str, InstantiatedType]:
+        res: dict[str, InstantiatedType] = {}
+        if concept_restriction is None:
+            if for_properties_or_functions is ForPropertyOrFunction.PROPERTY:
+                for prop_name, concept_defining_prop in self.context.ch.all_domain_concept_properties.items():
+                    res[prop_name] = self.context.model.domain_concepts[concept_defining_prop].property_types[prop_name]
+            else:
+                assert for_properties_or_functions is ForPropertyOrFunction.FUNCTION
+                for func_name, concept_defining_func in self.context.ch.all_domain_concept_functions.items():
+                    res[func_name] = self.context.model.domain_concepts[concept_defining_func].function_types[func_name]
+        else:
+            for domain_concept in concept_restriction:
+                if for_properties_or_functions is ForPropertyOrFunction.PROPERTY:
+                    if include_parent_data:
+                        res.update(
+                            self.context.model.domain_concepts[domain_concept.full_name].all_available_property_types
+                        )
+                    else:
+                        res.update(self.context.model.domain_concepts[domain_concept.full_name].property_types)
+                else:
+                    assert for_properties_or_functions is ForPropertyOrFunction.FUNCTION
+                    if include_parent_data:
+                        res.update(
+                            self.context.model.domain_concepts[domain_concept.full_name].all_available_function_types
+                        )
+                    else:
+                        res.update(self.context.model.domain_concepts[domain_concept.full_name].function_types)
+        return res

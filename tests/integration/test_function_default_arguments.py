@@ -628,7 +628,7 @@ def grounded_defaults(context) -> dict:
 
     Reached through the private attribute on purpose: the cache is not observable any other way -- the
     grounded expression is deliberately dropped rather than stored on the `FunctionEvaluation` -- and both
-    what it holds and what it *declines* to hold are behaviour worth pinning.
+    what it holds and what it *declines* to hold are behavior worth pinning.
     """
     return dict(context.expression_parser_validator._grounded_function_defaults)
 
@@ -881,7 +881,7 @@ def declaration_parses(context) -> dict:
     The validator's cache of groundings handed back to the declaration, keyed ``(Function, argument)``.
 
     Private for the same reason `grounded_defaults` is, and pinned for the same one: what it holds and what
-    it *declines* to hold are both behaviour, and neither is visible from the outside.
+    it *declines* to hold are both behavior, and neither is visible from the outside.
     """
     return dict(context.expression_parser_validator._declared_defaults_parsed_early)
 

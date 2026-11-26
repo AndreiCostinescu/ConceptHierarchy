@@ -332,7 +332,7 @@ class TemplateConstraintOr(NonStructureConstraintFormula):
     sub-formula.  Written ``Or(F₁, F₂, …)``.
 
     Every operand must be a ``TypeTemplateConstraintFormula``; the same
-    restrictions and error behaviour as ``TemplateConstraintAnd`` apply.
+    restrictions and error behavior as ``TemplateConstraintAnd`` apply.
     At least one operand is required.
 
     Example: ``Or(Mammal, Bird)`` matches any concrete type that is a
@@ -532,7 +532,7 @@ class TemplateConstraintHierarchyOperator(TypeTemplateConstraintFormula, ABC):
     Semantic validation is performed eagerly at construction time via the
     supplied ``validator``:
 
-    * The ``literal`` must be recognised as either a concept or a template
+    * The ``literal`` must be recognized as either a concept or a template
       variable; anything else raises ``CHSemanticError``.
     * Template variables may not carry template-argument constraints, because a
       template variable stands for an unknown concept whose own template

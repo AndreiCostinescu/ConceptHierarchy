@@ -25,7 +25,7 @@ the only one where substitution changes the expression's *class*:
 - under a ground application such as ``H<3>``, the *string* ``"N"`` becomes the JSON value ``3`` before
   anything is interpreted, and the expression is an :class:`InstExpression` instead.
 
-**A substituted literal is recognised only by ``defaultSerialization``.** Neither the name alternatives
+**A substituted literal is recognized only by ``defaultSerialization``.** Neither the name alternatives
 (``Var``, an instance property chain, a literal template variable) nor the instantiation-schema route
 applies to it: it is a value, so it is classified by what its JSON type serialises to and by nothing else.
 That is what these tests assert -- an `InstExpression` whose ``value`` tree is ``None`` and whose
@@ -168,7 +168,7 @@ def assert_is_a_literal(expression: Expression, value_type: str, json_value: obj
     """
     value = expression.value
     assert isinstance(value, DefaultSerializationExpression), (
-        f"a substituted literal must be recognised by defaultSerialization; got {type(value).__name__}"
+        f"a substituted literal must be recognized by defaultSerialization; got {type(value).__name__}"
     )
     assert value.value is None, (
         f"a defaultSerialization expression has no parsed value tree, but this one produced {value.value!r}"
